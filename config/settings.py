@@ -7,13 +7,25 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _is_paper_trading() -> bool:
+    return os.getenv("PAPER_TRADING", "true").lower() == "true"
+
+
 @dataclass(frozen=True)
 class KiwoomConfig:
     app_key: str = field(default_factory=lambda: os.environ["KIWOOM_APP_KEY"])
     secret_key: str = field(default_factory=lambda: os.environ["KIWOOM_SECRET_KEY"])
     account_no: str = field(default_factory=lambda: os.environ["KIWOOM_ACCOUNT_NO"])
-    rest_base_url: str = "https://openapi.koreainvestment.com:9443"
-    ws_url: str = "ws://ops.koreainvestment.com:21000"
+    # 모의투자 모드 (기본값: True — 안전을 위해 모의투자가 기본)
+    paper_trading: bool = field(default_factory=_is_paper_trading)
+    rest_base_url: str = field(default_factory=lambda: (
+        "https://openapivts.koreainvestment.com:29443" if _is_paper_trading()
+        else "https://openapi.koreainvestment.com:9443"
+    ))
+    ws_url: str = field(default_factory=lambda: (
+        "ws://ops.koreainvestment.com:31000" if _is_paper_trading()
+        else "ws://ops.koreainvestment.com:21000"
+    ))
     rate_limit_calls: int = 5
     rate_limit_period: float = 1.0
 

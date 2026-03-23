@@ -22,6 +22,7 @@ def app_config():
             app_key="test_key",
             secret_key="test_secret",
             account_no="12345678",
+            paper_trading=True,
         ),
         telegram=TelegramConfig(
             bot_token="test_token",

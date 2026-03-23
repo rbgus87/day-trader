@@ -90,7 +90,9 @@ class KiwoomRestClient:
             raise ValueError(f"주문 가격은 0 이상: {price}")
         if side not in ("buy", "sell"):
             raise ValueError(f"잘못된 매매 구분: {side}")
-        tr_id = "TTTC0802U" if side == "buy" else "TTTC0801U"
+        # 모의투자: VTTC, 실거래: TTTC
+        prefix = "VTTC" if self._config.paper_trading else "TTTC"
+        tr_id = f"{prefix}0802U" if side == "buy" else f"{prefix}0801U"
         body = {
             "CANO": self._config.account_no[:8],
             "ACNT_PRDT_CD": self._config.account_no[8:] or "01",
@@ -117,7 +119,8 @@ class KiwoomRestClient:
         }
         return await self.request(
             "GET", "/uapi/domestic-stock/v1/trading/inquire-balance",
-            tr_id="TTTC8434R", params=params,
+            tr_id=f"{'VTTC' if self._config.paper_trading else 'TTTC'}8434R",
+            params=params,
         )
 
     async def get_current_price(self, ticker: str) -> dict:

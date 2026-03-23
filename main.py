@@ -64,6 +64,11 @@ async def main():
         filter=_log_filter,
     )
 
+    # 모드 확인
+    mode = "모의투자" if config.kiwoom.paper_trading else "실거래"
+    logger.info(f"매매 모드: {mode}")
+    logger.info(f"API URL: {config.kiwoom.rest_base_url}")
+
     # 인프라 초기화
     db = DbManager(config.db_path)
     await db.init()
