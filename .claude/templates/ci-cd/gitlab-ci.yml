@@ -1,0 +1,114 @@
+# GitLab CI/CD 파이프라인 템플릿
+# DevOps Engineer가 프로젝트에 맞게 커스터마이징합니다.
+#
+# 사용법:
+#   1. 프로젝트 루트에 .gitlab-ci.yml로 복사
+#   2. {{PLACEHOLDER}} 값을 프로젝트에 맞게 수정
+
+stages:
+  - lint
+  - test
+  - build
+  - deploy
+
+variables:
+  NODE_VERSION: '20'              # {{NODE_VERSION}}
+  # PYTHON_VERSION: '3.12'        # Python 프로젝트 시 활성화
+
+# 캐시 설정 — 브랜치별 캐시
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - node_modules/               # {{CACHE_PATHS}}
+  policy: pull-push
+
+# ============================================================
+# STAGE: 린트 + 타입 체크
+# ============================================================
+lint:
+  stage: lint
+  image: node:${NODE_VERSION}-alpine
+  script:
+    - npm ci                      # {{INSTALL_COMMAND}}
+    - npm run lint                # {{LINT_COMMAND}}
+    - npm run typecheck           # {{TYPECHECK_COMMAND}}
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH == "develop"
+
+# ============================================================
+# STAGE: 테스트
+# ============================================================
+test:unit:
+  stage: test
+  image: node:${NODE_VERSION}-alpine
+  script:
+    - npm ci
+    - npm run test -- --coverage  # {{TEST_COMMAND}}
+  coverage: '/All files\s*\|\s*[\d.]+/'  # 커버리지 추출 정규식
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage/cobertura-coverage.xml
+    paths:
+      - coverage/
+    expire_in: 7 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# test:e2e:
+#   stage: test
+#   image: mcr.microsoft.com/playwright:v1.40.0-focal
+#   script:
+#     - npm ci
+#     - npx playwright test
+#   artifacts:
+#     when: always
+#     paths:
+#       - playwright-report/
+#     expire_in: 7 days
+#   rules:
+#     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# ============================================================
+# STAGE: 빌드
+# ============================================================
+build:
+  stage: build
+  image: node:${NODE_VERSION}-alpine
+  script:
+    - npm ci
+    - npm run build               # {{BUILD_COMMAND}}
+  artifacts:
+    paths:
+      - dist/                     # {{BUILD_OUTPUT_DIR}}
+    expire_in: 7 days
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# ============================================================
+# STAGE: 배포 (main 브랜치만)
+# ============================================================
+# deploy:staging:
+#   stage: deploy
+#   environment:
+#     name: staging
+#     url: https://staging.{{DOMAIN}}
+#   script:
+#     - echo "Deploy to staging"
+#   rules:
+#     - if: $CI_COMMIT_BRANCH == "develop"
+
+# deploy:production:
+#   stage: deploy
+#   environment:
+#     name: production
+#     url: https://{{DOMAIN}}
+#   script:
+#     - echo "Deploy to production"
+#   rules:
+#     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+#   when: manual    # 수동 승인 필요

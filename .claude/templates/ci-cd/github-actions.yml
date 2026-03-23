@@ -1,0 +1,169 @@
+# GitHub Actions CI/CD 파이프라인 템플릿
+# DevOps Engineer가 프로젝트에 맞게 커스터마이징합니다.
+#
+# 사용법:
+#   1. 프로젝트 루트에 .github/workflows/ 디렉토리 생성
+#   2. 이 파일을 ci.yml로 복사
+#   3. {{PLACEHOLDER}} 값을 프로젝트에 맞게 수정
+
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+# 동시 실행 제한 — 같은 브랜치/PR의 이전 실행 취소
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'          # {{NODE_VERSION}}
+  # PYTHON_VERSION: '3.12'    # Python 프로젝트 시 활성화
+  # RUST_VERSION: 'stable'    # Rust 프로젝트 시 활성화
+
+# ============================================================
+# JOB 1: 린트 + 타입 체크 (빠른 피드백)
+# ============================================================
+jobs:
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'            # {{PACKAGE_MANAGER: npm | pnpm | yarn}}
+
+      - run: npm ci               # {{INSTALL_COMMAND}}
+
+      - name: Lint
+        run: npm run lint         # {{LINT_COMMAND}}
+
+      - name: Type Check
+        run: npm run typecheck    # {{TYPECHECK_COMMAND}}
+
+# ============================================================
+# JOB 2: 테스트
+# ============================================================
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Unit Tests
+        run: npm run test         # {{TEST_COMMAND}}
+
+      - name: Upload Coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+
+# ============================================================
+# JOB 3: 빌드
+# ============================================================
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Build
+        run: npm run build        # {{BUILD_COMMAND}}
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: dist/             # {{BUILD_OUTPUT_DIR}}
+          retention-days: 7
+
+# ============================================================
+# JOB 4: E2E 테스트 (선택)
+# ============================================================
+  # e2e:
+  #   name: E2E Tests
+  #   runs-on: ubuntu-latest
+  #   needs: build
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-node@v4
+  #       with:
+  #         node-version: ${{ env.NODE_VERSION }}
+  #         cache: 'npm'
+  #     - run: npm ci
+  #     - name: Install Playwright Browsers
+  #       run: npx playwright install --with-deps
+  #     - name: Run E2E Tests
+  #       run: npx playwright test
+  #     - uses: actions/upload-artifact@v4
+  #       if: always()
+  #       with:
+  #         name: playwright-report
+  #         path: playwright-report/
+
+# ============================================================
+# JOB 5: 배포 (main 브랜치만)
+# ============================================================
+  # deploy:
+  #   name: Deploy to Production
+  #   runs-on: ubuntu-latest
+  #   needs: [build]              # e2e 추가 시 [build, e2e]
+  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  #   environment: production
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #
+  #     - uses: actions/download-artifact@v4
+  #       with:
+  #         name: build-output
+  #         path: dist/
+  #
+  #     # === Vercel 배포 ===
+  #     # - uses: amondnet/vercel-action@v25
+  #     #   with:
+  #     #     vercel-token: ${{ secrets.VERCEL_TOKEN }}
+  #     #     vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+  #     #     vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+  #     #     vercel-args: '--prod'
+  #
+  #     # === Cloudflare Pages 배포 ===
+  #     # - uses: cloudflare/pages-action@v1
+  #     #   with:
+  #     #     apiToken: ${{ secrets.CF_API_TOKEN }}
+  #     #     accountId: ${{ secrets.CF_ACCOUNT_ID }}
+  #     #     projectName: {{PROJECT_NAME}}
+  #     #     directory: dist/
+  #
+  #     # === Docker 배포 ===
+  #     # - uses: docker/login-action@v3
+  #     #   with:
+  #     #     registry: ghcr.io
+  #     #     username: ${{ github.actor }}
+  #     #     password: ${{ secrets.GITHUB_TOKEN }}
+  #     # - run: |
+  #     #     docker build -t ghcr.io/${{ github.repository }}:${{ github.sha }} .
+  #     #     docker push ghcr.io/${{ github.repository }}:${{ github.sha }}

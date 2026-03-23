@@ -64,9 +64,7 @@ async def main():
         filter=_log_filter,
     )
 
-    # 모드 확인
-    mode = "모의투자" if config.kiwoom.paper_trading else "실거래"
-    logger.info(f"매매 모드: {mode}")
+    # API 서버 확인
     logger.info(f"API URL: {config.kiwoom.rest_base_url}")
 
     # 인프라 초기화

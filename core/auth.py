@@ -1,4 +1,4 @@
-"""core/auth.py — OAuth2 토큰 발급 및 자동 갱신."""
+"""core/auth.py — 키움 OpenAPI+ OAuth2 토큰 발급 및 자동 갱신."""
 
 from datetime import datetime, timedelta
 
@@ -7,7 +7,11 @@ from loguru import logger
 
 
 class TokenManager:
-    """키움 REST API OAuth2 토큰 관리."""
+    """키움 REST API OAuth2 토큰 관리.
+
+    키움 API 토큰 응답 형식:
+        {"token": "...", "expires_dt": "YYYYMMDDHHmmss"}
+    """
 
     REFRESH_MARGIN = timedelta(minutes=10)
 
@@ -32,22 +36,27 @@ class TokenManager:
         return datetime.now() + self.REFRESH_MARGIN < self._token_expires
 
     async def _fetch_token(self) -> None:
-        url = f"{self._base_url}/oauth2/tokenP"
+        """키움 /oauth2/token 으로 토큰 발급."""
+        url = f"{self._base_url}/oauth2/token"
         body = {
             "grant_type": "client_credentials",
             "appkey": self._app_key,
-            "appsecret": self._secret_key,
+            "secretkey": self._secret_key,
         }
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=body) as resp:
                 resp.raise_for_status()
                 data = await resp.json()
 
-        self._access_token = data["access_token"]
-        expires_str = data.get("token_token_expired", "")
+        self._access_token = data.get("token", "")
+        if not self._access_token:
+            raise ValueError(f"토큰이 비어있음. 응답: {data}")
+
+        # 키움 만료 형식: "YYYYMMDDHHmmss"
+        expires_str = data.get("expires_dt", "")
         if expires_str:
-            self._token_expires = datetime.strptime(expires_str, "%Y-%m-%d %H:%M:%S")
+            self._token_expires = datetime.strptime(expires_str, "%Y%m%d%H%M%S")
         else:
-            self._token_expires = datetime.now() + timedelta(hours=12)
+            self._token_expires = datetime.now() + timedelta(hours=23)
 
         logger.info(f"토큰 발급 완료 — 만료: {self._token_expires}")
