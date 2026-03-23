@@ -18,6 +18,7 @@ class OrderManager:
         notifier: TelegramNotifier | None = None,
         db: DbManager | None = None,
         trading_config: TradingConfig | None = None,
+        order_queue: asyncio.Queue | None = None,
     ):
         self._rest_client = rest_client
         self._risk_manager = risk_manager
@@ -26,7 +27,7 @@ class OrderManager:
         self._config = trading_config or TradingConfig()
         self._lock = asyncio.Lock()
         self._active_orders: dict[str, bool] = {}
-        self._order_queue: asyncio.Queue = asyncio.Queue()
+        self._order_queue: asyncio.Queue = order_queue or asyncio.Queue()
 
     async def execute_buy(self, ticker: str, price: int, total_qty: int) -> dict | None:
         if ticker in self._active_orders:

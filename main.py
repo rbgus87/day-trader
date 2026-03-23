@@ -86,11 +86,11 @@ async def main():
         rate_limiter=rate_limiter,
     )
 
-    # Queues
-    tick_queue = asyncio.Queue()
-    candle_queue = asyncio.Queue()
-    signal_queue = asyncio.Queue()
-    order_queue = asyncio.Queue()
+    # Queues (크기 제한으로 backpressure 적용)
+    tick_queue = asyncio.Queue(maxsize=10000)
+    candle_queue = asyncio.Queue(maxsize=1000)
+    signal_queue = asyncio.Queue(maxsize=100)
+    order_queue = asyncio.Queue(maxsize=100)
 
     # 컴포넌트
     ws_client = KiwoomWebSocketClient(
@@ -106,6 +106,7 @@ async def main():
     order_manager = OrderManager(
         rest_client=rest_client, risk_manager=risk_manager,
         notifier=notifier, db=db, trading_config=config.trading,
+        order_queue=order_queue,
     )
 
     # 활성 전략 (스크리닝 후 설정)
@@ -198,6 +199,8 @@ async def main():
                     ticker=ticker, qty=pos["remaining_qty"],
                 )
         await candle_builder.flush()
+        candle_builder.reset()
+        risk_manager.reset_daily()
 
     scheduler.add_job(force_close, "cron", hour=15, minute=10)
     scheduler.start()
@@ -239,8 +242,8 @@ async def main():
 
     try:
         await asyncio.gather(*tasks)
-    except KeyboardInterrupt:
-        logger.info("사용자 종료 요청")
+    except asyncio.CancelledError:
+        logger.info("태스크 취소됨")
     finally:
         for t in tasks:
             t.cancel()
@@ -251,4 +254,7 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("시스템 종료")

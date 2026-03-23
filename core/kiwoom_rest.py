@@ -57,7 +57,6 @@ class KiwoomRestClient:
             "content-type": "application/json; charset=utf-8",
             "authorization": f"Bearer {token}",
             "appkey": self._config.app_key,
-            "appsecret": self._config.secret_key,
         }
         if tr_id:
             headers["tr_id"] = tr_id
@@ -82,6 +81,15 @@ class KiwoomRestClient:
         side: str,
         order_type: str = "00",
     ) -> dict:
+        import re
+        if not re.match(r"^\d{6}$", ticker):
+            raise ValueError(f"잘못된 종목코드: {ticker} (6자리 숫자)")
+        if qty < 1:
+            raise ValueError(f"주문 수량은 1 이상: {qty}")
+        if price < 0:
+            raise ValueError(f"주문 가격은 0 이상: {price}")
+        if side not in ("buy", "sell"):
+            raise ValueError(f"잘못된 매매 구분: {side}")
         tr_id = "TTTC0802U" if side == "buy" else "TTTC0801U"
         body = {
             "CANO": self._config.account_no[:8],

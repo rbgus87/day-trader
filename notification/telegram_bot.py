@@ -17,6 +17,9 @@ class TelegramNotifier:
         self._api_url = f"https://api.telegram.org/bot{self._token}"
         self._cooldowns: dict[str, float] = {}
 
+    def __repr__(self) -> str:
+        return f"TelegramNotifier(chat_id={self._chat_id!r})"
+
     async def send(
         self,
         message: str,
