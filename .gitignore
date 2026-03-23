@@ -1,0 +1,12 @@
+.venv/
+.env
+*.pyc
+__pycache__/
+logs/
+*.db
+.idea/
+.vscode/settings.json
+*.egg-info/
+dist/
+build/
+.pytest_cache/
