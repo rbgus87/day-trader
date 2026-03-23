@@ -84,17 +84,18 @@ asyncio.run(init())
 
 ## 5. 연동 테스트
 
+> .env 파일에 API 키가 설정되어 있으면 코드에 키를 직접 넣을 필요 없습니다.
+> `AppConfig.from_yaml()`이 .env + config.yaml을 자동으로 읽습니다.
+
 ### 인증 테스트
 ```bash
 python -c "
 import asyncio
+from config.settings import AppConfig
 from core.auth import TokenManager
 async def test():
-    tm = TokenManager(
-        app_key='YOUR_APP_KEY',
-        secret_key='YOUR_SECRET_KEY',
-        base_url='https://openapi.koreainvestment.com:9443'
-    )
+    config = AppConfig.from_yaml()
+    tm = TokenManager(config.kiwoom.app_key, config.kiwoom.secret_key, config.kiwoom.rest_base_url)
     token = await tm.get_token()
     print(f'Token: {token[:10]}...')
 asyncio.run(test())
@@ -108,9 +109,9 @@ import asyncio
 from config.settings import AppConfig
 from notification.telegram_bot import TelegramNotifier
 async def test():
-    config = AppConfig()
+    config = AppConfig.from_yaml()
     notifier = TelegramNotifier(config.telegram)
-    ok = await notifier.send('🧪 단타 시스템 테스트 메시지')
+    ok = await notifier.send('단타 시스템 테스트 메시지')
     print(f'발송 결과: {ok}')
 asyncio.run(test())
 "
@@ -124,7 +125,7 @@ from config.settings import AppConfig
 from core.auth import TokenManager
 from core.kiwoom_rest import KiwoomRestClient
 async def test():
-    config = AppConfig()
+    config = AppConfig.from_yaml()
     tm = TokenManager(config.kiwoom.app_key, config.kiwoom.secret_key, config.kiwoom.rest_base_url)
     client = KiwoomRestClient(config.kiwoom, tm)
     result = await client.get_current_price('005930')

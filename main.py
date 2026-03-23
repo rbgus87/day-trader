@@ -48,7 +48,7 @@ def _log_filter(record):
 
 
 async def main():
-    config = AppConfig()
+    config = AppConfig.from_yaml()
 
     # 로깅 설정 (마스킹 필터 포함)
     logger.remove()

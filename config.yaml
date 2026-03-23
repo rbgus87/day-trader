@@ -1,0 +1,82 @@
+# ============================================================================
+# config.yaml — 단타 자동매매 시스템 설정
+# ============================================================================
+# 민감 정보(API키, 계좌번호 등)는 .env 파일에서 관리합니다.
+# 이 파일은 git에 커밋되므로 비밀번호/토큰을 절대 포함하지 마세요.
+
+# --- 매매 기본 설정 ---
+trading:
+  initial_capital: 10_000_000       # 초기 자본금 (원)
+
+  # 리스크
+  stop_loss_pct: -0.015             # 손절률 -1.5%
+  daily_max_loss_pct: -0.02         # 일일 최대 손실 -2% → 매매 중단
+  consecutive_loss_days: 3          # N일 연속 손실 시 포지션 축소
+  reduced_position_pct: 0.5         # 연속 손실 시 포지션 50%로 축소
+
+  # 익절
+  tp1_pct: 0.02                     # 1차 익절 +2%
+  tp1_sell_ratio: 0.5               # 1차 익절 시 50% 매도
+  trailing_stop_pct: 0.01           # 고점 대비 -1% 트레일링 스톱
+
+  # 진입
+  entry_1st_ratio: 0.55             # 1차 매수 비율 55% (나머지 2차 매수)
+
+  # 시간
+  signal_block_until: "09:05"       # 09:05 이전 신호 차단 (장 초반 변동성 회피)
+  force_close_time: "15:10"         # 15:10 미청산 포지션 강제 청산
+  screening_time: "08:30"           # 08:30 장 전 스크리닝
+  report_time: "15:30"              # 15:30 일일 보고서 텔레그램 발송
+
+# --- 전략 파라미터 ---
+strategy:
+  # ORB (Opening Range Breakout) — 09:05~09:15 레인지 돌파
+  orb:
+    range_start: "09:05"            # 레인지 측정 시작
+    range_end: "09:15"              # 레인지 측정 종료
+    volume_ratio: 1.5               # 전일 대비 거래량 150% 이상
+    stop_loss_pct: -0.015           # 손절 -1.5%
+
+  # VWAP 회귀 — VWAP 하단 터치 후 반등
+  vwap:
+    rsi_low: 40.0                   # RSI(14) 하한
+    rsi_high: 60.0                  # RSI(14) 상한
+    stop_loss_pct: -0.012           # 손절 -1.2%
+
+  # 모멘텀 브레이크아웃 — 전일 고점 돌파
+  momentum:
+    volume_ratio: 2.0               # 전일 대비 거래량 200% 이상
+
+  # 눌림목 — 당일 상승 종목의 조정 후 반등
+  pullback:
+    min_gain_pct: 0.03              # 당일 +3% 이상 종목 대상
+    stop_loss_pct: -0.015           # 손절 -1.5%
+
+# --- 스크리닝 필터 ---
+screener:
+  min_market_cap: 300_000_000_000   # 시가총액 3,000억원 이상
+  min_avg_volume_amount: 5_000_000_000  # 일평균 거래대금 50억원 이상
+  volume_surge_ratio: 1.5           # 전일 거래량 +50% 이상
+  min_atr_pct: 0.02                 # ATR(14) / 종가 2% 이상
+
+# --- 브로커 연결 (키움 REST API) ---
+# paper/live 모두 실전 서버 사용 (paper 모드는 주문만 시뮬레이션)
+broker:
+  base_url: "https://api.kiwoom.com"
+  ws_url: "wss://api.kiwoom.com:10000/api/dostk/websocket"
+  rate_limit_calls: 5               # 초당 최대 API 호출 수
+  rate_limit_period: 1.0            # Rate Limit 윈도우 (초)
+
+# --- 백테스트 비용 모델 ---
+backtest:
+  commission: 0.00015               # 수수료 0.015% (매수/매도 각각)
+  tax: 0.0018                       # 거래세 0.18% (매도 시에만)
+  slippage: 0.0005                  # 슬리피지 0.05%
+  initial_capital: 10_000_000       # 백테스트 초기 자본금
+
+# --- 스케줄러 ---
+schedule:
+  screening_time: "08:30"           # 장전 스크리닝
+  ws_connect_time: "08:50"          # WebSocket 연결
+  force_close_time: "15:10"         # 강제 청산
+  daily_report_time: "15:30"        # 일일 보고서
