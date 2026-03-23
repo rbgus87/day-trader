@@ -24,19 +24,44 @@ from notification.telegram_bot import TelegramNotifier
 from risk.risk_manager import RiskManager
 
 
+def _mask_secrets(message: str) -> str:
+    """로그 메시지에서 민감 정보 마스킹 (PRD 4.3)."""
+    import re
+    import os
+    secrets = [
+        os.getenv("KIWOOM_APP_KEY", ""),
+        os.getenv("KIWOOM_SECRET_KEY", ""),
+        os.getenv("TELEGRAM_BOT_TOKEN", ""),
+    ]
+    for secret in secrets:
+        if secret and len(secret) > 4:
+            message = message.replace(secret, secret[:4] + "****")
+    # Bearer 토큰 마스킹
+    message = re.sub(r"(Bearer\s+)\S{8,}", r"\1****", message)
+    return message
+
+
+def _log_filter(record):
+    """loguru 필터: 민감 정보 마스킹."""
+    record["message"] = _mask_secrets(record["message"])
+    return True
+
+
 async def main():
     config = AppConfig()
 
-    # 로깅 설정
+    # 로깅 설정 (마스킹 필터 포함)
     logger.remove()
     logger.add(
         sys.stderr, level=config.log_level,
         format="{time:HH:mm:ss} | {level:<7} | {message}",
+        filter=_log_filter,
     )
     logger.add(
         "logs/{time:YYYY-MM-DD}.log",
         rotation="1 day", retention="30 days",
         level="DEBUG", encoding="utf-8",
+        filter=_log_filter,
     )
 
     # 인프라 초기화
