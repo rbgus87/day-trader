@@ -1,0 +1,707 @@
+"""TradingEngine을 별도 스레드에서 asyncio로 실행하는 QThread 래퍼.
+
+main.py의 파이프라인 로직을 QThread 내에서 실행.
+모든 cross-thread 호출은 Qt signal 또는 asyncio.run_coroutine_threadsafe로 처리.
+"""
+
+import asyncio
+import sys
+from datetime import datetime, time as dt_time
+
+from PyQt6.QtCore import QThread
+from loguru import logger
+
+from gui.workers.signals import EngineSignals
+
+
+class EngineWorker(QThread):
+    """asyncio 매매 파이프라인을 QThread에서 실행."""
+
+    def __init__(self, mode: str = "paper", parent=None):
+        super().__init__(parent)
+        self._mode = mode
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._running = False
+
+        # Components (initialized in _run_engine)
+        self._config = None
+        self._db = None
+        self._notifier = None
+        self._rest_client = None
+        self._ws_client = None
+        self._candle_builder = None
+        self._risk_manager = None
+        self._order_manager = None
+        self._scheduler = None
+        self._active_strategy = None
+        self._pipeline_tasks: list[asyncio.Task] = []
+
+        # Screener components
+        self._candidate_collector = None
+        self._pre_market_screener = None
+        self._strategy_selector = None
+
+        # Queues
+        self._tick_queue = None
+        self._candle_queue = None
+        self._signal_queue = None
+        self._order_queue = None
+
+        # Candle history for strategy
+        self._candle_history: dict[str, list[dict]] = {}
+        self._MAX_HISTORY = 100
+
+        # Screener results cache (for UI emission)
+        self._screener_results: list[dict] = []
+
+        self.signals = EngineSignals()
+
+        # UI -> Worker signal connections
+        self.signals.request_stop.connect(self._on_request_stop)
+        self.signals.request_halt.connect(self._on_request_halt)
+        self.signals.request_screening.connect(self._on_request_screening)
+        self.signals.request_force_close.connect(self._on_request_force_close)
+        self.signals.request_report.connect(self._on_request_report)
+        self.signals.request_reconnect.connect(self._on_request_reconnect)
+        self.signals.request_daily_reset.connect(self._on_request_daily_reset)
+
+        # daemon thread
+        self.setTerminationEnabled(True)
+
+    # ── QThread entry point ──
+
+    def run(self):
+        """QThread main -- asyncio loop."""
+        if sys.platform == "win32":
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
+
+        try:
+            self._loop.run_until_complete(self._run_engine())
+        except Exception as e:
+            logger.error(f"EngineWorker 오류: {e}")
+            self.signals.error.emit(str(e))
+        finally:
+            self._cleanup_sync()
+            self._loop.close()
+            self._loop = None
+            self.signals.stopped.emit()
+
+    # ── Core async engine ──
+
+    async def _run_engine(self):
+        """Initialize components and start pipeline (ported from main.py)."""
+        # Lazy imports to avoid circular deps when GUI loads without full env
+        from config.settings import AppConfig
+        from core.auth import TokenManager
+        from core.kiwoom_rest import KiwoomRestClient
+        from core.kiwoom_ws import KiwoomWebSocketClient
+        from core.order_manager import OrderManager
+        from core.paper_order_manager import PaperOrderManager
+        from core.rate_limiter import AsyncRateLimiter
+        from data.candle_builder import CandleBuilder
+        from data.db_manager import DbManager
+        from notification.telegram_bot import TelegramNotifier
+        from risk.risk_manager import RiskManager
+        from screener.candidate_collector import CandidateCollector
+        from screener.pre_market import PreMarketScreener
+        from screener.strategy_selector import StrategySelector
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+        # 1. Config
+        self._config = AppConfig.from_yaml()
+        paper_mode = self._mode == "paper"
+
+        # 2. Infrastructure
+        self._db = DbManager(self._config.db_path)
+        await self._db.init()
+
+        self._notifier = TelegramNotifier(self._config.telegram)
+        mode_tag = "[PAPER] " if paper_mode else ""
+        await self._notifier.send(f"{mode_tag}단타 매매 시스템 시작 (GUI)")
+
+        token_manager = TokenManager(
+            app_key=self._config.kiwoom.app_key,
+            secret_key=self._config.kiwoom.secret_key,
+            base_url=self._config.kiwoom.rest_base_url,
+        )
+        rate_limiter = AsyncRateLimiter(
+            max_calls=self._config.kiwoom.rate_limit_calls,
+            period=self._config.kiwoom.rate_limit_period,
+        )
+        self._rest_client = KiwoomRestClient(
+            config=self._config.kiwoom,
+            token_manager=token_manager,
+            rate_limiter=rate_limiter,
+        )
+
+        # Queues
+        self._tick_queue = asyncio.Queue(maxsize=10000)
+        self._candle_queue = asyncio.Queue(maxsize=1000)
+        self._signal_queue = asyncio.Queue(maxsize=100)
+        self._order_queue = asyncio.Queue(maxsize=100)
+
+        # Components
+        self._ws_client = KiwoomWebSocketClient(
+            ws_url=self._config.kiwoom.ws_url,
+            token_manager=token_manager,
+            tick_queue=self._tick_queue,
+            order_queue=self._order_queue,
+        )
+        self._candle_builder = CandleBuilder(
+            candle_queue=self._candle_queue, timeframes=["1m", "5m"],
+        )
+        self._risk_manager = RiskManager(
+            trading_config=self._config.trading, db=self._db, notifier=self._notifier,
+        )
+
+        if paper_mode:
+            self._order_manager = PaperOrderManager(
+                risk_manager=self._risk_manager,
+                notifier=self._notifier, db=self._db,
+                trading_config=self._config.trading,
+                order_queue=self._order_queue,
+            )
+            logger.info("주문 관리자: PaperOrderManager (시뮬레이션)")
+        else:
+            self._order_manager = OrderManager(
+                rest_client=self._rest_client,
+                risk_manager=self._risk_manager,
+                notifier=self._notifier, db=self._db,
+                trading_config=self._config.trading,
+                order_queue=self._order_queue,
+            )
+            logger.info("주문 관리자: OrderManager (실매매)")
+
+        # Screener
+        self._candidate_collector = CandidateCollector(self._rest_client)
+        self._pre_market_screener = PreMarketScreener(
+            self._rest_client, self._db, self._config.screener,
+        )
+        self._strategy_selector = StrategySelector(self._config, self._rest_client)
+
+        # 3. Scheduler
+        self._scheduler = AsyncIOScheduler()
+        self._scheduler.add_job(self._run_screening, "cron", hour=8, minute=30)
+        self._scheduler.add_job(self._force_close, "cron", hour=15, minute=10)
+        self._scheduler.add_job(self._run_daily_report, "cron", hour=15, minute=30)
+        self._scheduler.start()
+
+        # Late screening (장중 실행 시 즉시 스크리닝)
+        now = datetime.now().time()
+        if dt_time(8, 30) < now < dt_time(15, 10) and self._active_strategy is None:
+            logger.info("장중 실행 감지 -- 즉시 스크리닝 시작")
+            await self._run_screening()
+
+        # Position reconciliation (장애 복구)
+        try:
+            api_balance = await self._rest_client.get_account_balance()
+            holdings = [
+                {"ticker": h["pdno"], "qty": int(h["hldg_qty"])}
+                for h in api_balance.get("output1", [])
+                if int(h.get("hldg_qty", 0)) > 0
+            ]
+            mismatches = await self._risk_manager.reconcile_positions(holdings)
+            if mismatches:
+                await self._notifier.send_urgent(
+                    f"포지션 불일치 감지!\n" + "\n".join(mismatches)
+                )
+        except Exception as e:
+            logger.error(f"장애 복구 점검 실패: {e}")
+
+        await self._risk_manager.check_consecutive_losses()
+
+        # WS connect
+        try:
+            await self._ws_client.connect()
+        except Exception as e:
+            logger.error(f"WS 연결 실패: {e}")
+
+        # Start pipeline
+        self._running = True
+        self.signals.started.emit()
+
+        self._pipeline_tasks = [
+            asyncio.create_task(self._tick_consumer()),
+            asyncio.create_task(self._candle_consumer()),
+            asyncio.create_task(self._signal_consumer()),
+            asyncio.create_task(self._order_confirmation_consumer()),
+        ]
+
+        logger.info("파이프라인 시작 -- 매매 대기 중 (GUI)")
+
+        # 4. Polling loop (2-second)
+        while self._running:
+            self._emit_status()
+            self._emit_positions()
+            self._emit_trades()
+            self._emit_pnl()
+            self._emit_candidates()
+            await asyncio.sleep(2)
+
+    # ── Pipeline consumers (ported from main.py) ──
+
+    async def _tick_consumer(self):
+        """틱 -> 캔들 빌더."""
+        while self._running:
+            try:
+                tick = await asyncio.wait_for(self._tick_queue.get(), timeout=5.0)
+                await self._candle_builder.on_tick(tick)
+            except asyncio.TimeoutError:
+                continue
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"tick_consumer 오류: {e}")
+
+    async def _candle_consumer(self):
+        """캔들 -> 전략 엔진. 롤링 DataFrame 유지."""
+        import pandas as pd
+
+        while self._running:
+            try:
+                candle = await asyncio.wait_for(self._candle_queue.get(), timeout=5.0)
+            except asyncio.TimeoutError:
+                continue
+            except asyncio.CancelledError:
+                break
+
+            try:
+                if self._active_strategy is None:
+                    continue
+                if self._risk_manager.is_trading_halted():
+                    continue
+
+                ticker = candle["ticker"]
+                self._candle_history.setdefault(ticker, [])
+                self._candle_history[ticker].append(candle)
+                if len(self._candle_history[ticker]) > self._MAX_HISTORY:
+                    self._candle_history[ticker] = self._candle_history[ticker][-self._MAX_HISTORY:]
+
+                df = pd.DataFrame(self._candle_history[ticker])
+                signal = self._active_strategy.generate_signal(df, candle)
+                if signal:
+                    await self._signal_queue.put(signal)
+            except Exception as e:
+                logger.error(f"candle_consumer 오류: {e}")
+
+    async def _signal_consumer(self):
+        """신호 -> 주문 실행."""
+        while self._running:
+            try:
+                signal = await asyncio.wait_for(self._signal_queue.get(), timeout=5.0)
+            except asyncio.TimeoutError:
+                continue
+            except asyncio.CancelledError:
+                break
+
+            try:
+                if signal.side == "buy" and self._active_strategy:
+                    sl = self._active_strategy.get_stop_loss(signal.price)
+                    tp1, tp2 = self._active_strategy.get_take_profit(signal.price)
+
+                    # Position sizing
+                    capital = self._risk_manager.available_capital
+                    if capital <= 0:
+                        capital = 10_000_000
+                    stop_dist = abs(signal.price - sl)
+                    if stop_dist > 0:
+                        risk_amount = capital * 0.02
+                        max_qty = int(risk_amount / stop_dist)
+                    else:
+                        max_qty = int(capital * 0.3 / signal.price)
+                    total_qty = int(max_qty * self._risk_manager.position_scale)
+                    total_qty = max(total_qty, 1)
+
+                    result = await self._order_manager.execute_buy(
+                        ticker=signal.ticker,
+                        price=int(signal.price),
+                        total_qty=total_qty,
+                    )
+                    if result:
+                        self._risk_manager.register_position(
+                            ticker=signal.ticker,
+                            entry_price=signal.price,
+                            qty=result["qty"],
+                            stop_loss=sl,
+                            tp1_price=tp1,
+                        )
+                        # Emit trade event to UI
+                        self.signals.trade_executed.emit({
+                            "side": "buy",
+                            "ticker": signal.ticker,
+                            "price": int(signal.price),
+                            "qty": result["qty"],
+                        })
+            except Exception as e:
+                logger.error(f"signal_consumer 오류: {e}")
+
+    async def _order_confirmation_consumer(self):
+        """WS 체결통보 처리."""
+        while self._running:
+            try:
+                exec_data = await asyncio.wait_for(self._order_queue.get(), timeout=5.0)
+                logger.info(f"체결통보: {exec_data}")
+            except asyncio.TimeoutError:
+                continue
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"order_confirmation_consumer 오류: {e}")
+
+    # ── Screening & force close (ported from main.py) ──
+
+    async def _run_screening(self):
+        """08:30 장 전 스크리닝 -- candidates 수집 -> 필터 -> 전략 선택."""
+        from strategy.orb_strategy import OrbStrategy
+        from strategy.vwap_strategy import VwapStrategy
+        from strategy.momentum_strategy import MomentumStrategy
+        from strategy.pullback_strategy import PullbackStrategy
+
+        today = datetime.now().strftime("%Y-%m-%d")
+        logger.info(f"08:30 스크리닝 시작 ({today})")
+
+        try:
+            # 1. Candidates 수집
+            candidates = await self._candidate_collector.collect()
+            if not candidates:
+                logger.warning("candidates 없음 -- 당일 매매 없음")
+                await self._notifier.send("스크리닝 결과: candidates 없음 -- 당일 매매 없음")
+                return
+
+            # 2. 4단계 필터 적용
+            screened = await self._pre_market_screener.screen(candidates)
+            if not screened:
+                logger.warning("스크리닝 통과 종목 없음 -- 당일 매매 없음")
+                await self._notifier.send("스크리닝 결과: 통과 종목 없음 -- 당일 매매 없음")
+                return
+
+            # Cache for UI
+            self._screener_results = screened
+
+            # 3. 스크리닝 결과 DB 저장
+            await self._pre_market_screener.save_results(today, screened)
+
+            # 4. 전략 선택 (상위 1종목 + 시장 데이터 자동 수집)
+            top = screened[0]
+            strategy_name, ticker = await self._strategy_selector.select(
+                candidate_ticker=top["ticker"],
+            )
+
+            # 5. 전략 인스턴스 설정
+            strategies = {
+                "orb": OrbStrategy(
+                    self._config.trading,
+                    min_range_pct=self._config.trading.orb_min_range_pct,
+                ),
+                "vwap": VwapStrategy(self._config.trading),
+                "momentum": MomentumStrategy(self._config.trading),
+                "pullback": PullbackStrategy(self._config.trading),
+            }
+            self._active_strategy = strategies.get(strategy_name)
+
+            if self._active_strategy and ticker:
+                await self._ws_client.subscribe([ticker])
+                logger.info(f"전략 활성화: {strategy_name} -> {ticker} ({top['name']})")
+                await self._notifier.send(
+                    f"스크리닝 완료\n"
+                    f"선정: {top['name']} ({ticker})\n"
+                    f"전략: {strategy_name}\n"
+                    f"점수: {top.get('score', 0):.1f}\n"
+                    f"후보: {len(screened)}종목"
+                )
+            else:
+                logger.info("전략 선택 없음 -- 당일 매매 없음")
+                await self._notifier.send("스크리닝 완료 -- 조건 미달, 당일 매매 없음")
+
+        except Exception as exc:
+            logger.error(f"스크리닝 실패: {exc}")
+            await self._notifier.send_urgent(f"스크리닝 오류: {exc}")
+
+    async def _force_close(self):
+        """15:10 강제 청산."""
+        logger.warning("15:10 강제 청산 시작")
+        for ticker, pos in list(self._risk_manager._positions.items()):
+            if pos["remaining_qty"] > 0:
+                await self._order_manager.execute_sell_force_close(
+                    ticker=ticker, qty=pos["remaining_qty"],
+                )
+        await self._candle_builder.flush()
+        self._candle_builder.reset()
+        # 일일 실적 저장 (reset 전에 수행)
+        await self._risk_manager.save_daily_summary()
+        self._risk_manager.reset_daily()
+        self._active_strategy = None
+        self._candle_history.clear()
+
+    async def _run_daily_report(self):
+        """15:30 일일 보고서 텔레그램 발송."""
+        today = datetime.now().strftime("%Y-%m-%d")
+        logger.info("15:30 일일 보고서 생성 시작")
+
+        try:
+            summary = await self._db.fetch_one(
+                "SELECT * FROM daily_pnl WHERE date = ?", (today,),
+            )
+        except Exception:
+            summary = None
+
+        if summary is None:
+            summary = await self._risk_manager.save_daily_summary()
+
+        if summary:
+            await self._notifier.send_daily_report(
+                date=summary["date"],
+                total_trades=summary["total_trades"],
+                wins=summary["wins"],
+                losses=summary.get("losses", summary["total_trades"] - summary["wins"]),
+                total_pnl=int(summary["total_pnl"]),
+                win_rate=summary["win_rate"],
+                strategy=summary["strategy"],
+                max_drawdown=summary.get("max_drawdown", 0),
+            )
+            logger.info("일일 보고서 발송 완료")
+        else:
+            await self._notifier.send_no_trade("당일 매매 기록 없음")
+            logger.info("당일 매매 없음 -- 무거래 알림 발송")
+
+    # ── UI -> Worker command handlers (thread-safe) ──
+
+    def _on_request_stop(self):
+        """엔진 정상 종료."""
+        if self._loop and self._loop.is_running():
+            asyncio.run_coroutine_threadsafe(self._async_stop(), self._loop)
+
+    async def _async_stop(self):
+        """파이프라인 중지 + running 플래그 해제."""
+        logger.info("엔진 종료 요청 수신")
+        self._running = False
+        for t in self._pipeline_tasks:
+            if not t.done():
+                t.cancel()
+
+    def _on_request_halt(self):
+        """매매 긴급 정지 (포지션 유지, 신규 매매만 중단)."""
+        if self._loop and self._loop.is_running():
+            asyncio.run_coroutine_threadsafe(self._async_halt(), self._loop)
+
+    async def _async_halt(self):
+        """halt 처리."""
+        if self._risk_manager:
+            self._risk_manager._halted = True
+            logger.warning("매매 긴급 정지 활성화")
+            self._emit_status()
+
+    def _on_request_screening(self):
+        """수동 스크리닝."""
+        if self._loop and self._loop.is_running():
+            asyncio.run_coroutine_threadsafe(self._run_screening(), self._loop)
+
+    def _on_request_force_close(self):
+        """전체 포지션 강제 청산."""
+        if self._loop and self._loop.is_running():
+            asyncio.run_coroutine_threadsafe(self._force_close(), self._loop)
+
+    def _on_request_report(self):
+        """일일 리포트 수동 발송."""
+        if self._loop and self._loop.is_running():
+            asyncio.run_coroutine_threadsafe(self._run_daily_report(), self._loop)
+
+    def _on_request_reconnect(self):
+        """WS 재연결."""
+        if self._loop and self._loop.is_running():
+            asyncio.run_coroutine_threadsafe(self._async_reconnect(), self._loop)
+
+    async def _async_reconnect(self):
+        """WS disconnect + reconnect."""
+        if self._ws_client:
+            try:
+                await self._ws_client.disconnect()
+                await self._ws_client.connect()
+                logger.info("WS 재연결 완료")
+            except Exception as e:
+                logger.error(f"WS 재연결 실패: {e}")
+
+    def _on_request_daily_reset(self):
+        """일일 리셋."""
+        if self._loop and self._loop.is_running():
+            asyncio.run_coroutine_threadsafe(self._async_daily_reset(), self._loop)
+
+    async def _async_daily_reset(self):
+        """risk_manager + candle_builder 리셋."""
+        if self._risk_manager:
+            self._risk_manager.reset_daily()
+        if self._candle_builder:
+            self._candle_builder.reset()
+        self._candle_history.clear()
+        self._active_strategy = None
+        logger.info("일일 리셋 완료")
+        self._emit_status()
+
+    # ── Data emission (2-second polling) ──
+
+    def _emit_status(self):
+        """현재 엔진 상태를 시그널로 전송."""
+        strategy_name = ""
+        target_ticker = ""
+        target_name = ""
+        if self._active_strategy:
+            strategy_name = type(self._active_strategy).__name__
+        if self._ws_client and hasattr(self._ws_client, "_subscriptions"):
+            from core.kiwoom_ws import WS_TYPE_TICK
+            subs = self._ws_client._subscriptions.get(WS_TYPE_TICK, [])
+            if subs:
+                target_ticker = subs[0]
+
+        self.signals.status_updated.emit({
+            "mode": self._mode,
+            "running": self._running,
+            "halted": self._risk_manager._halted if self._risk_manager else False,
+            "strategy": strategy_name,
+            "target_ticker": target_ticker,
+            "target_name": target_name,
+            "positions_count": len(self._risk_manager._positions) if self._risk_manager else 0,
+            "ws_connected": self._ws_client.connected if self._ws_client else False,
+        })
+
+    def _emit_positions(self):
+        """포지션 목록을 시그널로 전송."""
+        if not self._risk_manager:
+            return
+        try:
+            positions = []
+            for ticker, pos in self._risk_manager._positions.items():
+                positions.append({
+                    "ticker": ticker,
+                    "entry_price": pos["entry_price"],
+                    "qty": pos["qty"],
+                    "remaining_qty": pos["remaining_qty"],
+                    "stop_loss": pos["stop_loss"],
+                    "tp1_price": pos.get("tp1_price"),
+                    "tp1_hit": pos.get("tp1_hit", False),
+                    "highest_price": pos.get("highest_price"),
+                })
+            self.signals.positions_updated.emit(positions)
+        except Exception:
+            pass
+
+    def _emit_trades(self):
+        """당일 체결 내역을 시그널로 전송."""
+        if not self._db or not self._loop or not self._loop.is_running():
+            return
+        try:
+            future = asyncio.run_coroutine_threadsafe(
+                self._fetch_today_trades(), self._loop,
+            )
+            # Non-blocking: result available on next poll cycle
+            # Use a callback to emit when ready
+            future.add_done_callback(self._on_trades_fetched)
+        except Exception:
+            pass
+
+    async def _fetch_today_trades(self) -> list[dict]:
+        """DB에서 당일 체결 내역 조회."""
+        today = datetime.now().strftime("%Y-%m-%d")
+        return await self._db.fetch_all(
+            "SELECT * FROM trades WHERE traded_at LIKE ? || '%' ORDER BY traded_at DESC",
+            (today,),
+        )
+
+    def _on_trades_fetched(self, future):
+        """trades 조회 결과 콜백."""
+        try:
+            trades = future.result()
+            self.signals.trades_updated.emit(trades)
+        except Exception:
+            pass
+
+    def _emit_pnl(self):
+        """일일 손익을 시그널로 전송."""
+        if not self._risk_manager:
+            return
+        try:
+            self.signals.pnl_updated.emit(self._risk_manager._daily_pnl)
+        except Exception:
+            pass
+
+    def _emit_candidates(self):
+        """스크리너 후보 목록을 시그널로 전송."""
+        try:
+            self.signals.candidates_updated.emit(self._screener_results)
+        except Exception:
+            pass
+
+    # ── Cleanup ──
+
+    def _cleanup_sync(self):
+        """Synchronous cleanup in finally block."""
+        if not self._loop:
+            return
+        try:
+            # Cancel pipeline tasks
+            for t in self._pipeline_tasks:
+                if not t.done():
+                    t.cancel()
+            if self._pipeline_tasks:
+                self._loop.run_until_complete(
+                    asyncio.gather(*self._pipeline_tasks, return_exceptions=True)
+                )
+        except Exception as e:
+            logger.error(f"Pipeline cleanup error: {e}")
+
+        try:
+            # Shutdown scheduler
+            if self._scheduler and self._scheduler.running:
+                self._scheduler.shutdown(wait=False)
+        except Exception as e:
+            logger.error(f"Scheduler cleanup error: {e}")
+
+        try:
+            # Close WS
+            if self._ws_client:
+                self._loop.run_until_complete(self._ws_client.disconnect())
+        except Exception as e:
+            logger.error(f"WS cleanup error: {e}")
+
+        try:
+            # Close REST client
+            if self._rest_client:
+                self._loop.run_until_complete(self._rest_client.aclose())
+        except Exception as e:
+            logger.error(f"REST cleanup error: {e}")
+
+        try:
+            # Send shutdown notification + close DB
+            if self._notifier:
+                mode_tag = "[PAPER] " if self._mode == "paper" else ""
+                self._loop.run_until_complete(
+                    self._notifier.send(f"{mode_tag}시스템 종료 (GUI)")
+                )
+            if self._db:
+                self._loop.run_until_complete(self._db.close())
+        except Exception as e:
+            logger.error(f"DB/Notifier cleanup error: {e}")
+
+        try:
+            # Cancel any remaining tasks
+            pending = asyncio.all_tasks(self._loop)
+            for task in pending:
+                task.cancel()
+            if pending:
+                self._loop.run_until_complete(
+                    asyncio.gather(*pending, return_exceptions=True)
+                )
+        except Exception:
+            pass
+
+    @property
+    def engine_running(self) -> bool:
+        """엔진 실행 중 여부."""
+        return self._running
+
+    @property
+    def loop(self) -> asyncio.AbstractEventLoop | None:
+        """asyncio 이벤트 루프 (외부 thread-safe 호출용)."""
+        return self._loop
