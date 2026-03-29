@@ -1,6 +1,8 @@
-"""tests/test_orb_strategy.py"""
+"""tests/test_orb_strategy.py — DEPRECATED: ORB 전략 폐기."""
 
 import pytest
+
+pytestmark = pytest.mark.skip("ORB strategy deprecated — 백테스트 PF<1.0")
 import pandas as pd
 from unittest.mock import patch
 

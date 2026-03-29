@@ -1,6 +1,8 @@
-"""tests/test_vwap_strategy.py — VwapStrategy 단위 테스트."""
+"""tests/test_vwap_strategy.py — DEPRECATED: VWAP 전략 폐기."""
 
 import pytest
+
+pytestmark = pytest.mark.skip("VWAP strategy deprecated — 백테스트 PF<1.0")
 import pandas as pd
 import numpy as np
 from unittest.mock import patch

@@ -68,14 +68,14 @@ class TradingConfig:
     screening_time: str = "08:30"
     report_time: str = "15:30"
 
-    # ORB 전략
+    # DEPRECATED: ORB 전략 (백테스트 PF<1.0, 2026-03-30 폐기)
     orb_range_start: str = "09:05"
     orb_range_end: str = "09:15"
     orb_volume_ratio: float = 0.0
     orb_stop_loss_pct: float = -0.015
     orb_min_range_pct: float = 0.008
 
-    # VWAP 전략
+    # DEPRECATED: VWAP 전략 (백테스트 PF<1.0, 2026-03-30 폐기)
     vwap_rsi_low: float = 40.0
     vwap_rsi_high: float = 60.0
     vwap_stop_loss_pct: float = -0.012

@@ -1,4 +1,7 @@
-"""strategy/vwap_strategy.py — VWAP 회귀 전략 (F-STR-02).
+"""DEPRECATED: 백테스트 결과 4종목 전부 PF<1.0, 2026-03-30 폐기.
+
+strategy/vwap_strategy.py — VWAP 회귀 전략 (F-STR-02).
+비교 백테스트용으로 보존. 실전 파이프라인에서는 사용하지 않음.
 
 매수 조건:
   1. 가격이 VWAP-1σ 아래로 터치한 후 VWAP 위로 반등

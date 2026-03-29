@@ -35,19 +35,19 @@ trading:
 
 # --- 전략 파라미터 ---
 strategy:
-  # ORB (Opening Range Breakout) — 09:05~09:15 레인지 돌파
-  orb:
-    range_start: "09:05"            # 레인지 측정 시작
-    range_end: "09:15"              # 레인지 측정 종료
-    volume_ratio: 0.0               # 0=비활성화
-    stop_loss_pct: -0.015           # 손절 -1.5%
-    min_range_pct: 0.008            # 최소 레인지 폭 0.8%
+  # DEPRECATED: ORB — 백테스트 4종목 전부 PF<1.0 (2026-03-30 폐기)
+  # orb:
+  #   range_start: "09:05"
+  #   range_end: "09:15"
+  #   volume_ratio: 0.0
+  #   stop_loss_pct: -0.015
+  #   min_range_pct: 0.008
 
-  # VWAP 회귀 — VWAP 하단 터치 후 반등
-  vwap:
-    rsi_low: 40.0                   # RSI(14) 하한
-    rsi_high: 60.0                  # RSI(14) 상한
-    stop_loss_pct: -0.012           # 손절 -1.2%
+  # DEPRECATED: VWAP — 백테스트 4종목 전부 PF<1.0 (2026-03-30 폐기)
+  # vwap:
+  #   rsi_low: 40.0
+  #   rsi_high: 60.0
+  #   stop_loss_pct: -0.012
 
   # 모멘텀 브레이크아웃 — 전일 고점 돌파 + 거래량 200%
   momentum:
@@ -77,11 +77,9 @@ strategy:
     signal_end: "14:30"             # 신호 활성 종료
 
   # 전략 선택기 임계값 (StrategySelector)
-  # 코스닥 중대형 타깃 — 갭/변동폭이 코스피보다 크므로 임계값 상향
+  # 3전략 체제: Momentum > Flow > Pullback
   selector:
-    orb_gap_threshold: 0.8          # KOSPI 갭 ≥ 0.8% → ORB 전략 (코스닥 빈발 구간)
     momentum_etf_threshold: 2.0     # 섹터 ETF 등락 ≥ 2.0% → 모멘텀 전략
-    vwap_range_threshold: 0.8       # 지수 변동폭 ≤ 0.8% → VWAP 전략 (횡보 판단 완화)
 
 # --- 스크리닝 필터 ---
 # 코스닥 중대형 포함을 위해 시가총액 하한 완화, ATR 하한 상향

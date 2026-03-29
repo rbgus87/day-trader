@@ -403,8 +403,6 @@ class EngineWorker(QThread):
 
     async def _run_screening(self):
         """08:30 장 전 스크리닝 -- candidates 수집 -> 필터 -> 전략 선택."""
-        from strategy.orb_strategy import OrbStrategy
-        from strategy.vwap_strategy import VwapStrategy
         from strategy.momentum_strategy import MomentumStrategy
         from strategy.pullback_strategy import PullbackStrategy
         from strategy.flow_strategy import FlowStrategy
@@ -441,11 +439,6 @@ class EngineWorker(QThread):
 
             # 5. 전략 인스턴스 설정
             strategies = {
-                "orb": OrbStrategy(
-                    self._config.trading,
-                    min_range_pct=self._config.trading.orb_min_range_pct,
-                ),
-                "vwap": VwapStrategy(self._config.trading),
                 "momentum": MomentumStrategy(self._config.trading),
                 "pullback": PullbackStrategy(self._config.trading),
                 "flow": FlowStrategy(self._config.trading),

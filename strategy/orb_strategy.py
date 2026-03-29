@@ -1,4 +1,8 @@
-"""strategy/orb_strategy.py — Opening Range Breakout (복수 매매 지원)."""
+"""DEPRECATED: 백테스트 결과 4종목 전부 PF<1.0, 2026-03-30 폐기.
+
+strategy/orb_strategy.py — Opening Range Breakout (복수 매매 지원).
+비교 백테스트용으로 보존. 실전 파이프라인에서는 사용하지 않음.
+"""
 
 import pandas as pd
 from loguru import logger

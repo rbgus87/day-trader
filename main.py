@@ -255,8 +255,6 @@ async def main():
         """08:30 장 전 스크리닝 — candidates 수집 → 필터 → 전략 선택."""
         nonlocal active_strategy
         from datetime import datetime
-        from strategy.orb_strategy import OrbStrategy
-        from strategy.vwap_strategy import VwapStrategy
         from strategy.momentum_strategy import MomentumStrategy
         from strategy.pullback_strategy import PullbackStrategy
         from strategy.flow_strategy import FlowStrategy
@@ -290,8 +288,6 @@ async def main():
 
             # 5. 전략 인스턴스 설정
             strategies = {
-                "orb": OrbStrategy(config.trading, min_range_pct=config.trading.orb_min_range_pct),
-                "vwap": VwapStrategy(config.trading),
                 "momentum": MomentumStrategy(config.trading),
                 "pullback": PullbackStrategy(config.trading),
                 "flow": FlowStrategy(config.trading),
