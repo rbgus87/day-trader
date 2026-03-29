@@ -1,17 +1,24 @@
 """tests/test_order_manager.py"""
 
 import pytest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from core.order_manager import OrderManager
 
 
 @pytest.fixture
-def order_mgr():
+def mock_db():
+    db = MagicMock()
+    db.execute_safe = AsyncMock(return_value=1)
+    return db
+
+
+@pytest.fixture
+def order_mgr(mock_db):
     return OrderManager(
         rest_client=AsyncMock(),
         risk_manager=AsyncMock(),
         notifier=AsyncMock(),
-        db=AsyncMock(),
+        db=mock_db,
     )
 
 
@@ -51,3 +58,32 @@ async def test_sell_stop_market_order(order_mgr):
     result = await order_mgr.execute_sell_stop(ticker="005930", qty=100)
     call_args = order_mgr._rest_client.send_order.call_args
     assert call_args.kwargs["order_type"] == "00"  # 시장가
+
+
+@pytest.mark.asyncio
+async def test_execute_buy_records_to_db(order_mgr, mock_db):
+    """execute_buy 성공 시 DB에 trades INSERT."""
+    order_mgr._rest_client.send_order = AsyncMock(
+        return_value={"output": {"ODNO": "44444"}, "rt_cd": "0"}
+    )
+    result = await order_mgr.execute_buy(ticker="005930", price=70000, total_qty=100, strategy="momentum")
+    assert result is not None
+    mock_db.execute_safe.assert_called_once()
+    sql = mock_db.execute_safe.call_args[0][0]
+    assert "INSERT INTO trades" in sql
+    args = mock_db.execute_safe.call_args[0][1]
+    assert args[1] == "momentum"
+
+
+@pytest.mark.asyncio
+async def test_send_order_records_to_db(order_mgr, mock_db):
+    """_send_order 성공 시 DB에 trades INSERT."""
+    order_mgr._rest_client.send_order = AsyncMock(
+        return_value={"output": {"ODNO": "55555"}, "rt_cd": "0"}
+    )
+    result = await order_mgr.execute_sell_stop(ticker="005930", qty=50, strategy="orb")
+    assert result is not None
+    mock_db.execute_safe.assert_called_once()
+    args = mock_db.execute_safe.call_args[0][1]
+    assert args[1] == "orb"
+    assert args[2] == "sell"

@@ -44,10 +44,13 @@ class TestPaperBuy:
     @pytest.mark.asyncio
     async def test_execute_buy_records_to_db(self, paper_om, mock_db):
         """매수 체결이 DB에 기록된다."""
-        await paper_om.execute_buy("005930", 70000, 100)
+        await paper_om.execute_buy("005930", 70000, 100, strategy="orb")
         mock_db.execute_safe.assert_called_once()
         sql = mock_db.execute_safe.call_args[0][0]
         assert "INSERT INTO trades" in sql
+        # strategy가 실제 전략명으로 기록되는지 확인
+        args = mock_db.execute_safe.call_args[0][1]
+        assert args[1] == "orb"
 
     @pytest.mark.asyncio
     async def test_execute_buy_sends_telegram(self, paper_om, mock_notifier):

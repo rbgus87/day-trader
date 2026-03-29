@@ -228,6 +228,7 @@ async def main():
                     ticker=signal.ticker,
                     price=int(signal.price),
                     total_qty=total_qty,
+                    strategy=signal.strategy,
                 )
                 if result:
                     risk_manager.register_position(

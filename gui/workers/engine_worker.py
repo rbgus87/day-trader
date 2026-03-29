@@ -362,6 +362,7 @@ class EngineWorker(QThread):
                         ticker=signal.ticker,
                         price=int(signal.price),
                         total_qty=total_qty,
+                        strategy=signal.strategy,
                     )
                     if result:
                         self._risk_manager.register_position(
