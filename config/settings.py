@@ -53,14 +53,14 @@ class TradingConfig:
     reduced_position_pct: float = 0.5
 
     # 익절
-    tp1_pct: float = 0.02
+    tp1_pct: float = 0.03
     tp1_sell_ratio: float = 0.5
     trailing_stop_pct: float = 0.01
 
     # 진입
     entry_1st_ratio: float = 0.55
-    max_trades_per_day: int = 5
-    cooldown_minutes: int = 10
+    max_trades_per_day: int = 3
+    cooldown_minutes: int = 15
 
     # 시간
     signal_block_until: str = "09:05"
@@ -84,9 +84,12 @@ class TradingConfig:
     momentum_volume_ratio: float = 2.0
     momentum_stop_loss_pct: float = -0.008
 
+    # 자본금
+    initial_capital: int = 1_000_000
+
     # 눌림목 전략
-    pullback_min_gain_pct: float = 0.03
-    pullback_stop_loss_pct: float = -0.015
+    pullback_min_gain_pct: float = 0.04
+    pullback_stop_loss_pct: float = -0.018
 
 
 @dataclass(frozen=True)
@@ -146,19 +149,19 @@ class AppConfig:
             daily_max_loss_pct=t.get("daily_max_loss_pct", -0.02),
             consecutive_loss_days=t.get("consecutive_loss_days", 3),
             reduced_position_pct=t.get("reduced_position_pct", 0.5),
-            tp1_pct=t.get("tp1_pct", 0.02),
+            tp1_pct=t.get("tp1_pct", 0.03),
             tp1_sell_ratio=t.get("tp1_sell_ratio", 0.5),
             trailing_stop_pct=t.get("trailing_stop_pct", 0.01),
             entry_1st_ratio=t.get("entry_1st_ratio", 0.55),
-            max_trades_per_day=t.get("max_trades_per_day", 5),
-            cooldown_minutes=t.get("cooldown_minutes", 10),
+            max_trades_per_day=t.get("max_trades_per_day", 3),
+            cooldown_minutes=t.get("cooldown_minutes", 15),
             signal_block_until=t.get("signal_block_until", "09:05"),
             force_close_time=t.get("force_close_time", "15:10"),
             screening_time=t.get("screening_time", "08:30"),
             report_time=t.get("report_time", "15:30"),
             orb_range_start=orb.get("range_start", "09:05"),
             orb_range_end=orb.get("range_end", "09:15"),
-            orb_volume_ratio=orb.get("volume_ratio", 1.0),
+            orb_volume_ratio=orb.get("volume_ratio", 0.0),
             orb_stop_loss_pct=orb.get("stop_loss_pct", -0.015),
             orb_min_range_pct=orb.get("min_range_pct", 0.008),
             vwap_rsi_low=vwap.get("rsi_low", 40.0),
@@ -166,8 +169,9 @@ class AppConfig:
             vwap_stop_loss_pct=vwap.get("stop_loss_pct", -0.012),
             momentum_volume_ratio=mom.get("volume_ratio", 2.0),
             momentum_stop_loss_pct=mom.get("stop_loss_pct", -0.008),
-            pullback_min_gain_pct=pb.get("min_gain_pct", 0.03),
-            pullback_stop_loss_pct=pb.get("stop_loss_pct", -0.015),
+            pullback_min_gain_pct=pb.get("min_gain_pct", 0.04),
+            pullback_stop_loss_pct=pb.get("stop_loss_pct", -0.018),
+            initial_capital=t.get("initial_capital", 1_000_000),
         )
 
         # screener 섹션

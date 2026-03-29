@@ -113,6 +113,8 @@ async def main():
     risk_manager = RiskManager(
         trading_config=config.trading, db=db, notifier=notifier,
     )
+    risk_manager.set_daily_capital(config.trading.initial_capital)
+
     if config.paper_mode:
         order_manager = PaperOrderManager(
             risk_manager=risk_manager,
@@ -184,7 +186,8 @@ async def main():
                 # 포지션 사이즈 계산
                 capital = risk_manager.available_capital
                 if capital <= 0:
-                    capital = 10_000_000
+                    logger.warning("available_capital이 0 이하 — config.trading.initial_capital로 대체")
+                    capital = config.trading.initial_capital
                 stop_dist = abs(signal.price - sl)
                 if stop_dist > 0:
                     risk_amount = capital * 0.02

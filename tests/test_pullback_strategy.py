@@ -8,7 +8,7 @@ from strategy.pullback_strategy import PullbackStrategy
 from config.settings import TradingConfig
 
 
-OPEN_PRICE = 10000  # 당일 시가
+OPEN_PRICE = 9900  # 당일 시가 (min_gain_pct=4% 기준: MA5 ~10340 → gain ~4.4%)
 
 
 @pytest.fixture
@@ -58,10 +58,10 @@ def _tick(price: float, ticker: str = "005930") -> dict:
 # 1. 시가 대비 상승률 < 3% → None
 # ──────────────────────────────────────────────
 def test_no_signal_small_gain(strategy):
-    """시가 대비 2.9% 상승 — 최소 상승률 미달 → 신호 없음."""
+    """시가 대비 3.9% 상승 — 최소 상승률(4%) 미달 → 신호 없음."""
     candles = _make_candles(ascending_ma20=True)
-    # MA5 근처 가격이지만 gain이 2.9%
-    price = int(OPEN_PRICE * 1.029)
+    # MA5 근처 가격이지만 gain이 3.9%
+    price = int(OPEN_PRICE * 1.039)
     tick = _tick(price)
     with patch.object(strategy, "is_tradable_time", return_value=True):
         signal = strategy.generate_signal(candles, tick)
@@ -127,12 +127,12 @@ def test_no_signal_no_reversal(strategy):
 # 4. 손절가 검증 — -1.5%
 # ──────────────────────────────────────────────
 def test_stop_loss(strategy):
-    """손절가 = 진입가 * (1 + pullback_stop_loss_pct) = -1.5%."""
+    """손절가 = 진입가 * (1 + pullback_stop_loss_pct) = -1.8%."""
     entry = 10000.0
     sl = strategy.get_stop_loss(entry)
     expected = entry * (1 + TradingConfig().pullback_stop_loss_pct)
     assert sl == pytest.approx(expected)
-    assert sl == pytest.approx(9850.0)
+    assert sl == pytest.approx(9820.0)
 
 
 # ──────────────────────────────────────────────
@@ -180,7 +180,7 @@ def test_no_signal_ma20_descending(strategy):
 # 보조 테스트: 익절가 검증
 # ──────────────────────────────────────────────
 def test_take_profit(strategy):
-    """익절 tp1 = 진입가 * (1 + tp1_pct) = +2%, tp2 = 0."""
+    """익절 tp1 = 진입가 * (1 + tp1_pct) = +3%, tp2 = 0."""
     entry = 10000.0
     tp1, tp2 = strategy.get_take_profit(entry)
     assert tp1 == pytest.approx(entry * (1 + TradingConfig().tp1_pct))

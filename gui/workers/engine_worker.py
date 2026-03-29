@@ -156,6 +156,7 @@ class EngineWorker(QThread):
         self._risk_manager = RiskManager(
             trading_config=self._config.trading, db=self._db, notifier=self._notifier,
         )
+        self._risk_manager.set_daily_capital(self._config.trading.initial_capital)
 
         if paper_mode:
             self._order_manager = PaperOrderManager(
@@ -309,7 +310,8 @@ class EngineWorker(QThread):
                     # Position sizing
                     capital = self._risk_manager.available_capital
                     if capital <= 0:
-                        capital = 10_000_000
+                        logger.warning("available_capital이 0 이하 — config.trading.initial_capital로 대체")
+                        capital = self._config.trading.initial_capital
                     stop_dist = abs(signal.price - sl)
                     if stop_dist > 0:
                         risk_amount = capital * 0.02

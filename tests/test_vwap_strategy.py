@@ -293,14 +293,14 @@ class TestStopLossCalculation:
 
 class TestTakeProfitCalculation:
     def test_take_profit_calculation(self):
-        """+2.0% 1차 익절가."""
+        """+3.0% 1차 익절가."""
         config = _make_config()
         strategy = VwapStrategy(config)
         entry = 100_000.0
         tp1, tp2 = strategy.get_take_profit(entry)
-        expected_tp1 = entry * (1 + config.tp1_pct)  # 1.02
+        expected_tp1 = entry * (1 + config.tp1_pct)  # 1.03
         assert tp1 == pytest.approx(expected_tp1, rel=1e-9)
-        assert tp1 == pytest.approx(102_000.0, rel=1e-6)
+        assert tp1 == pytest.approx(103_000.0, rel=1e-6)
 
     def test_take_profit_tp2_is_zero(self):
         """tp2 = 0 (트레일링 스톱으로 관리)."""
