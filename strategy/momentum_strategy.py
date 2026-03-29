@@ -60,12 +60,6 @@ class MomentumStrategy(BaseStrategy):
         if candles.iloc[-1]["close"] <= self._prev_day_high:
             return None
 
-        # 4) VWAP 방향 필터
-        if self._config.momentum_vwap_filter and "vwap" in candles.columns:
-            vwap = candles.iloc[-1].get("vwap")
-            if vwap and vwap > 0 and current_price <= vwap:
-                return None
-
         logger.info(
             f"모멘텀 매수 신호: {tick['ticker']} price={current_price} "
             f"prev_high={self._prev_day_high} cum_vol={cum_volume:,.0f}"

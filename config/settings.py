@@ -83,9 +83,10 @@ class TradingConfig:
     # 모멘텀 전략
     momentum_volume_ratio: float = 2.0
     momentum_stop_loss_pct: float = -0.008
+    # DEPRECATED: 리테스트/VWAP 필터 — 4회 실험 결과 개선 효과 없음
     momentum_retest_band_pct: float = 0.008
     momentum_retest_timeout_min: int = 45
-    momentum_vwap_filter: bool = True
+    momentum_vwap_filter: bool = False
 
     # 자본금
     initial_capital: int = 1_000_000
