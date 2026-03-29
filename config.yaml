@@ -53,8 +53,8 @@ strategy:
   momentum:
     volume_ratio: 1.5               # 전일 대비 거래량 150% (2.0→1.5 완화)
     stop_loss_pct: -0.008           # 손절 -0.8% (동적 손절의 최소값)
-    retest_band_pct: 0.003          # 전일 고점 ±0.3% 리테스트 밴드
-    retest_timeout_minutes: 30      # 리테스트 최대 대기 (분)
+    retest_band_pct: 0.008          # 전일 고점 ±0.8% 리테스트 밴드
+    retest_timeout_minutes: 45      # 리테스트 최대 대기 (분)
     vwap_filter: true               # VWAP 방향 필터 ON
 
   # 눌림목 — 당일 상승 종목의 조정 후 반등

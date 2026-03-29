@@ -114,19 +114,22 @@ class MomentumStrategy(BaseStrategy):
 
             retest_band = self._prev_day_high * self._config.momentum_retest_band_pct
             upper = self._prev_day_high + retest_band
-            lower = self._prev_day_high - retest_band
 
-            # 되돌림 감지: 전일 고점 ±band 이내
-            if lower <= current_price <= upper:
-                if current_price < self._retest_low:
+            # 되돌림 감지: 캔들의 low가 밴드 상단 이하로 내려온 적 있으면 리테스트 인정
+            candle_low = candles.iloc[-1]["low"] if "low" in candles.columns else current_price
+            if candle_low <= upper:
+                if candle_low < self._retest_low:
+                    self._retest_low = candle_low
+                # current_price도 체크 (틱 기반 실시간 지원)
+                elif current_price <= upper and current_price < self._retest_low:
                     self._retest_low = current_price
 
-            # 재돌파 확인: 리테스트 후 돌파가 상회 + 양봉
-            if self._retest_low < self._prev_day_high + retest_band:
+            # 재돌파 확인: 리테스트 후 close > prev_high + 양봉
+            if self._retest_low < upper:
                 # 리테스트가 일어남 (retest_low가 밴드 내로 내려온 적 있음)
-                if current_price > self._breakout_price:
+                if candles.iloc[-1]["close"] > self._prev_day_high:
                     # 양봉 확인
-                    if len(candles) >= 1 and candles.iloc[-1]["close"] > candles.iloc[-1]["open"]:
+                    if candles.iloc[-1]["close"] > candles.iloc[-1]["open"]:
                         self._state = STATE_CONFIRMED
 
             if self._state != STATE_CONFIRMED:

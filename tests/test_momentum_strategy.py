@@ -22,8 +22,8 @@ def make_config(**overrides) -> TradingConfig:
         momentum_volume_ratio=1.5,
         tp1_pct=0.03,
         trailing_stop_pct=0.01,
-        momentum_retest_band_pct=0.003,
-        momentum_retest_timeout_min=30,
+        momentum_retest_band_pct=0.008,
+        momentum_retest_timeout_min=45,
         momentum_vwap_filter=True,
     )
     defaults.update(overrides)
@@ -87,15 +87,15 @@ def test_signal_on_retest_breakout(strategy: MomentumStrategy):
     assert result is None
     assert strategy._state == STATE_RETEST
 
-    # Step 2: 리테스트 (전일 고점 ±0.3% = 9970~10030 이내)
-    candles = make_candles(close=10_010, volume=2_000_000)
-    tick = make_tick("005930", price=10_010)
+    # Step 2: 리테스트 (close < prev_high, low가 밴드에 진입)
+    candles = make_candles(close=9_980, volume=2_000_000, open_price=10_020)
+    tick = make_tick("005930", price=9_980)
     result = strategy.generate_signal(candles, tick)
-    assert result is None
+    assert result is None  # 음봉 + close < prev_high → 재돌파 아님
 
-    # Step 3: 재돌파 (돌파가 10_100 상회 + 양봉)
-    candles = make_candles(close=10_150, volume=2_000_000, open_price=10_050)
-    tick = make_tick("005930", price=10_150)
+    # Step 3: 재돌파 (close > prev_high + 양봉)
+    candles = make_candles(close=10_050, volume=2_000_000, open_price=9_990)
+    tick = make_tick("005930", price=10_050)
     result = strategy.generate_signal(candles, tick)
     assert result is not None
     assert result.side == "buy"
@@ -113,8 +113,8 @@ def test_retest_timeout(strategy: MomentumStrategy):
     strategy.generate_signal(candles, make_tick("005930", 10_100))
     assert strategy._state == STATE_RETEST
 
-    # 10:35에 리테스트 시도 (31분 초과)
-    strategy.set_backtest_time(time(10, 35))
+    # 10:50에 리테스트 시도 (50분, 타임아웃 45분 초과)
+    strategy.set_backtest_time(time(10, 50))
     candles = make_candles(close=10_010, volume=2_000_000)
     result = strategy.generate_signal(candles, make_tick("005930", 10_010))
     assert result is None
@@ -149,13 +149,13 @@ def test_vwap_filter_blocks_signal(strategy: MomentumStrategy):
     candles = make_candles(close=10_100, volume=2_000_000, vwap=10_200)
     strategy.generate_signal(candles, make_tick("005930", 10_100))
 
-    # 리테스트
-    candles = make_candles(close=10_010, volume=2_000_000, vwap=10_200)
-    strategy.generate_signal(candles, make_tick("005930", 10_010))
+    # 리테스트 (close < prev_high, 음봉)
+    candles = make_candles(close=9_980, volume=2_000_000, open_price=10_020, vwap=10_200)
+    strategy.generate_signal(candles, make_tick("005930", 9_980))
 
-    # 재돌파 but VWAP 하회 (price=10_150 < vwap=10_200)
-    candles = make_candles(close=10_150, volume=2_000_000, open_price=10_050, vwap=10_200)
-    result = strategy.generate_signal(candles, make_tick("005930", 10_150))
+    # 재돌파 but VWAP 하회 (close=10_050 < vwap=10_200)
+    candles = make_candles(close=10_050, volume=2_000_000, open_price=9_990, vwap=10_200)
+    result = strategy.generate_signal(candles, make_tick("005930", 10_050))
     assert result is None
 
 
@@ -176,12 +176,12 @@ def test_vwap_filter_off_allows_signal():
         make_tick("005930", 10_100),
     )
     strat.generate_signal(
-        make_candles(close=10_010, volume=2_000_000, vwap=10_200),
-        make_tick("005930", 10_010),
+        make_candles(close=9_980, volume=2_000_000, open_price=10_020, vwap=10_200),
+        make_tick("005930", 9_980),
     )
     result = strat.generate_signal(
-        make_candles(close=10_150, volume=2_000_000, open_price=10_050, vwap=10_200),
-        make_tick("005930", 10_150),
+        make_candles(close=10_050, volume=2_000_000, open_price=9_990, vwap=10_200),
+        make_tick("005930", 10_050),
     )
     assert result is not None
     assert result.strategy == "momentum"
@@ -220,12 +220,12 @@ def test_no_signal_while_in_position(strategy: MomentumStrategy):
         make_tick("005930", 10_100),
     )
     strategy.generate_signal(
-        make_candles(close=10_010, volume=2_000_000),
-        make_tick("005930", 10_010),
+        make_candles(close=9_980, volume=2_000_000, open_price=10_020),
+        make_tick("005930", 9_980),
     )
     first = strategy.generate_signal(
-        make_candles(close=10_150, volume=2_000_000, open_price=10_050),
-        make_tick("005930", 10_150),
+        make_candles(close=10_050, volume=2_000_000, open_price=9_990),
+        make_tick("005930", 10_050),
     )
     assert first is not None
     strategy.on_entry()
