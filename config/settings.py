@@ -81,8 +81,11 @@ class TradingConfig:
     vwap_stop_loss_pct: float = -0.012
 
     # 모멘텀 전략
-    momentum_volume_ratio: float = 2.0
+    momentum_volume_ratio: float = 1.5
     momentum_stop_loss_pct: float = -0.008
+    momentum_retest_band_pct: float = 0.003
+    momentum_retest_timeout_min: int = 30
+    momentum_vwap_filter: bool = True
 
     # 자본금
     initial_capital: int = 1_000_000
@@ -176,8 +179,11 @@ class AppConfig:
             vwap_rsi_low=vwap.get("rsi_low", 40.0),
             vwap_rsi_high=vwap.get("rsi_high", 60.0),
             vwap_stop_loss_pct=vwap.get("stop_loss_pct", -0.012),
-            momentum_volume_ratio=mom.get("volume_ratio", 2.0),
+            momentum_volume_ratio=mom.get("volume_ratio", 1.5),
             momentum_stop_loss_pct=mom.get("stop_loss_pct", -0.008),
+            momentum_retest_band_pct=mom.get("retest_band_pct", 0.003),
+            momentum_retest_timeout_min=mom.get("retest_timeout_minutes", 30),
+            momentum_vwap_filter=mom.get("vwap_filter", True),
             pullback_min_gain_pct=pb.get("min_gain_pct", 0.04),
             pullback_stop_loss_pct=pb.get("stop_loss_pct", -0.018),
             initial_capital=t.get("initial_capital", 1_000_000),
