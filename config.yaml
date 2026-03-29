@@ -51,7 +51,7 @@ strategy:
 
   # 모멘텀 브레이크아웃 — 전일 고점 돌파 + VWAP 필터
   momentum:
-    volume_ratio: 1.5               # 전일 대비 거래량 150% (2.0→1.5 완화)
+    volume_ratio: 2.0               # 전일 대비 거래량 200%
     stop_loss_pct: -0.008           # 손절 -0.8%
     vwap_filter: true               # VWAP 방향 필터 ON
     # retest_band_pct: 0.008        # 향후 틱 백테스터에서 재검증용
