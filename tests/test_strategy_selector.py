@@ -218,3 +218,36 @@ async def test_config_threshold_override():
     }
     strategy, _ = await sel.select(market_data)
     assert strategy != "orb"
+
+
+# ---------------------------------------------------------------------------
+# ATR 기반 Pullback 게이팅 테스트
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_pullback_blocked_by_low_atr(selector):
+    """ATR < 3%인 종목은 Pullback 선택 안 됨."""
+    market_data = {
+        "kospi_gap_pct": 0.0,
+        "sector_etf_change_pct": 0.0,
+        "index_range_pct": 1.5,
+        "candidate_ticker": "005930",
+        "atr_pct": 0.02,  # 2% < 3%
+    }
+    strategy, ticker = await selector.select(market_data)
+    assert strategy is None
+
+
+@pytest.mark.asyncio
+async def test_pullback_allowed_by_high_atr(selector):
+    """ATR >= 3%인 종목은 Pullback 선택됨."""
+    market_data = {
+        "kospi_gap_pct": 0.0,
+        "sector_etf_change_pct": 0.0,
+        "index_range_pct": 1.5,
+        "candidate_ticker": "196170",
+        "atr_pct": 0.04,  # 4% >= 3%
+    }
+    strategy, ticker = await selector.select(market_data)
+    assert strategy == "pullback"
+    assert ticker == "196170"

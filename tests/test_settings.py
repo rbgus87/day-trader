@@ -10,7 +10,7 @@ def test_trading_config_defaults():
     assert tc.max_trades_per_day == 3
     assert tc.cooldown_minutes == 15
     assert tc.orb_volume_ratio == 0.0
-    assert tc.pullback_min_gain_pct == 0.025
+    assert tc.pullback_min_gain_pct == 0.04
     assert tc.pullback_stop_loss_pct == -0.018
     assert tc.momentum_stop_loss_pct == -0.008
     assert tc.initial_capital == 1_000_000
@@ -23,7 +23,7 @@ def test_trading_config_defaults_match_yaml():
     assert tc.max_trades_per_day == 3
     assert tc.cooldown_minutes == 15
     assert tc.orb_volume_ratio == 0.0
-    assert tc.pullback_min_gain_pct == 0.025
+    assert tc.pullback_min_gain_pct == 0.04
     assert tc.pullback_stop_loss_pct == -0.018
     assert tc.momentum_stop_loss_pct == -0.008
     assert tc.initial_capital == 1_000_000

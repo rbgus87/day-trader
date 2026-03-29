@@ -92,8 +92,9 @@ class TradingConfig:
     initial_capital: int = 1_000_000
 
     # 눌림목 전략
-    pullback_min_gain_pct: float = 0.025
+    pullback_min_gain_pct: float = 0.04
     pullback_stop_loss_pct: float = -0.018
+    # DEPRECATED: v2 파라미터 — 조건 완화 실험 결과 PF 악화로 롤백
     pullback_ma_short: int = 10
     pullback_ma_long: int = 10
     pullback_ma_touch_band: float = 0.01
@@ -189,7 +190,7 @@ class AppConfig:
             momentum_retest_band_pct=mom.get("retest_band_pct", 0.008),
             momentum_retest_timeout_min=mom.get("retest_timeout_minutes", 45),
             momentum_vwap_filter=mom.get("vwap_filter", True),
-            pullback_min_gain_pct=pb.get("min_gain_pct", 0.025),
+            pullback_min_gain_pct=pb.get("min_gain_pct", 0.04),
             pullback_stop_loss_pct=pb.get("stop_loss_pct", -0.018),
             pullback_ma_short=pb.get("ma_short", 10),
             pullback_ma_long=pb.get("ma_long", 10),

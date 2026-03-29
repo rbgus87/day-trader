@@ -116,5 +116,11 @@ class StrategySelector:
         return abs(float(market_data.get("index_range_pct", 999))) <= self._vwap_range_threshold
 
     def _check_pullback(self, market_data: dict) -> bool:
-        """눌림목 후보 종목이 존재하면 눌림목 매매 전략 적용 (폴백)."""
-        return market_data.get("candidate_ticker") is not None
+        """눌림목 후보 종목이 존재하고 ATR >= 3%이면 적용 (저변동 종목 제외)."""
+        if market_data.get("candidate_ticker") is None:
+            return False
+        atr_pct = float(market_data.get("atr_pct", 0))
+        if atr_pct > 0 and atr_pct < 0.03:
+            logger.info("Pullback 제외: ATR %.2f%% < 3%%", atr_pct * 100)
+            return False
+        return True
