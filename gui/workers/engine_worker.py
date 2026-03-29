@@ -316,6 +316,10 @@ class EngineWorker(QThread):
                 if self._risk_manager.is_trading_halted():
                     continue
 
+                # 5분봉 수신 시 FlowStrategy에 거래량 히스토리 전달
+                if candle.get("tf") == "5m" and hasattr(self._active_strategy, "on_candle_5m"):
+                    self._active_strategy.on_candle_5m(candle)
+
                 ticker = candle["ticker"]
                 self._candle_history.setdefault(ticker, [])
                 self._candle_history[ticker].append(candle)
@@ -403,6 +407,7 @@ class EngineWorker(QThread):
         from strategy.vwap_strategy import VwapStrategy
         from strategy.momentum_strategy import MomentumStrategy
         from strategy.pullback_strategy import PullbackStrategy
+        from strategy.flow_strategy import FlowStrategy
 
         today = datetime.now().strftime("%Y-%m-%d")
         logger.info(f"08:30 스크리닝 시작 ({today})")
@@ -443,6 +448,7 @@ class EngineWorker(QThread):
                 "vwap": VwapStrategy(self._config.trading),
                 "momentum": MomentumStrategy(self._config.trading),
                 "pullback": PullbackStrategy(self._config.trading),
+                "flow": FlowStrategy(self._config.trading),
             }
             self._active_strategy = strategies.get(strategy_name)
 

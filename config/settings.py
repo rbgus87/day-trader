@@ -88,6 +88,15 @@ class TradingConfig:
     momentum_retest_timeout_min: int = 45
     momentum_vwap_filter: bool = False
 
+    # 수급추종 전략 (FlowStrategy)
+    flow_min_strength_pct: float = 120.0    # Phase 2용 (현재 미사용)
+    flow_volume_surge_ratio: float = 2.5
+    flow_stop_loss_pct: float = -0.015
+    flow_trailing_stop_pct: float = 0.015
+    flow_vwap_filter: bool = True
+    flow_signal_start: str = "09:30"
+    flow_signal_end: str = "14:30"
+
     # 자본금
     initial_capital: int = 1_000_000
 
@@ -161,6 +170,7 @@ class AppConfig:
         vwap = s.get("vwap", {})
         mom = s.get("momentum", {})
         pb = s.get("pullback", {})
+        fl = s.get("flow", {})
 
         trading = TradingConfig(
             stop_loss_pct=t.get("stop_loss_pct", -0.015),
@@ -196,6 +206,13 @@ class AppConfig:
             pullback_ma_long=pb.get("ma_long", 10),
             pullback_ma_touch_band=pb.get("ma_touch_band", 0.01),
             pullback_min_atr_pct=pb.get("min_atr_pct", 0.025),
+            flow_min_strength_pct=fl.get("min_strength_pct", 120.0),
+            flow_volume_surge_ratio=fl.get("volume_surge_ratio", 2.5),
+            flow_stop_loss_pct=fl.get("stop_loss_pct", -0.015),
+            flow_trailing_stop_pct=fl.get("trailing_stop_pct", 0.015),
+            flow_vwap_filter=fl.get("vwap_filter", True),
+            flow_signal_start=fl.get("signal_start", "09:30"),
+            flow_signal_end=fl.get("signal_end", "14:30"),
             initial_capital=t.get("initial_capital", 1_000_000),
         )
 

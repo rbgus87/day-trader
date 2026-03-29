@@ -67,6 +67,15 @@ strategy:
     # ma_touch_band: 0.01
     # min_atr_pct: 0.025
 
+  # 수급추종 (FlowStrategy) — 거래량 급증 기반 Phase 1
+  flow:
+    volume_surge_ratio: 2.5         # 5분 거래량 / 20분 평균
+    stop_loss_pct: -0.015           # 손절 -1.5%
+    trailing_stop_pct: 0.015        # 트레일링 -1.5% (넓게)
+    vwap_filter: true               # VWAP 방향 필터
+    signal_start: "09:30"           # 신호 활성 시작
+    signal_end: "14:30"             # 신호 활성 종료
+
   # 전략 선택기 임계값 (StrategySelector)
   # 코스닥 중대형 타깃 — 갭/변동폭이 코스피보다 크므로 임계값 상향
   selector:

@@ -190,6 +190,10 @@ async def main():
             if risk_manager.is_trading_halted():
                 continue
 
+            # 5분봉 수신 시 FlowStrategy에 거래량 히스토리 전달
+            if candle.get("tf") == "5m" and hasattr(active_strategy, "on_candle_5m"):
+                active_strategy.on_candle_5m(candle)
+
             ticker = candle["ticker"]
             candle_history.setdefault(ticker, [])
             candle_history[ticker].append(candle)
@@ -255,6 +259,7 @@ async def main():
         from strategy.vwap_strategy import VwapStrategy
         from strategy.momentum_strategy import MomentumStrategy
         from strategy.pullback_strategy import PullbackStrategy
+        from strategy.flow_strategy import FlowStrategy
 
         today = datetime.now().strftime("%Y-%m-%d")
         logger.info(f"08:30 스크리닝 시작 ({today})")
@@ -289,6 +294,7 @@ async def main():
                 "vwap": VwapStrategy(config.trading),
                 "momentum": MomentumStrategy(config.trading),
                 "pullback": PullbackStrategy(config.trading),
+                "flow": FlowStrategy(config.trading),
             }
             active_strategy = strategies.get(strategy_name)
 
