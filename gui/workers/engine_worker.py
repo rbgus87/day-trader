@@ -122,11 +122,12 @@ class EngineWorker(QThread):
         mode_tag = "[PAPER] " if paper_mode else ""
         await self._notifier.send(f"{mode_tag}단타 매매 시스템 시작 (GUI)")
 
-        token_manager = TokenManager(
+        self._token_manager = TokenManager(
             app_key=self._config.kiwoom.app_key,
             secret_key=self._config.kiwoom.secret_key,
             base_url=self._config.kiwoom.rest_base_url,
         )
+        token_manager = self._token_manager
         rate_limiter = AsyncRateLimiter(
             max_calls=self._config.kiwoom.rate_limit_calls,
             period=self._config.kiwoom.rate_limit_period,
@@ -149,6 +150,7 @@ class EngineWorker(QThread):
             token_manager=token_manager,
             tick_queue=self._tick_queue,
             order_queue=self._order_queue,
+            notifier=self._notifier,
         )
         self._candle_builder = CandleBuilder(
             candle_queue=self._candle_queue, timeframes=["1m", "5m"],
@@ -176,6 +178,10 @@ class EngineWorker(QThread):
             )
             logger.info("주문 관리자: OrderManager (실매매)")
 
+        # WS에 리스크/주문 관리자 연결 (긴급 청산용)
+        self._ws_client._risk_manager = self._risk_manager
+        self._ws_client._order_manager = self._order_manager
+
         # Screener
         self._candidate_collector = CandidateCollector(self._rest_client)
         self._pre_market_screener = PreMarketScreener(
@@ -185,6 +191,7 @@ class EngineWorker(QThread):
 
         # 3. Scheduler
         self._scheduler = AsyncIOScheduler()
+        self._scheduler.add_job(self._refresh_token, "cron", hour=8, minute=0)
         self._scheduler.add_job(self._run_screening, "cron", hour=8, minute=30)
         self._scheduler.add_job(self._force_close, "cron", hour=15, minute=10)
         self._scheduler.add_job(self._run_daily_report, "cron", hour=15, minute=30)
@@ -400,6 +407,16 @@ class EngineWorker(QThread):
                 logger.error(f"order_confirmation_consumer 오류: {e}")
 
     # ── Screening & force close (ported from main.py) ──
+
+    async def _refresh_token(self):
+        """매일 08:00 토큰 사전 갱신."""
+        try:
+            token = await self._token_manager.get_token()
+            logger.info(f"토큰 사전 갱신 완료: {token[:10]}...")
+        except Exception as e:
+            logger.error(f"토큰 갱신 실패: {e}")
+            if self._notifier:
+                await self._notifier.send_urgent(f"토큰 갱신 실패: {e}")
 
     async def _run_screening(self):
         """08:30 장 전 스크리닝 -- candidates 수집 -> 필터 -> 전략 선택."""
@@ -721,6 +738,12 @@ class EngineWorker(QThread):
                 )
         except (asyncio.TimeoutError, Exception) as e:
             logger.warning(f"Shutdown notification skipped: {e}")
+
+        try:
+            if self._notifier:
+                self._loop.run_until_complete(self._notifier.aclose())
+        except Exception as e:
+            logger.warning(f"Notifier cleanup skipped: {e}")
 
         try:
             if self._db:

@@ -108,6 +108,7 @@ async def main():
         token_manager=token_manager,
         tick_queue=tick_queue,
         order_queue=order_queue,
+        notifier=notifier,
     )
     candle_builder = CandleBuilder(candle_queue=candle_queue, timeframes=["1m", "5m"])
     risk_manager = RiskManager(
@@ -129,6 +130,10 @@ async def main():
             order_queue=order_queue,
         )
         logger.info("주문 관리자: OrderManager (실매매)")
+
+    # WS에 리스크/주문 관리자 연결 (긴급 청산용)
+    ws_client._risk_manager = risk_manager
+    ws_client._order_manager = order_manager
 
     # 스크리닝 컴포넌트
     candidate_collector = CandidateCollector(rest_client)
@@ -361,6 +366,15 @@ async def main():
             await notifier.send_no_trade("당일 매매 기록 없음")
             logger.info("당일 매매 없음 — 무거래 알림 발송")
 
+    async def refresh_token():
+        """매일 08:00 토큰 사전 갱신."""
+        try:
+            token = await token_manager.get_token()
+            logger.info(f"토큰 사전 갱신 완료: {token[:10]}...")
+        except Exception as e:
+            logger.error(f"토큰 갱신 실패: {e}")
+            await notifier.send_urgent(f"토큰 갱신 실패: {e}")
+
     async def backup_db():
         """15:35 DB 백업 (7일 보관)."""
         import shutil
@@ -390,6 +404,7 @@ async def main():
             except (ValueError, OSError):
                 continue
 
+    scheduler.add_job(refresh_token, "cron", hour=8, minute=0)
     scheduler.add_job(run_screening, "cron", hour=8, minute=30)
     scheduler.add_job(force_close, "cron", hour=15, minute=10)
     scheduler.add_job(run_daily_report, "cron", hour=15, minute=30)
@@ -478,6 +493,7 @@ async def main():
         await db.close()
         mode_tag = "[PAPER] " if config.paper_mode else ""
         await notifier.send(f"{mode_tag}시스템 종료")
+        await notifier.aclose()
         logger.info("시스템 종료 완료")
 
 

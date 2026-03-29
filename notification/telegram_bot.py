@@ -9,16 +9,30 @@ from config.settings import TelegramConfig
 
 
 class TelegramNotifier:
-    """aiohttp 기반 비동기 텔레그램 알림."""
+    """aiohttp 기반 비동기 텔레그램 알림 (세션 재사용)."""
 
     def __init__(self, config: TelegramConfig):
         self._token = config.bot_token
         self._chat_id = config.chat_id
         self._api_url = f"https://api.telegram.org/bot{self._token}"
         self._cooldowns: dict[str, float] = {}
+        self._session: aiohttp.ClientSession | None = None
 
     def __repr__(self) -> str:
         return f"TelegramNotifier(chat_id={self._chat_id!r})"
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=10),
+            )
+        return self._session
+
+    async def aclose(self) -> None:
+        """세션 정리."""
+        if self._session and not self._session.closed:
+            await self._session.close()
+            self._session = None
 
     async def send(
         self,
@@ -31,16 +45,15 @@ class TelegramNotifier:
             "text": message,
             "parse_mode": parse_mode,
         }
+        session = await self._get_session()
         for attempt in range(retries):
             try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(
-                        f"{self._api_url}/sendMessage", json=payload,
-                        timeout=aiohttp.ClientTimeout(total=10),
-                    ) as resp:
-                        if resp.status == 200:
-                            return True
-                        logger.warning(f"텔레그램 발송 실패: status={resp.status}")
+                async with session.post(
+                    f"{self._api_url}/sendMessage", json=payload,
+                ) as resp:
+                    if resp.status == 200:
+                        return True
+                    logger.warning(f"텔레그램 발송 실패: status={resp.status}")
             except Exception as e:
                 logger.error(f"텔레그램 발송 오류 (시도 {attempt + 1}): {e}")
         return False
