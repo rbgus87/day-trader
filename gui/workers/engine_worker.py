@@ -249,11 +249,48 @@ class EngineWorker(QThread):
     # ── Pipeline consumers (ported from main.py) ──
 
     async def _tick_consumer(self):
-        """틱 -> 캔들 빌더."""
+        """틱 -> 캔들 빌더 + 포지션 모니터링."""
         while self._running:
             try:
                 tick = await asyncio.wait_for(self._tick_queue.get(), timeout=5.0)
+                # 1. 캔들 빌더에 전달 (기존)
                 await self._candle_builder.on_tick(tick)
+                # 2. 포지션 모니터링 (신규)
+                ticker = tick["ticker"]
+                price = tick["price"]
+                pos = self._risk_manager.get_position(ticker)
+                if pos is None or pos["remaining_qty"] <= 0:
+                    continue
+                # 손절 체크
+                if self._risk_manager.check_stop_loss(ticker, price):
+                    qty = pos["remaining_qty"]
+                    await self._order_manager.execute_sell_stop(ticker=ticker, qty=qty)
+                    pnl = (price - pos["entry_price"]) * qty
+                    self._risk_manager.record_pnl(pnl)
+                    self._risk_manager.remove_position(ticker)
+                    logger.info(f"손절 실행: {ticker} {qty}주 @ {price:,} PnL={pnl:+,.0f}")
+                    self.signals.trade_executed.emit({
+                        "side": "sell", "ticker": ticker,
+                        "price": int(price), "qty": qty, "reason": "stop_loss",
+                    })
+                    continue
+                # TP1 체크
+                if self._risk_manager.check_tp1(ticker, price):
+                    sell_qty = int(pos["remaining_qty"] * self._config.trading.tp1_sell_ratio)
+                    await self._order_manager.execute_sell_tp1(
+                        ticker=ticker, price=int(price), remaining_qty=pos["remaining_qty"],
+                    )
+                    pnl = (price - pos["entry_price"]) * sell_qty
+                    self._risk_manager.record_pnl(pnl)
+                    self._risk_manager.mark_tp1_hit(ticker, sell_qty)
+                    logger.info(f"TP1 실행: {ticker} {sell_qty}주 @ {price:,} PnL={pnl:+,.0f}")
+                    self.signals.trade_executed.emit({
+                        "side": "sell", "ticker": ticker,
+                        "price": int(price), "qty": sell_qty, "reason": "tp1",
+                    })
+                    continue
+                # 트레일링 스톱 갱신
+                self._risk_manager.update_trailing_stop(ticker, price)
             except asyncio.TimeoutError:
                 continue
             except asyncio.CancelledError:

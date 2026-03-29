@@ -144,10 +144,37 @@ async def main():
     # --- 파이프라인 태스크 ---
 
     async def tick_consumer():
-        """틱 → 캔들 빌더."""
+        """틱 → 캔들 빌더 + 포지션 모니터링."""
         while True:
             tick = await tick_queue.get()
+            # 1. 캔들 빌더에 전달 (기존)
             await candle_builder.on_tick(tick)
+            # 2. 포지션 모니터링 (신규)
+            ticker = tick["ticker"]
+            price = tick["price"]
+            pos = risk_manager.get_position(ticker)
+            if pos is None or pos["remaining_qty"] <= 0:
+                continue
+            # 손절 체크
+            if risk_manager.check_stop_loss(ticker, price):
+                qty = pos["remaining_qty"]
+                await order_manager.execute_sell_stop(ticker=ticker, qty=qty)
+                pnl = (price - pos["entry_price"]) * qty
+                risk_manager.record_pnl(pnl)
+                risk_manager.remove_position(ticker)
+                logger.info(f"손절 실행: {ticker} {qty}주 @ {price:,} PnL={pnl:+,.0f}")
+                continue
+            # TP1 체크
+            if risk_manager.check_tp1(ticker, price):
+                sell_qty = int(pos["remaining_qty"] * config.trading.tp1_sell_ratio)
+                await order_manager.execute_sell_tp1(ticker=ticker, price=int(price), remaining_qty=pos["remaining_qty"])
+                pnl = (price - pos["entry_price"]) * sell_qty
+                risk_manager.record_pnl(pnl)
+                risk_manager.mark_tp1_hit(ticker, sell_qty)
+                logger.info(f"TP1 실행: {ticker} {sell_qty}주 @ {price:,} PnL={pnl:+,.0f}")
+                continue
+            # 트레일링 스톱 갱신
+            risk_manager.update_trailing_stop(ticker, price)
 
     async def candle_consumer():
         """캔들 → 전략 엔진. 롤링 DataFrame 유지."""
