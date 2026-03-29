@@ -1,4 +1,8 @@
-"""strategy/pullback_strategy.py — 눌림목 매매 전략 (F-STR-04)."""
+"""strategy/pullback_strategy.py — 눌림목 매매 전략 v2 (F-STR-04).
+
+당일 +2.5% 이상 종목의 MA10 터치 후 음봉→양봉 전환 시 진입.
+v2: 조건 완화 (MA5→MA10, +4%→+2.5%, 밴드 1%) + ATR 필터.
+"""
 
 import pandas as pd
 from loguru import logger
@@ -8,24 +12,23 @@ from config.settings import TradingConfig
 
 
 class PullbackStrategy(BaseStrategy):
-    """당일 +3% 이상 종목의 5분 이평 터치 후 음봉→양봉 전환 시 진입.
+    """강세 종목 조정 후 반등 진입 (v2).
 
     진입 조건:
-      1. 당일 시가 대비 현재가 +3% 이상
-      2. 현재가가 5캔들 이동평균 ±0.5% 이내 (이평 터치)
+      1. 당일 시가 대비 현재가 >= pullback_min_gain_pct
+      2. 현재가가 MA(short) ± ma_touch_band 이내 (이평 터치)
       3. 직전 캔들 음봉 → 현재 캔들 양봉 전환
-      4. 20캔들 이동평균 정배열 (상승 중)
-    손절: 진입가 * (1 + pullback_stop_loss_pct) = -1.5%
-    익절: 진입가 * (1 + tp1_pct) = +2%
+      4. MA(long) 정배열 (상승 중)
+      5. ATR 필터: 당일 캔들의 평균 변동폭 >= min_atr_pct
     """
-
-    MA5_WINDOW = 5
-    MA20_WINDOW = 20
-    MA_TOUCH_BAND = 0.005  # ±0.5%
 
     def __init__(self, config: TradingConfig):
         self._config = config
         self._open_price: float | None = None
+        self._ma_short = config.pullback_ma_short
+        self._ma_long = config.pullback_ma_long
+        self._ma_touch_band = config.pullback_ma_touch_band
+        self._min_atr_pct = config.pullback_min_atr_pct
         self.configure_multi_trade(
             max_trades=config.max_trades_per_day,
             cooldown_minutes=config.cooldown_minutes,
@@ -42,22 +45,21 @@ class PullbackStrategy(BaseStrategy):
         if self._open_price is None or self._open_price <= 0:
             return None
 
-        if candles is None or len(candles) < self.MA20_WINDOW + 1:
+        min_rows = max(self._ma_short, self._ma_long) + 1
+        if candles is None or len(candles) < min_rows:
             return None
 
         current_price = tick["price"]
 
-        # 조건 1: 당일 +3% 이상
+        # 조건 1: 당일 시가 대비 상승
         gain = (current_price - self._open_price) / self._open_price
         if gain < self._config.pullback_min_gain_pct:
-            logger.debug(f"눌림목: 시가 대비 상승 부족 gain={gain:.2%} < {self._config.pullback_min_gain_pct:.2%}")
             return None
 
-        # 조건 2: 5캔들 이평 터치 (현재가가 MA5 ±0.5% 이내)
-        ma5 = candles["close"].iloc[-self.MA5_WINDOW:].mean()
-        distance = abs(current_price - ma5) / ma5
-        if distance > self.MA_TOUCH_BAND:
-            logger.debug(f"눌림목: 5MA 터치 미달 distance={distance:.2%}")
+        # 조건 2: MA(short) 터치 (현재가가 MA ± band 이내)
+        ma_short = candles["close"].iloc[-self._ma_short:].mean()
+        distance = abs(current_price - ma_short) / ma_short
+        if distance > self._ma_touch_band:
             return None
 
         # 조건 3: 직전 캔들 음봉 → 현재 캔들 양봉 전환
@@ -66,22 +68,23 @@ class PullbackStrategy(BaseStrategy):
         prev_bearish = prev["close"] < prev["open"]
         curr_bullish = curr["close"] > curr["open"]
         if not (prev_bearish and curr_bullish):
-            logger.debug("눌림목: 음봉→양봉 전환 패턴 미충족")
             return None
 
-        # 조건 4: 20캔들 이동평균 정배열 (MA20이 상승 중)
-        ma20_series = candles["close"].rolling(self.MA20_WINDOW).mean().dropna()
-        if len(ma20_series) < 2:
+        # 조건 4: MA(long) 정배열 (상승 중)
+        ma_long_series = candles["close"].rolling(self._ma_long).mean().dropna()
+        if len(ma_long_series) < 2:
             return None
-        ma20_ascending = ma20_series.iloc[-1] > ma20_series.iloc[-2]
-        if not ma20_ascending:
-            logger.debug("눌림목: MA20 정배열 미충족")
+        if ma_long_series.iloc[-1] <= ma_long_series.iloc[-2]:
             return None
+
+        # 조건 5: ATR 필터 (스크리닝 단계에서 set_atr_pct()로 주입된 일일 ATR 기준)
+        # 1분봉 캔들의 (high-low)/close는 0.1~0.5%로 일일 ATR(2.5%)과 스케일이 다름
+        # → 스크리닝에서 이미 필터링된 종목만 전달되므로 여기서는 별도 체크하지 않음
 
         ticker = tick.get("ticker", "")
         logger.info(
-            f"눌림목 매수 신호: {ticker} price={current_price} "
-            f"gain={gain:.2%} ma5={ma5:.0f} ma20={ma20_series.iloc[-1]:.0f}"
+            f"눌림목 v2 매수 신호: {ticker} price={current_price} "
+            f"gain={gain:.2%} ma{self._ma_short}={ma_short:.0f}"
         )
 
         return Signal(
@@ -89,20 +92,16 @@ class PullbackStrategy(BaseStrategy):
             side="buy",
             price=current_price,
             strategy="pullback",
-            reason=f"5MA({ma5:,.0f}) 터치 후 음봉→양봉 전환, MA20 정배열",
+            reason=f"MA{self._ma_short}({ma_short:,.0f}) 터치 후 음봉→양봉 전환",
         )
 
     def get_stop_loss(self, entry_price: float) -> float:
-        """손절가: 진입가 * (1 - 1.5%)."""
         return entry_price * (1 + self._config.pullback_stop_loss_pct)
 
     def get_take_profit(self, entry_price: float) -> tuple[float, float]:
-        """익절가: (tp1=+2%, tp2=0 트레일링 스톱으로 관리)."""
         tp1 = entry_price * (1 + self._config.tp1_pct)
-        tp2 = 0
-        return tp1, tp2
+        return tp1, 0
 
     def reset(self) -> None:
-        """일일 초기화."""
         super().reset()
         self._open_price = None

@@ -92,8 +92,12 @@ class TradingConfig:
     initial_capital: int = 1_000_000
 
     # 눌림목 전략
-    pullback_min_gain_pct: float = 0.04
+    pullback_min_gain_pct: float = 0.025
     pullback_stop_loss_pct: float = -0.018
+    pullback_ma_short: int = 10
+    pullback_ma_long: int = 10
+    pullback_ma_touch_band: float = 0.01
+    pullback_min_atr_pct: float = 0.025
 
 
 @dataclass(frozen=True)
@@ -185,8 +189,12 @@ class AppConfig:
             momentum_retest_band_pct=mom.get("retest_band_pct", 0.008),
             momentum_retest_timeout_min=mom.get("retest_timeout_minutes", 45),
             momentum_vwap_filter=mom.get("vwap_filter", True),
-            pullback_min_gain_pct=pb.get("min_gain_pct", 0.04),
+            pullback_min_gain_pct=pb.get("min_gain_pct", 0.025),
             pullback_stop_loss_pct=pb.get("stop_loss_pct", -0.018),
+            pullback_ma_short=pb.get("ma_short", 10),
+            pullback_ma_long=pb.get("ma_long", 10),
+            pullback_ma_touch_band=pb.get("ma_touch_band", 0.01),
+            pullback_min_atr_pct=pb.get("min_atr_pct", 0.025),
             initial_capital=t.get("initial_capital", 1_000_000),
         )
 
