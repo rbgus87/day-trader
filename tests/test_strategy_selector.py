@@ -41,11 +41,11 @@ async def test_selects_orb_on_gap(selector):
 
 @pytest.mark.asyncio
 async def test_selects_momentum(selector):
-    """갭 없음, 섹터 ETF +2% → 모멘텀 전략 선택."""
+    """갭 없음, 섹터 ETF +2.5% → 모멘텀 전략 선택."""
     market_data = {
         "kospi_gap_pct": 0.0,
-        "sector_etf_change_pct": 2.0,
-        "index_range_pct": 1.0,
+        "sector_etf_change_pct": 2.5,
+        "index_range_pct": 1.5,
         "candidate_ticker": None,
     }
     strategy, ticker = await selector.select(market_data)
@@ -54,11 +54,11 @@ async def test_selects_momentum(selector):
 
 @pytest.mark.asyncio
 async def test_selects_vwap(selector):
-    """평탄한 시장, 변동폭 0.3% → VWAP 전략 선택."""
+    """평탄한 시장, 변동폭 0.5% → VWAP 전략 선택."""
     market_data = {
         "kospi_gap_pct": 0.0,
         "sector_etf_change_pct": 0.0,
-        "index_range_pct": 0.3,
+        "index_range_pct": 0.5,
         "candidate_ticker": None,
     }
     strategy, ticker = await selector.select(market_data)
@@ -71,7 +71,7 @@ async def test_selects_none(selector):
     market_data = {
         "kospi_gap_pct": 0.0,
         "sector_etf_change_pct": 0.0,
-        "index_range_pct": 1.0,       # 변동폭 크고
+        "index_range_pct": 1.5,       # 변동폭 크고 (VWAP 임계값 0.8 초과)
         "candidate_ticker": None,     # 후보 종목도 없음
     }
     strategy, ticker = await selector.select(market_data)
@@ -83,9 +83,9 @@ async def test_selects_none(selector):
 async def test_priority_orb_over_momentum(selector):
     """ORB + 모멘텀 조건 동시 충족 → ORB 우선 선택."""
     market_data = {
-        "kospi_gap_pct": 0.6,         # ORB 조건 충족
-        "sector_etf_change_pct": 2.0, # 모멘텀 조건도 충족
-        "index_range_pct": 1.0,
+        "kospi_gap_pct": 1.0,         # ORB 조건 충족 (임계값 0.8)
+        "sector_etf_change_pct": 2.5, # 모멘텀 조건도 충족 (임계값 2.0)
+        "index_range_pct": 1.5,
         "candidate_ticker": None,
     }
     strategy, ticker = await selector.select(market_data)
@@ -98,11 +98,11 @@ async def test_priority_orb_over_momentum(selector):
 
 @pytest.mark.asyncio
 async def test_orb_threshold_exact(selector):
-    """KOSPI 갭 정확히 0.5% → ORB 선택 (경계값 포함)."""
+    """KOSPI 갭 정확히 0.8% → ORB 선택 (경계값 포함)."""
     market_data = {
-        "kospi_gap_pct": 0.5,
+        "kospi_gap_pct": 0.8,
         "sector_etf_change_pct": 0.0,
-        "index_range_pct": 1.0,
+        "index_range_pct": 1.5,
         "candidate_ticker": None,
     }
     strategy, _ = await selector.select(market_data)
@@ -111,11 +111,11 @@ async def test_orb_threshold_exact(selector):
 
 @pytest.mark.asyncio
 async def test_orb_below_threshold(selector):
-    """KOSPI 갭 0.49% → ORB 선택 안 됨."""
+    """KOSPI 갭 0.79% → ORB 선택 안 됨."""
     market_data = {
-        "kospi_gap_pct": 0.49,
+        "kospi_gap_pct": 0.79,
         "sector_etf_change_pct": 0.0,
-        "index_range_pct": 1.0,
+        "index_range_pct": 1.5,
         "candidate_ticker": None,
     }
     strategy, _ = await selector.select(market_data)
@@ -128,7 +128,7 @@ async def test_pullback_with_candidate(selector):
     market_data = {
         "kospi_gap_pct": 0.0,
         "sector_etf_change_pct": 0.0,
-        "index_range_pct": 1.0,
+        "index_range_pct": 1.5,
         "candidate_ticker": "005930",
     }
     strategy, ticker = await selector.select(market_data)
@@ -138,11 +138,11 @@ async def test_pullback_with_candidate(selector):
 
 @pytest.mark.asyncio
 async def test_vwap_exact_threshold(selector):
-    """지수 변동폭 정확히 0.5% → VWAP 선택 (경계값 포함)."""
+    """지수 변동폭 정확히 0.8% → VWAP 선택 (경계값 포함)."""
     market_data = {
         "kospi_gap_pct": 0.0,
         "sector_etf_change_pct": 0.0,
-        "index_range_pct": 0.5,
+        "index_range_pct": 0.8,
         "candidate_ticker": None,
     }
     strategy, _ = await selector.select(market_data)

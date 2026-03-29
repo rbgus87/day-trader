@@ -165,52 +165,167 @@ class Backtester:
                 low = float(row["low"])
                 high = float(row["high"])
                 close = float(row["close"])
-                exit_price: float | None = None
-                exit_reason: str = ""
 
                 # 손절 확인 (캔들 저가 기준)
                 if low <= position["stop_loss"]:
                     exit_price = position["stop_loss"]
-                    exit_reason = "stop_loss"
-
-                # TP1 확인 (캔들 고가 기준)
-                elif position["tp1"] and high >= position["tp1"]:
-                    exit_price = position["tp1"]
-                    exit_reason = "tp1"
-
-                # TP2 확인 (캔들 고가 기준)
-                elif position["tp2"] and high >= position["tp2"]:
-                    exit_price = position["tp2"]
-                    exit_reason = "tp2"
-
-                # 마지막 캔들 강제 청산
-                elif idx == len(candles) - 1:
-                    exit_price = close
-                    exit_reason = "forced_close"
-
-                if exit_price is not None:
-                    # 슬리피지 적용 (매도 시 불리)
+                    remaining = position.get("remaining_ratio", 1.0)
                     exit_price_slipped = exit_price * (1 - self._slippage)
                     exit_fee = exit_price_slipped * (self._exit_fee + self._tax)
                     net_exit = exit_price_slipped - exit_fee
-
-                    pnl = net_exit - position["net_entry"]
-                    pnl_pct = pnl / position["net_entry"]
-
-                    trade = {
+                    pnl = (net_exit - position["net_entry"]) * remaining
+                    pnl_pct = (net_exit - position["net_entry"]) / position["net_entry"]
+                    trades.append({
                         "entry_ts": position["entry_ts"],
                         "exit_ts": row["ts"],
                         "entry_price": position["entry_price"],
                         "exit_price": exit_price_slipped,
                         "pnl": pnl,
                         "pnl_pct": pnl_pct,
-                        "exit_reason": exit_reason,
-                    }
-                    trades.append(trade)
+                        "exit_reason": "stop_loss",
+                    })
                     logger.debug(
-                        f"[BT] 청산 ts={row['ts']} reason={exit_reason} "
-                        f"exit={exit_price_slipped:.1f} pnl={pnl:.1f} ({pnl_pct:.2%})"
+                        f"[BT] 손절 ts={row['ts']} exit={exit_price_slipped:.1f} "
+                        f"pnl={pnl:.1f} ({pnl_pct:.2%}) ratio={remaining:.0%}"
                     )
+                    position = None
+                    strategy.on_exit()
+
+                # TP1 확인 (캔들 고가 기준) — 분할매도
+                elif not position.get("tp1_hit") and position["tp1"] and high >= position["tp1"]:
+                    tp1_price = position["tp1"]
+                    tp1_slipped = tp1_price * (1 - self._slippage)
+                    tp1_fee = tp1_slipped * (self._exit_fee + self._tax)
+                    net_tp1 = tp1_slipped - tp1_fee
+                    tp1_ratio = self._config.tp1_sell_ratio  # 50%
+                    pnl = (net_tp1 - position["net_entry"]) * tp1_ratio
+                    pnl_pct = (net_tp1 - position["net_entry"]) / position["net_entry"]
+                    trades.append({
+                        "entry_ts": position["entry_ts"],
+                        "exit_ts": row["ts"],
+                        "entry_price": position["entry_price"],
+                        "exit_price": tp1_slipped,
+                        "pnl": pnl,
+                        "pnl_pct": pnl_pct,
+                        "exit_reason": "tp1",
+                    })
+                    logger.debug(
+                        f"[BT] TP1 분할매도 ts={row['ts']} exit={tp1_slipped:.1f} "
+                        f"pnl={pnl:.1f} ratio={tp1_ratio:.0%}"
+                    )
+                    # 나머지 포지션 유지: 손절선 본전 이동 + tp1_hit 마킹
+                    position["tp1_hit"] = True
+                    position["remaining_ratio"] = 1.0 - tp1_ratio
+                    position["stop_loss"] = position["entry_price"]  # 본전 손절
+                    position["highest_price"] = high
+
+                    # 마지막 캔들에서 TP1 히트 시 나머지도 강제 청산
+                    if idx == len(candles) - 1:
+                        remaining = position["remaining_ratio"]
+                        fc_slipped = close * (1 - self._slippage)
+                        fc_fee = fc_slipped * (self._exit_fee + self._tax)
+                        net_fc = fc_slipped - fc_fee
+                        fc_pnl = (net_fc - position["net_entry"]) * remaining
+                        fc_pnl_pct = (net_fc - position["net_entry"]) / position["net_entry"]
+                        trades.append({
+                            "entry_ts": position["entry_ts"],
+                            "exit_ts": row["ts"],
+                            "entry_price": position["entry_price"],
+                            "exit_price": fc_slipped,
+                            "pnl": fc_pnl,
+                            "pnl_pct": fc_pnl_pct,
+                            "exit_reason": "forced_close",
+                        })
+                        position = None
+                        strategy.on_exit()
+
+                # 트레일링 스톱 / 강제청산 (TP1 히트 후)
+                elif position.get("tp1_hit"):
+                    # 고점 갱신
+                    if high > position.get("highest_price", 0):
+                        position["highest_price"] = high
+                        trailing_pct = self._config.trailing_stop_pct
+                        position["stop_loss"] = position["highest_price"] * (1 - trailing_pct)
+
+                    remaining = position.get("remaining_ratio", 0.5)
+                    # 트레일링 스톱 체크
+                    if low <= position["stop_loss"]:
+                        exit_price = position["stop_loss"]
+                        exit_price_slipped = exit_price * (1 - self._slippage)
+                        exit_fee = exit_price_slipped * (self._exit_fee + self._tax)
+                        net_exit = exit_price_slipped - exit_fee
+                        pnl = (net_exit - position["net_entry"]) * remaining
+                        pnl_pct = (net_exit - position["net_entry"]) / position["net_entry"]
+                        trades.append({
+                            "entry_ts": position["entry_ts"],
+                            "exit_ts": row["ts"],
+                            "entry_price": position["entry_price"],
+                            "exit_price": exit_price_slipped,
+                            "pnl": pnl,
+                            "pnl_pct": pnl_pct,
+                            "exit_reason": "trailing_stop",
+                        })
+                        logger.debug(
+                            f"[BT] 트레일링 청산 ts={row['ts']} exit={exit_price_slipped:.1f} "
+                            f"pnl={pnl:.1f} ratio={remaining:.0%}"
+                        )
+                        position = None
+                        strategy.on_exit()
+                    # 마지막 캔들 강제 청산 (나머지)
+                    elif idx == len(candles) - 1:
+                        exit_price_slipped = close * (1 - self._slippage)
+                        exit_fee = exit_price_slipped * (self._exit_fee + self._tax)
+                        net_exit = exit_price_slipped - exit_fee
+                        pnl = (net_exit - position["net_entry"]) * remaining
+                        pnl_pct = (net_exit - position["net_entry"]) / position["net_entry"]
+                        trades.append({
+                            "entry_ts": position["entry_ts"],
+                            "exit_ts": row["ts"],
+                            "entry_price": position["entry_price"],
+                            "exit_price": exit_price_slipped,
+                            "pnl": pnl,
+                            "pnl_pct": pnl_pct,
+                            "exit_reason": "forced_close",
+                        })
+                        position = None
+                        strategy.on_exit()
+
+                # TP2 확인 (캔들 고가 기준) — TP1 미히트 상태
+                elif position.get("tp2") and high >= position["tp2"]:
+                    exit_price = position["tp2"]
+                    exit_price_slipped = exit_price * (1 - self._slippage)
+                    exit_fee = exit_price_slipped * (self._exit_fee + self._tax)
+                    net_exit = exit_price_slipped - exit_fee
+                    pnl = net_exit - position["net_entry"]
+                    pnl_pct = pnl / position["net_entry"]
+                    trades.append({
+                        "entry_ts": position["entry_ts"],
+                        "exit_ts": row["ts"],
+                        "entry_price": position["entry_price"],
+                        "exit_price": exit_price_slipped,
+                        "pnl": pnl,
+                        "pnl_pct": pnl_pct,
+                        "exit_reason": "tp2",
+                    })
+                    position = None
+                    strategy.on_exit()
+
+                # 마지막 캔들 강제 청산 (TP1 미히트 상태)
+                elif idx == len(candles) - 1:
+                    exit_price_slipped = close * (1 - self._slippage)
+                    exit_fee = exit_price_slipped * (self._exit_fee + self._tax)
+                    net_exit = exit_price_slipped - exit_fee
+                    pnl = net_exit - position["net_entry"]
+                    pnl_pct = pnl / position["net_entry"]
+                    trades.append({
+                        "entry_ts": position["entry_ts"],
+                        "exit_ts": row["ts"],
+                        "entry_price": position["entry_price"],
+                        "exit_price": exit_price_slipped,
+                        "pnl": pnl,
+                        "pnl_pct": pnl_pct,
+                        "exit_reason": "forced_close",
+                    })
                     position = None
                     strategy.on_exit()
 

@@ -238,14 +238,13 @@ class _MockBuyStrategy(BaseStrategy):
 
 
 def test_run_backtest_basic():
-    """TP1 도달로 청산되는 기본 시나리오."""
+    """TP1 도달로 분할매도되는 기본 시나리오."""
     config = TradingConfig()
     bt = Backtester(db=MagicMock(), config=config)
     strategy = _MockBuyStrategy(config)
 
-    # 10개 캔들: 첫 캔들 매수 → 3번째 캔들 TP1(+2%) 도달
+    # 첫 캔들 매수 → 3번째 캔들 TP1(+2%) 도달 → 분할매도
     entry_close = 100_000.0
-    tp1 = entry_close * 1.02  # 102,000
 
     candle_rows = [
         {"ts": "2026-03-23T09:01:00", "open": 99_500, "high": 100_200, "low": 99_200, "close": entry_close, "volume": 1000, "vwap": 99_800},
@@ -257,18 +256,20 @@ def test_run_backtest_basic():
     result = bt.run_backtest(candles, strategy)
 
     assert "trades" in result
-    assert len(result["trades"]) >= 1, "최소 1건의 거래가 생성되어야 한다"
+    # TP1 분할매도(50%) + 나머지 강제청산 = 2건
+    assert len(result["trades"]) == 2, "TP1 분할매도 + 나머지 청산 = 2건"
 
-    trade = result["trades"][0]
-    assert trade["exit_reason"] == "tp1"
-    assert trade["entry_price"] > 0
-    assert trade["exit_price"] > 0
-    # 수수료/슬리피지 차감 후에도 이익이어야 한다
-    assert trade["pnl"] > 0
+    tp1_trade = result["trades"][0]
+    assert tp1_trade["exit_reason"] == "tp1"
+    assert tp1_trade["entry_price"] > 0
+    assert tp1_trade["exit_price"] > 0
+    assert tp1_trade["pnl"] > 0
 
-    assert result["total_trades"] == 1
-    assert result["wins"] == 1
-    assert result["win_rate"] == pytest.approx(1.0)
+    remaining_trade = result["trades"][1]
+    assert remaining_trade["exit_reason"] == "forced_close"
+
+    assert result["total_trades"] == 2
+    assert result["wins"] >= 1
 
 
 def test_run_backtest_stop_loss():
@@ -373,8 +374,10 @@ def test_fee_and_slippage_reduce_pnl():
     candles = _make_candles(candle_rows)
     result = bt.run_backtest(candles, strategy)
 
-    trade = result["trades"][0]
-    # 수수료/슬리피지 없이 계산한 raw 수익
-    raw_gain = entry_close * 1.02 - entry_close  # 2,000
+    # TP1 분할매도(50%) trade
+    tp1_trade = result["trades"][0]
+    assert tp1_trade["exit_reason"] == "tp1"
+    # 수수료/슬리피지 없이 계산한 raw 수익 (50% 비율)
+    raw_gain_50pct = (entry_close * 1.02 - entry_close) * 0.5  # 1,000
     # 실제 PnL은 raw보다 작아야 함 (수수료 차감)
-    assert trade["pnl"] < raw_gain
+    assert tp1_trade["pnl"] < raw_gain_50pct

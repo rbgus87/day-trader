@@ -15,10 +15,10 @@ class StrategySelector:
     REST API로 실시간 시장 데이터를 자동 수집한다.
     """
 
-    # 기본 임계값 (config.yaml의 strategy.selector 섹션으로 오버라이드 가능)
-    DEFAULT_ORB_GAP_THRESHOLD: float = 0.5          # KOSPI 갭 기준 (%)
-    DEFAULT_MOMENTUM_ETF_THRESHOLD: float = 1.5     # 섹터 ETF 변동 기준 (%)
-    DEFAULT_VWAP_RANGE_THRESHOLD: float = 0.5       # 지수 변동폭 기준 (%)
+    # 기본 임계값 (config.yaml의 strategy.selector 섹션과 통일)
+    DEFAULT_ORB_GAP_THRESHOLD: float = 0.8          # KOSPI 갭 기준 (%)
+    DEFAULT_MOMENTUM_ETF_THRESHOLD: float = 2.0     # 섹터 ETF 변동 기준 (%)
+    DEFAULT_VWAP_RANGE_THRESHOLD: float = 0.8       # 지수 변동폭 기준 (%)
 
     def __init__(self, config: AppConfig, rest_client: KiwoomRestClient) -> None:
         self._config = config
