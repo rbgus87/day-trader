@@ -91,15 +91,27 @@ class TelegramNotifier:
         return await self.send(msg)
 
     async def send_daily_report(
-        self, date: str, total_trades: int, wins: int, total_pnl: int, win_rate: float, strategy: str,
+        self,
+        date: str,
+        total_trades: int,
+        wins: int,
+        losses: int,
+        total_pnl: int,
+        win_rate: float,
+        strategy: str,
+        max_drawdown: float = 0.0,
     ) -> bool:
+        pnl_emoji = "📈" if total_pnl >= 0 else "📉"
         msg = (
             f"📊 <b>일일 성과 보고서</b>\n"
+            f"━━━━━━━━━━━━━━━━\n"
             f"날짜: {date}\n"
             f"전략: {strategy}\n"
-            f"매매: {total_trades}건 (승: {wins})\n"
+            f"━━━━━━━━━━━━━━━━\n"
+            f"매매: {total_trades}건 (승 {wins} / 패 {losses})\n"
             f"승률: {win_rate:.1%}\n"
-            f"손익: {total_pnl:+,}원"
+            f"{pnl_emoji} 손익: {total_pnl:+,}원\n"
+            f"최대낙폭: {max_drawdown:,.0f}원"
         )
         return await self.send(msg)
 

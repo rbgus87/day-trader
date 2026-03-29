@@ -9,10 +9,11 @@
 import asyncio
 import json
 
-import websockets
+from websockets.asyncio.client import connect as ws_connect
 from loguru import logger
 
 from core.auth import TokenManager
+from utils.market_calendar import is_ws_active_hours
 
 # 실시간 타입
 WS_TYPE_TICK = "0B"        # 체결
@@ -53,7 +54,7 @@ class KiwoomWebSocketClient:
     async def _establish_connection(self) -> None:
         """WS 연결 수립 + 구독 복원."""
         token = await self._token_manager.get_token()
-        self._ws = await websockets.connect(
+        self._ws = await ws_connect(
             self._ws_url,
             additional_headers={"authorization": f"Bearer {token}"},
             ping_interval=self.HEARTBEAT_INTERVAL,
@@ -105,7 +106,7 @@ class KiwoomWebSocketClient:
             self._subscriptions[real_type] = list(existing)
 
     async def _listen_loop(self) -> None:
-        """수신 루프 — 재연결 포함."""
+        """수신 루프 — 재연결 포함 (장 시간에만)."""
         reconnect_delay = self.RECONNECT_BASE_DELAY
         while self._running:
             try:
@@ -116,21 +117,24 @@ class KiwoomWebSocketClient:
                     except Exception as e:
                         logger.error(f"메시지 처리 오류: {e}")
                     reconnect_delay = self.RECONNECT_BASE_DELAY
-            except websockets.ConnectionClosed as e:
+            except Exception as e:
                 if not self._running:
                     break
-                logger.warning(f"WS 연결 끊김 (code={e.code}), {reconnect_delay}초 후 재연결")
+
+                # 장외 시간이면 재연결하지 않고 대기
+                if not is_ws_active_hours():
+                    logger.info("WS 끊김 — 장외 시간이므로 재연결 생략, 60초 후 재확인")
+                    await asyncio.sleep(60)
+                    continue
+
+                logger.warning(f"WS 연결 끊김: {e}, {reconnect_delay}초 후 재연결")
                 await asyncio.sleep(reconnect_delay)
                 reconnect_delay = min(reconnect_delay * 2, self.RECONNECT_MAX_DELAY)
                 try:
                     await self._establish_connection()
+                    reconnect_delay = self.RECONNECT_BASE_DELAY
                 except Exception as e2:
                     logger.error(f"재연결 실패: {e2}")
-            except Exception as e:
-                if not self._running:
-                    break
-                logger.error(f"WS 오류: {e}")
-                await asyncio.sleep(reconnect_delay)
 
     async def _dispatch(self, data: dict) -> None:
         """수신 데이터 타입별 라우팅."""

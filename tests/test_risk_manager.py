@@ -69,3 +69,38 @@ async def test_check_consecutive_losses(risk_mgr):
     ])
     reduced = await risk_mgr.check_consecutive_losses()
     assert reduced is True
+
+
+# ---------------------------------------------------------------------------
+# save_daily_summary 테스트
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_save_daily_summary_with_trades(risk_mgr):
+    """매매 기록이 있으면 daily_pnl 저장 + 요약 반환."""
+    risk_mgr._db.fetch_all = AsyncMock(return_value=[
+        {"strategy": "orb", "pnl": 15000, "pnl_pct": 0.02},
+        {"strategy": "orb", "pnl": -5000, "pnl_pct": -0.007},
+        {"strategy": "vwap", "pnl": 8000, "pnl_pct": 0.01},
+    ])
+    risk_mgr._db.execute = AsyncMock(return_value=1)
+
+    summary = await risk_mgr.save_daily_summary()
+
+    assert summary is not None
+    assert summary["total_trades"] == 3
+    assert summary["wins"] == 2
+    assert summary["losses"] == 1
+    assert summary["total_pnl"] == 18000
+    assert summary["strategy"] == "orb,vwap"
+    assert 0.66 < summary["win_rate"] < 0.67
+    risk_mgr._db.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_save_daily_summary_no_trades(risk_mgr):
+    """매매 기록이 없으면 None 반환."""
+    risk_mgr._db.fetch_all = AsyncMock(return_value=[])
+
+    summary = await risk_mgr.save_daily_summary()
+    assert summary is None

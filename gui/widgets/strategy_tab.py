@@ -73,7 +73,7 @@ class StrategyTab(QWidget):
         layout = QHBoxLayout()
         layout.setSpacing(8)
 
-        label = QLabel("활성 전략:")
+        label = QLabel("파라미터 편집:")
         label.setStyleSheet("font-weight: bold;")
         layout.addWidget(label)
 

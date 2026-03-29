@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -17,6 +17,7 @@ from screener.strategy_selector import StrategySelector
 def selector():
     """환경 변수 없이도 동작하는 모의 의존성 주입 선택기."""
     config = MagicMock()
+    config.selector = {}  # 기본 임계값 사용
     rest_client = MagicMock()
     return StrategySelector(config=config, rest_client=rest_client)
 
@@ -146,3 +147,74 @@ async def test_vwap_exact_threshold(selector):
     }
     strategy, _ = await selector.select(market_data)
     assert strategy == "vwap"
+
+
+# ---------------------------------------------------------------------------
+# collect_market_data 테스트
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_collect_market_data():
+    """REST API 호출로 시장 데이터를 수집한다."""
+    config = MagicMock()
+    config.selector = {}
+    rest_client = MagicMock()
+    rest_client.get_market_snapshot = AsyncMock(return_value={
+        "kospi_gap_pct": 0.7,
+        "sector_etf_change_pct": 1.8,
+        "top_sector": "반도체",
+        "index_range_pct": 0.3,
+    })
+
+    sel = StrategySelector(config=config, rest_client=rest_client)
+    data = await sel.collect_market_data(candidate_ticker="005930")
+
+    assert data["kospi_gap_pct"] == 0.7
+    assert data["candidate_ticker"] == "005930"
+    assert data["top_sector"] == "반도체"
+    rest_client.get_market_snapshot.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_select_auto_collects_when_no_market_data():
+    """market_data=None이면 REST API로 자동 수집 후 전략 선택."""
+    config = MagicMock()
+    config.selector = {}
+    rest_client = MagicMock()
+    rest_client.get_market_snapshot = AsyncMock(return_value={
+        "kospi_gap_pct": 0.8,
+        "sector_etf_change_pct": 0.0,
+        "top_sector": "",
+        "index_range_pct": 1.0,
+    })
+
+    sel = StrategySelector(config=config, rest_client=rest_client)
+    strategy, ticker = await sel.select(candidate_ticker="005930")
+
+    assert strategy == "orb"
+    assert ticker == "005930"
+
+
+# ---------------------------------------------------------------------------
+# config 임계값 오버라이드 테스트
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_config_threshold_override():
+    """config.yaml에서 임계값을 오버라이드하면 적용된다."""
+    config = MagicMock()
+    config.selector = {
+        "orb_gap_threshold": 1.0,   # 기본 0.5 → 1.0으로 상향
+    }
+    rest_client = MagicMock()
+    sel = StrategySelector(config=config, rest_client=rest_client)
+
+    # 갭 0.8%는 기본 임계값(0.5)에선 ORB이지만, 1.0으로 상향했으므로 ORB 아님
+    market_data = {
+        "kospi_gap_pct": 0.8,
+        "sector_etf_change_pct": 0.0,
+        "index_range_pct": 1.0,
+        "candidate_ticker": None,
+    }
+    strategy, _ = await sel.select(market_data)
+    assert strategy != "orb"

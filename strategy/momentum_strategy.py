@@ -18,7 +18,10 @@ class MomentumStrategy(BaseStrategy):
         self._config = config
         self._prev_day_high: float = 0.0
         self._prev_day_volume: int = 0
-        self._signal_fired: bool = False
+        self.configure_multi_trade(
+            max_trades=config.max_trades_per_day,
+            cooldown_minutes=config.cooldown_minutes,
+        )
 
     # ------------------------------------------------------------------
     # 전일 기준값 설정
@@ -43,10 +46,7 @@ class MomentumStrategy(BaseStrategy):
         4. 마지막 캔들 종가 > 전일 고점 (확인)
         5. 신호 1회만 발생
         """
-        if not self.is_tradable_time():
-            return None
-
-        if self._signal_fired:
+        if not self.can_trade():
             return None
 
         current_price: float = tick["price"]
@@ -68,7 +68,6 @@ class MomentumStrategy(BaseStrategy):
         if candles.iloc[-1]["close"] <= self._prev_day_high:
             return None
 
-        self._signal_fired = True
         logger.info(
             f"모멘텀 매수 신호: {tick['ticker']} price={current_price} "
             f"prev_high={self._prev_day_high} cum_vol={cum_volume:,.0f}"
@@ -83,8 +82,8 @@ class MomentumStrategy(BaseStrategy):
         )
 
     def get_stop_loss(self, entry_price: float) -> float:
-        """손절가: 진입가 × (1 - 1.5%) = 진입가 × 0.985."""
-        return entry_price * 0.985
+        """손절가: 진입가 × (1 + momentum_stop_loss_pct)."""
+        return entry_price * (1 + self._config.momentum_stop_loss_pct)
 
     def get_take_profit(self, entry_price: float) -> tuple[float, float]:
         """(tp1, tp2): tp1 = 진입가 × 1.02, tp2 = 0 (트레일링 스톱)."""
@@ -92,5 +91,5 @@ class MomentumStrategy(BaseStrategy):
         return tp1, 0
 
     def reset(self) -> None:
-        """일별 리셋 — 신호 플래그만 초기화 (기준값은 유지)."""
-        self._signal_fired = False
+        """일별 리셋 (기준값은 유지)."""
+        super().reset()

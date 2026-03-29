@@ -32,6 +32,9 @@ class DataCollector:
     async def collect_minute_candles(self, ticker: str, days: int = 30) -> int:
         """``ticker`` 의 과거 ``days`` 일치 분봉을 수집해 DB에 저장한다.
 
+        페이지네이션: 각 API 호출에서 가장 오래된 캔들의 날짜를 추출해
+        다음 호출의 ``base_dt`` 로 전달하여 이전 데이터를 가져온다.
+
         Args:
             ticker: 종목코드 (예: "005930")
             days: 수집 대상 영업일 수
@@ -42,52 +45,63 @@ class DataCollector:
         target = days * self._CANDLES_PER_DAY
         total_saved = 0
         total_fetched = 0
+        base_dt = ""  # 빈 문자열 = 최신 데이터부터
 
         logger.info(f"[DataCollector] {ticker} 분봉 수집 시작 (목표: {days}일 ≈ {target}개)")
 
         while total_fetched < target:
             try:
-                data = await self._rest.get_minute_ohlcv(ticker)
+                data = await self._rest.get_minute_ohlcv(ticker, base_dt=base_dt)
             except Exception as exc:
                 logger.error(f"[DataCollector] API 호출 실패: {exc}")
                 break
 
-            saved = await self._parse_and_save(ticker, data)
-            output = data.get("output2") or []
-            fetched = len(output)
+            candles = _extract_candles(data)
+            fetched = len(candles)
 
+            if fetched == 0:
+                break
+
+            saved = await self._parse_and_save(ticker, candles)
             total_saved += saved
             total_fetched += fetched
 
+            # 페이지네이션: 가장 오래된 캔들의 날짜를 다음 base_dt로 사용
+            oldest_cntr_tm = candles[-1].get("cntr_tm", "")
+            if len(oldest_cntr_tm) >= 8:
+                next_base_dt = oldest_cntr_tm[:8]  # YYYYMMDD 부분
+                if next_base_dt == base_dt:
+                    # 같은 날짜 반복 → 더 이상 이전 데이터 없음
+                    logger.debug(f"[DataCollector] {ticker} 페이지네이션 종료 (같은 날짜 반복)")
+                    break
+                base_dt = next_base_dt
+            else:
+                break
+
             logger.debug(
                 f"[DataCollector] {ticker} 페이지 완료 — "
-                f"fetched={fetched}, saved={saved}, total_saved={total_saved}"
+                f"fetched={fetched}, saved={saved}, total_saved={total_saved}, "
+                f"next_base_dt={base_dt}"
             )
 
-            # API가 빈 응답을 돌려주거나 PAGE_SIZE 미만이면 더 이상 데이터 없음
-            if fetched == 0 or fetched < self._PAGE_SIZE:
+            if fetched < self._PAGE_SIZE:
                 break
 
         logger.info(f"[DataCollector] {ticker} 수집 완료 — 총 저장: {total_saved}개")
         return total_saved
 
-    async def _parse_and_save(self, ticker: str, data: dict) -> int:
-        """API 응답을 파싱해 ``intraday_candles`` 테이블에 저장한다.
-
-        Args:
-            ticker: 종목코드
-            data: API 응답 dict (``data["output2"]`` 에 캔들 리스트)
+    async def _parse_and_save(self, ticker: str, candles: list[dict]) -> int:
+        """캔들 리스트를 파싱해 ``intraday_candles`` 테이블에 저장한다.
 
         Returns:
             저장된 캔들 수 (INSERT OR IGNORE 기준, 중복 제외)
         """
-        output2: list[dict] = data.get("output2") or []
-        if not output2:
+        if not candles:
             return 0
 
         saved = 0
-        for candle in output2:
-            ts = _parse_timestamp(candle.get("stck_cntg_hour", ""))
+        for candle in candles:
+            ts = _parse_timestamp(candle.get("cntr_tm", ""))
             if ts is None:
                 continue
 
@@ -95,11 +109,11 @@ class DataCollector:
                 ticker,
                 "1m",
                 ts,
-                _to_float(candle.get("stck_oprc")),
-                _to_float(candle.get("stck_hgpr")),
-                _to_float(candle.get("stck_lwpr")),
-                _to_float(candle.get("stck_clpr")),
-                _to_int(candle.get("cntg_vol")),
+                _abs_float(candle.get("open_pric")),
+                _abs_float(candle.get("high_pric")),
+                _abs_float(candle.get("low_pric")),
+                _abs_float(candle.get("cur_prc")),
+                _to_int(candle.get("trde_qty")),
             )
             result = await self._db.execute_safe(_INSERT_SQL, params)
             if result is not None:
@@ -112,32 +126,55 @@ class DataCollector:
 # 내부 헬퍼
 # ---------------------------------------------------------------------------
 
-def _parse_timestamp(raw: str) -> str | None:
-    """``"HHMMSS"`` 형식 문자열을 ``"HH:MM:SS"`` 로 변환한다.
+def _extract_candles(data: dict) -> list[dict]:
+    """API 응답에서 캔들 리스트를 추출한다.
 
-    날짜 정보가 API 응답에 없으므로 시각만 저장한다.
-    실제 운영에서는 날짜를 함께 받아 ``"YYYY-MM-DD HH:MM:SS"`` 로 구성한다.
+    키움 분봉 응답: ``data["stk_min_pole_chart_qry"]``
+    """
+    return (
+        data.get("stk_min_pole_chart_qry")
+        or data.get("output2")  # 하위 호환
+        or []
+    )
+
+
+def _parse_timestamp(raw: str) -> str | None:
+    """``"YYYYMMDDHHmmss"`` (14자리) 형식을 ``"YYYY-MM-DD HH:MM:SS"`` 로 변환한다.
 
     Args:
-        raw: 키움 API의 ``stck_cntg_hour`` 값 (예: ``"090100"``)
+        raw: 키움 API의 ``cntr_tm`` 값 (예: ``"20260323090100"``)
 
     Returns:
-        ``"HH:MM:SS"`` 문자열, 파싱 불가 시 ``None``
+        ``"YYYY-MM-DD HH:MM:SS"`` 문자열, 파싱 불가 시 ``None``
     """
-    if not raw or len(raw) < 6:
-        return None
-    try:
-        hh, mm, ss = raw[:2], raw[2:4], raw[4:6]
-        return f"{hh}:{mm}:{ss}"
-    except Exception:
+    if not raw:
         return None
 
+    # 14자리 (날짜+시각) 또는 6자리 (시각만) 지원
+    if len(raw) >= 14:
+        try:
+            date = f"{raw[:4]}-{raw[4:6]}-{raw[6:8]}"
+            time = f"{raw[8:10]}:{raw[10:12]}:{raw[12:14]}"
+            return f"{date} {time}"
+        except Exception:
+            return None
+    elif len(raw) >= 6:
+        try:
+            return f"{raw[:2]}:{raw[2:4]}:{raw[4:6]}"
+        except Exception:
+            return None
+    return None
 
-def _to_float(value) -> float | None:
+
+def _abs_float(value) -> float | None:
+    """부호 포함 가격을 절대값 float로 변환한다.
+
+    키움 API는 전일 대비 하락 시 음수로 반환한다.
+    """
     if value is None:
         return None
     try:
-        return float(value)
+        return abs(float(value))
     except (ValueError, TypeError):
         return None
 

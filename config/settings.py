@@ -59,6 +59,8 @@ class TradingConfig:
 
     # 진입
     entry_1st_ratio: float = 0.55
+    max_trades_per_day: int = 5
+    cooldown_minutes: int = 10
 
     # 시간
     signal_block_until: str = "09:05"
@@ -69,8 +71,9 @@ class TradingConfig:
     # ORB 전략
     orb_range_start: str = "09:05"
     orb_range_end: str = "09:15"
-    orb_volume_ratio: float = 1.5
+    orb_volume_ratio: float = 0.0
     orb_stop_loss_pct: float = -0.015
+    orb_min_range_pct: float = 0.008
 
     # VWAP 전략
     vwap_rsi_low: float = 40.0
@@ -79,6 +82,7 @@ class TradingConfig:
 
     # 모멘텀 전략
     momentum_volume_ratio: float = 2.0
+    momentum_stop_loss_pct: float = -0.008
 
     # 눌림목 전략
     pullback_min_gain_pct: float = 0.03
@@ -87,11 +91,11 @@ class TradingConfig:
 
 @dataclass(frozen=True)
 class ScreenerConfig:
-    min_market_cap: int = 300_000_000_000
-    min_avg_volume_amount: int = 5_000_000_000
+    min_market_cap: int = 200_000_000_000
+    min_avg_volume_amount: int = 10_000_000_000
     ma20_ascending: bool = True
     volume_surge_ratio: float = 1.5
-    min_atr_pct: float = 0.02
+    min_atr_pct: float = 0.03
 
 
 @dataclass(frozen=True)
@@ -103,6 +107,8 @@ class AppConfig:
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
     debug: bool = field(default_factory=lambda: os.getenv("DEBUG", "false").lower() == "true")
     db_path: str = "daytrader.db"
+    paper_mode: bool = True  # True=주문 시뮬레이션, False=실매매
+    selector: dict = field(default_factory=dict)  # 전략 선택기 임계값
 
     @staticmethod
     def from_yaml(path: str | Path | None = None) -> "AppConfig":
@@ -144,18 +150,22 @@ class AppConfig:
             tp1_sell_ratio=t.get("tp1_sell_ratio", 0.5),
             trailing_stop_pct=t.get("trailing_stop_pct", 0.01),
             entry_1st_ratio=t.get("entry_1st_ratio", 0.55),
+            max_trades_per_day=t.get("max_trades_per_day", 5),
+            cooldown_minutes=t.get("cooldown_minutes", 10),
             signal_block_until=t.get("signal_block_until", "09:05"),
             force_close_time=t.get("force_close_time", "15:10"),
             screening_time=t.get("screening_time", "08:30"),
             report_time=t.get("report_time", "15:30"),
             orb_range_start=orb.get("range_start", "09:05"),
             orb_range_end=orb.get("range_end", "09:15"),
-            orb_volume_ratio=orb.get("volume_ratio", 1.5),
+            orb_volume_ratio=orb.get("volume_ratio", 1.0),
             orb_stop_loss_pct=orb.get("stop_loss_pct", -0.015),
+            orb_min_range_pct=orb.get("min_range_pct", 0.008),
             vwap_rsi_low=vwap.get("rsi_low", 40.0),
             vwap_rsi_high=vwap.get("rsi_high", 60.0),
             vwap_stop_loss_pct=vwap.get("stop_loss_pct", -0.012),
             momentum_volume_ratio=mom.get("volume_ratio", 2.0),
+            momentum_stop_loss_pct=mom.get("stop_loss_pct", -0.008),
             pullback_min_gain_pct=pb.get("min_gain_pct", 0.03),
             pullback_stop_loss_pct=pb.get("stop_loss_pct", -0.015),
         )
@@ -169,6 +179,9 @@ class AppConfig:
             min_atr_pct=sc.get("min_atr_pct", 0.02),
         )
 
+        # 전략 선택기 임계값
+        selector = s.get("selector", {})
+
         return AppConfig(
             kiwoom=kiwoom,
             telegram=telegram,
@@ -176,4 +189,6 @@ class AppConfig:
             screener=screener,
             log_level=os.getenv("LOG_LEVEL", "INFO"),
             debug=os.getenv("DEBUG", "false").lower() == "true",
+            paper_mode=cfg.get("paper_mode", True),
+            selector=selector,
         )

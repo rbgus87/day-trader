@@ -79,7 +79,7 @@ async def test_load_candles(db: DbManager, backtester: Backtester):
 
     assert isinstance(df, pd.DataFrame), "반환 타입은 DataFrame이어야 한다"
     assert len(df) == 3, "005930 종목 캔들 3개가 반환되어야 한다"
-    assert list(df.columns) == ["ts", "open", "high", "low", "close", "volume", "vwap"]
+    assert list(df.columns) == ["ts", "open", "high", "low", "close", "volume", "vwap", "time"]
     assert df.iloc[0]["close"] == 70200
     assert df.iloc[2]["close"] == 70900
     # ts 컬럼이 datetime 타입인지 확인

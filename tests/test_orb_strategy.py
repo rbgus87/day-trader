@@ -10,7 +10,9 @@ from config.settings import TradingConfig
 
 @pytest.fixture
 def orb():
-    return OrbStrategy(TradingConfig())
+    s = OrbStrategy(TradingConfig())
+    s.configure_multi_trade(max_trades=5, cooldown_minutes=0)
+    return s
 
 
 def test_no_signal_during_range_building(orb):
@@ -60,7 +62,8 @@ def test_take_profit(orb):
     assert tp2 == 0
 
 
-def test_signal_fires_only_once(orb):
+def test_no_signal_while_in_position(orb):
+    """포지션 보유 중에는 추가 신호가 발생하지 않는다."""
     orb._range_high = 70400
     orb._range_low = 69600
     candles = pd.DataFrame({
@@ -70,6 +73,10 @@ def test_signal_fires_only_once(orb):
     tick = {"ticker": "005930", "price": 70500, "time": "091600", "volume": 500}
     with patch.object(orb, "is_tradable_time", return_value=True):
         sig1 = orb.generate_signal(candles, tick)
-        sig2 = orb.generate_signal(candles, tick)
         assert sig1 is not None
-        assert sig2 is None
+        orb.on_entry()  # 포지션 진입
+        sig2 = orb.generate_signal(candles, tick)
+        assert sig2 is None  # 포지션 보유 중 차단
+        orb.on_exit()  # 청산
+        sig3 = orb.generate_signal(candles, tick)
+        assert sig3 is not None  # 재진입 가능

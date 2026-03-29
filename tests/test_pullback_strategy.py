@@ -15,6 +15,7 @@ OPEN_PRICE = 10000  # 당일 시가
 def strategy():
     s = PullbackStrategy(TradingConfig())
     s.set_open_price(OPEN_PRICE)
+    s.configure_multi_trade(max_trades=5, cooldown_minutes=0)
     return s
 
 
@@ -137,8 +138,8 @@ def test_stop_loss(strategy):
 # ──────────────────────────────────────────────
 # 보조 테스트: 신호는 1회만 발생
 # ──────────────────────────────────────────────
-def test_signal_fires_only_once(strategy):
-    """동일 조건에서 신호는 1회만 발생해야 한다."""
+def test_no_signal_while_in_position(strategy):
+    """포지션 보유 중에는 추가 신호가 발생하지 않는다."""
     n = 25
     candles = _make_candles(n=n, ascending_ma20=True)
     ma5 = candles["close"].iloc[-5:].mean()
@@ -148,10 +149,13 @@ def test_signal_fires_only_once(strategy):
 
     with patch.object(strategy, "is_tradable_time", return_value=True):
         sig1 = strategy.generate_signal(candles, tick)
+        assert sig1 is not None
+        strategy.on_entry()
         sig2 = strategy.generate_signal(candles, tick)
-
-    assert sig1 is not None
-    assert sig2 is None
+        assert sig2 is None
+        strategy.on_exit()
+        sig3 = strategy.generate_signal(candles, tick)
+        assert sig3 is not None
 
 
 # ──────────────────────────────────────────────

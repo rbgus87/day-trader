@@ -26,14 +26,17 @@ class PullbackStrategy(BaseStrategy):
     def __init__(self, config: TradingConfig):
         self._config = config
         self._open_price: float | None = None
-        self._signal_fired: bool = False
+        self.configure_multi_trade(
+            max_trades=config.max_trades_per_day,
+            cooldown_minutes=config.cooldown_minutes,
+        )
 
     def set_open_price(self, price: float) -> None:
         """당일 시가 설정."""
         self._open_price = price
 
     def generate_signal(self, candles: pd.DataFrame, tick: dict) -> Signal | None:
-        if not self.is_tradable_time() or self._signal_fired:
+        if not self.can_trade():
             return None
 
         if self._open_price is None or self._open_price <= 0:
@@ -75,7 +78,6 @@ class PullbackStrategy(BaseStrategy):
             logger.debug("눌림목: MA20 정배열 미충족")
             return None
 
-        self._signal_fired = True
         ticker = tick.get("ticker", "")
         logger.info(
             f"눌림목 매수 신호: {ticker} price={current_price} "
@@ -102,5 +104,5 @@ class PullbackStrategy(BaseStrategy):
 
     def reset(self) -> None:
         """일일 초기화."""
+        super().reset()
         self._open_price = None
-        self._signal_fired = False

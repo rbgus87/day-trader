@@ -4,9 +4,12 @@
 # 민감 정보(API키, 계좌번호 등)는 .env 파일에서 관리합니다.
 # 이 파일은 git에 커밋되므로 비밀번호/토큰을 절대 포함하지 마세요.
 
+# --- 모드 ---
+paper_mode: true                    # true=주문 시뮬레이션(페이퍼), false=실매매(라이브)
+
 # --- 매매 기본 설정 ---
 trading:
-  initial_capital: 10_000_000       # 초기 자본금 (원)
+  initial_capital: 1_000_000       # 초기 자본금 (원)
 
   # 리스크
   stop_loss_pct: -0.015             # 손절률 -1.5%
@@ -15,12 +18,14 @@ trading:
   reduced_position_pct: 0.5         # 연속 손실 시 포지션 50%로 축소
 
   # 익절
-  tp1_pct: 0.02                     # 1차 익절 +2%
+  tp1_pct: 0.03                     # 1차 익절 +3% (최적화 결과: 2%→3%)
   tp1_sell_ratio: 0.5               # 1차 익절 시 50% 매도
   trailing_stop_pct: 0.01           # 고점 대비 -1% 트레일링 스톱
 
   # 진입
   entry_1st_ratio: 0.55             # 1차 매수 비율 55% (나머지 2차 매수)
+  max_trades_per_day: 3             # 일일 최대 거래 횟수 (최적화 결과: 5→3)
+  cooldown_minutes: 15              # 청산 후 재진입 대기 (최적화 결과: 10→15분)
 
   # 시간
   signal_block_until: "09:05"       # 09:05 이전 신호 차단 (장 초반 변동성 회피)
@@ -34,8 +39,9 @@ strategy:
   orb:
     range_start: "09:05"            # 레인지 측정 시작
     range_end: "09:15"              # 레인지 측정 종료
-    volume_ratio: 1.5               # 전일 대비 거래량 150% 이상
+    volume_ratio: 0.0               # 0=비활성화
     stop_loss_pct: -0.015           # 손절 -1.5%
+    min_range_pct: 0.008            # 최소 레인지 폭 0.8%
 
   # VWAP 회귀 — VWAP 하단 터치 후 반등
   vwap:
@@ -43,24 +49,32 @@ strategy:
     rsi_high: 60.0                  # RSI(14) 상한
     stop_loss_pct: -0.012           # 손절 -1.2%
 
-  # 모멘텀 브레이크아웃 — 전일 고점 돌파
+  # 모멘텀 브레이크아웃 — 전일 고점 돌파 (최적화: PF 2.10, Sharpe 4.38)
   momentum:
     volume_ratio: 2.0               # 전일 대비 거래량 200% 이상
+    stop_loss_pct: -0.008           # 손절 -0.8% (최적화 결과: -1.5%→-0.8%)
 
   # 눌림목 — 당일 상승 종목의 조정 후 반등
   pullback:
-    min_gain_pct: 0.03              # 당일 +3% 이상 종목 대상
-    stop_loss_pct: -0.015           # 손절 -1.5%
+    min_gain_pct: 0.04              # 당일 +4% 이상 (최적화 결과: 3%→4%)
+    stop_loss_pct: -0.018           # 손절 -1.8% (최적화 결과: -1.5%→-1.8%)
+
+  # 전략 선택기 임계값 (StrategySelector)
+  # 코스닥 중대형 타깃 — 갭/변동폭이 코스피보다 크므로 임계값 상향
+  selector:
+    orb_gap_threshold: 0.8          # KOSPI 갭 ≥ 0.8% → ORB 전략 (코스닥 빈발 구간)
+    momentum_etf_threshold: 2.0     # 섹터 ETF 등락 ≥ 2.0% → 모멘텀 전략
+    vwap_range_threshold: 0.8       # 지수 변동폭 ≤ 0.8% → VWAP 전략 (횡보 판단 완화)
 
 # --- 스크리닝 필터 ---
+# 코스닥 중대형 포함을 위해 시가총액 하한 완화, ATR 하한 상향
 screener:
-  min_market_cap: 300_000_000_000   # 시가총액 3,000억원 이상
-  min_avg_volume_amount: 5_000_000_000  # 일평균 거래대금 50억원 이상
+  min_market_cap: 200_000_000_000   # 시가총액 2,000억원 이상 (코스닥 대형 포함)
+  min_avg_volume_amount: 10_000_000_000 # 일평균 거래대금 100억원 이상 (유동성 강화)
   volume_surge_ratio: 1.5           # 전일 거래량 +50% 이상
-  min_atr_pct: 0.02                 # ATR(14) / 종가 2% 이상
+  min_atr_pct: 0.03                 # ATR(14) / 종가 3% 이상 (변동성 하한 상향)
 
 # --- 브로커 연결 (키움 REST API) ---
-# paper/live 모두 실전 서버 사용 (paper 모드는 주문만 시뮬레이션)
 broker:
   base_url: "https://api.kiwoom.com"
   ws_url: "wss://api.kiwoom.com:10000/api/dostk/websocket"
@@ -71,8 +85,8 @@ broker:
 backtest:
   commission: 0.00015               # 수수료 0.015% (매수/매도 각각)
   tax: 0.0018                       # 거래세 0.18% (매도 시에만)
-  slippage: 0.0005                  # 슬리피지 0.05%
-  initial_capital: 10_000_000       # 백테스트 초기 자본금
+  slippage: 0.0003                  # 슬리피지 0.03% (대형주 현실적 수준)
+  initial_capital: 1_000_000        # 백테스트 초기 자본금
 
 # --- 스케줄러 ---
 schedule:

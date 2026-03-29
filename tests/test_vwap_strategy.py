@@ -165,18 +165,18 @@ class TestSignalOnVwapBounce:
         assert signal.strategy == "vwap"
         assert signal.ticker == "005930"
 
-    def test_no_duplicate_signal(self):
-        """신호가 한 번 발생한 후 중복 신호가 생성되지 않아야 한다."""
+    def test_no_signal_while_in_position(self):
+        """포지션 보유 중에는 추가 신호가 발생하지 않는다."""
         strategy, candles, vwap = self._build_strategy_and_candles_with_touch()
         tick = _make_tick(price=vwap + 100)
 
         with patch.object(strategy, "is_tradable_time", return_value=True):
             with patch("strategy.vwap_strategy._calc_rsi", return_value=50.0):
                 signal1 = strategy.generate_signal(candles, tick)
+                assert signal1 is not None
+                strategy.on_entry()
                 signal2 = strategy.generate_signal(candles, tick)
-
-        assert signal1 is not None
-        assert signal2 is None
+                assert signal2 is None
 
     def test_reset_clears_state(self):
         """reset() 후 상태가 초기화되어야 한다."""
@@ -186,11 +186,12 @@ class TestSignalOnVwapBounce:
         with patch.object(strategy, "is_tradable_time", return_value=True):
             with patch("strategy.vwap_strategy._calc_rsi", return_value=50.0):
                 strategy.generate_signal(candles, tick)
+                strategy.on_entry()
 
-        assert strategy._signal_fired is True
+        assert strategy._has_position is True
 
         strategy.reset()
-        assert strategy._signal_fired is False
+        assert strategy._has_position is False
         assert strategy._touched_lower_band is False
 
 

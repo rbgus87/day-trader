@@ -10,3 +10,10 @@ logs/
 dist/
 build/
 .pytest_cache/
+
+# GUI build
+*.spec
+DayTrader.exe
+
+# Superpowers
+.superpowers/

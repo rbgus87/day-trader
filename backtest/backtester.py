@@ -4,6 +4,7 @@ PRD F-BT-01: intraday_candles DB에서 과거 분봉 로드, 전략 시뮬레이
 """
 
 import math
+from datetime import time as dt_time
 from typing import Any
 
 import pandas as pd
@@ -13,7 +14,7 @@ from config.settings import TradingConfig
 from data.db_manager import DbManager
 from strategy.base_strategy import BaseStrategy, Signal
 
-# 수수료 상수
+# 기본 수수료 상수 (config.yaml backtest 섹션으로 덮어쓸 수 있음)
 ENTRY_FEE_RATE: float = 0.00015   # 0.015%
 EXIT_FEE_RATE: float = 0.00015    # 0.015%
 SELL_TAX_RATE: float = 0.0018     # 0.18% (증권거래세)
@@ -23,9 +24,21 @@ SLIPPAGE_RATE: float = 0.00005    # 0.005% (슬리피지 가정)
 class Backtester:
     """순수 pandas 기반 단타 전략 백테스터."""
 
-    def __init__(self, db: DbManager, config: TradingConfig) -> None:
+    def __init__(
+        self,
+        db: DbManager,
+        config: TradingConfig,
+        commission: float | None = None,
+        tax: float | None = None,
+        slippage: float | None = None,
+    ) -> None:
         self._db = db
         self._config = config
+        # config.yaml backtest 섹션 값 우선, 없으면 글로벌 상수
+        self._entry_fee = commission if commission is not None else ENTRY_FEE_RATE
+        self._exit_fee = commission if commission is not None else EXIT_FEE_RATE
+        self._tax = tax if tax is not None else SELL_TAX_RATE
+        self._slippage = slippage if slippage is not None else SLIPPAGE_RATE
 
     # ------------------------------------------------------------------
     # 데이터 로드
@@ -63,6 +76,8 @@ class Backtester:
 
         df = pd.DataFrame(rows)
         df["ts"] = pd.to_datetime(df["ts"])
+        # 전략이 사용하는 time 컬럼 추가 (HH:MM 형식)
+        df["time"] = df["ts"].dt.strftime("%H:%M")
         logger.info(f"캔들 로드: ticker={ticker} rows={len(df)}")
         return df
 
@@ -88,15 +103,23 @@ class Backtester:
             logger.warning("빈 캔들 데이터 — 백테스트 스킵")
             return {**self.calculate_kpi([]), "trades": []}
 
+        # 0-기반 정수 인덱스 보장 (look-ahead bias 방지)
+        candles = candles.reset_index(drop=True)
+
         trades: list[dict] = []
         position: dict | None = None          # 현재 보유 포지션
         accumulated: list[dict] = []          # 전략에 전달할 과거 캔들 누적
 
         for idx, row in candles.iterrows():
+            ts = row["ts"]
+            # 백테스트 모드: 시뮬레이션 시각을 전략에 주입
+            if hasattr(ts, "time"):
+                strategy.set_backtest_time(ts.time())
+
             tick = {
                 "ticker": "BACKTEST",
                 "price": float(row["close"]),
-                "time": row["ts"].strftime("%H%M") if hasattr(row["ts"], "strftime") else str(row["ts"])[11:16].replace(":", ""),
+                "time": ts.strftime("%H%M") if hasattr(ts, "strftime") else str(ts)[11:16].replace(":", ""),
                 "volume": int(row.get("volume", 0)),
             }
 
@@ -110,10 +133,11 @@ class Backtester:
             if position is None:
                 signal: Signal | None = strategy.generate_signal(candles_so_far, tick)
                 if signal is not None and signal.side == "buy":
+                    strategy.on_entry()
                     entry_price_raw = float(row["close"])
                     # 슬리피지 적용 (매수 시 불리)
-                    entry_price = entry_price_raw * (1 + SLIPPAGE_RATE)
-                    entry_fee = entry_price * ENTRY_FEE_RATE
+                    entry_price = entry_price_raw * (1 + self._slippage)
+                    entry_fee = entry_price * self._entry_fee
                     net_entry = entry_price + entry_fee
 
                     stop_loss = strategy.get_stop_loss(entry_price)
@@ -162,8 +186,8 @@ class Backtester:
 
                 if exit_price is not None:
                     # 슬리피지 적용 (매도 시 불리)
-                    exit_price_slipped = exit_price * (1 - SLIPPAGE_RATE)
-                    exit_fee = exit_price_slipped * (EXIT_FEE_RATE + SELL_TAX_RATE)
+                    exit_price_slipped = exit_price * (1 - self._slippage)
+                    exit_fee = exit_price_slipped * (self._exit_fee + self._tax)
                     net_exit = exit_price_slipped - exit_fee
 
                     pnl = net_exit - position["net_entry"]
@@ -184,6 +208,10 @@ class Backtester:
                         f"exit={exit_price_slipped:.1f} pnl={pnl:.1f} ({pnl_pct:.2%})"
                     )
                     position = None
+                    strategy.on_exit()
+
+        # 백테스트 시각 초기화
+        strategy.set_backtest_time(None)
 
         kpi = self.calculate_kpi(trades)
         kpi["trades"] = trades
@@ -248,8 +276,87 @@ class Backtester:
         }
 
     # ------------------------------------------------------------------
+    # 다일 백테스트
+    # ------------------------------------------------------------------
+
+    async def run_multi_day(
+        self,
+        ticker: str,
+        start_date: str,
+        end_date: str,
+        strategy: BaseStrategy,
+    ) -> dict[str, Any]:
+        """여러 날에 걸쳐 하루씩 전략을 리셋하며 백테스트.
+
+        Args:
+            ticker:     종목코드
+            start_date: 시작 날짜 (YYYY-MM-DD)
+            end_date:   종료 날짜 (YYYY-MM-DD)
+            strategy:   BaseStrategy 구현체 (매일 reset())
+
+        Returns:
+            통합 KPI + trades
+        """
+        all_candles = await self.load_candles(ticker, start_date, f"{end_date} 23:59:59")
+        if all_candles.empty:
+            return {**self.calculate_kpi([]), "trades": []}
+
+        # 날짜별 그루핑
+        all_candles["date"] = all_candles["ts"].dt.date
+        all_trades: list[dict] = []
+        prev_day_df: pd.DataFrame | None = None
+
+        for date, day_candles in all_candles.groupby("date"):
+            day_df = day_candles.drop(columns=["date"]).reset_index(drop=True)
+            strategy.reset()
+
+            # 전략별 전일 데이터 자동 설정
+            self._setup_strategy_day(strategy, day_df, prev_day_df)
+
+            result = self.run_backtest(day_df, strategy)
+            day_trades = result.get("trades", [])
+            all_trades.extend(day_trades)
+            logger.info(
+                f"[{date}] trades={len(day_trades)} "
+                f"pnl={sum(t['pnl'] for t in day_trades):.0f}"
+            )
+            prev_day_df = day_df
+
+        kpi = self.calculate_kpi(all_trades)
+        kpi["trades"] = all_trades
+        logger.info(
+            f"다일 백테스트 완료: days={len(all_candles['date'].unique())} "
+            f"total_trades={kpi['total_trades']} "
+            f"win_rate={kpi['win_rate']:.1%} total_pnl={kpi['total_pnl']:.1f}"
+        )
+        return kpi
+
+    # ------------------------------------------------------------------
     # 내부 헬퍼
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _setup_strategy_day(
+        strategy: BaseStrategy,
+        day_df: pd.DataFrame,
+        prev_day_df: pd.DataFrame | None,
+    ) -> None:
+        """전략별 당일/전일 데이터를 자동 설정한다."""
+        # Momentum: 전일 고가/거래량 설정
+        if hasattr(strategy, "set_prev_day_data") and prev_day_df is not None:
+            prev_high = float(prev_day_df["high"].max())
+            prev_volume = int(prev_day_df["volume"].sum())
+            strategy.set_prev_day_data(prev_high, prev_volume)
+
+        # ORB: 전일 거래량 설정
+        if hasattr(strategy, "set_prev_day_volume") and prev_day_df is not None:
+            prev_volume = int(prev_day_df["volume"].sum())
+            strategy.set_prev_day_volume(prev_volume)
+
+        # Pullback: 당일 시가 설정
+        if hasattr(strategy, "set_open_price") and not day_df.empty:
+            open_price = float(day_df.iloc[0]["open"])
+            strategy.set_open_price(open_price)
 
     @staticmethod
     def _calc_max_drawdown(pnl_series: list[float]) -> float:

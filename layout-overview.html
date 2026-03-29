@@ -1,0 +1,159 @@
+<h2>Day Trader GUI — 전체 레이아웃</h2>
+<p class="subtitle">좌측 사이드바(제어 패널) + 우측 5탭 콘텐츠 영역 + 하단 상태바</p>
+
+<div class="mockup" style="margin-top:24px;">
+  <div class="mockup-header">DayTrader v0.1 — 1280×800 (최소 1100×720)</div>
+  <div class="mockup-body" style="padding:0; background:#1e1e2e; color:#cdd6f4; font-family:monospace; font-size:13px;">
+
+    <!-- Main layout -->
+    <div style="display:flex; height:520px;">
+
+      <!-- LEFT SIDEBAR -->
+      <div style="width:220px; min-width:220px; background:#181825; border-right:1px solid #313244; padding:12px; display:flex; flex-direction:column; gap:10px;">
+
+        <!-- App Title -->
+        <div style="text-align:center; padding:8px 0; border-bottom:1px solid #313244;">
+          <div style="font-size:16px; font-weight:bold; color:#cba6f7;">DayTrader</div>
+          <div style="font-size:11px; color:#6c7086;">v0.1.0</div>
+        </div>
+
+        <!-- Mode Selector -->
+        <div style="background:#313244; border-radius:6px; padding:8px;">
+          <div style="font-size:10px; color:#6c7086; text-transform:uppercase; margin-bottom:4px;">Trading Mode</div>
+          <div style="display:flex; gap:4px;">
+            <div style="flex:1; text-align:center; padding:4px; background:#45475a; border-radius:4px; color:#a6e3a1; font-size:11px;">PAPER</div>
+            <div style="flex:1; text-align:center; padding:4px; border-radius:4px; color:#6c7086; font-size:11px;">LIVE</div>
+          </div>
+        </div>
+
+        <!-- Engine Status -->
+        <div style="background:#313244; border-radius:6px; padding:8px;">
+          <div style="font-size:10px; color:#6c7086; text-transform:uppercase; margin-bottom:4px;">Engine Status</div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <div style="width:8px; height:8px; border-radius:50%; background:#a6e3a1;"></div>
+            <span style="color:#a6e3a1; font-size:12px;">Running</span>
+          </div>
+          <div style="font-size:10px; color:#6c7086; margin-top:4px;">Strategy: ORB</div>
+          <div style="font-size:10px; color:#6c7086;">Target: 삼성전자</div>
+        </div>
+
+        <!-- Control Buttons -->
+        <div style="display:flex; flex-direction:column; gap:4px;">
+          <div style="background:#a6e3a1; color:#1e1e2e; text-align:center; padding:6px; border-radius:4px; font-size:12px; font-weight:bold;">Start</div>
+          <div style="background:#f38ba8; color:#1e1e2e; text-align:center; padding:6px; border-radius:4px; font-size:12px; font-weight:bold;">Stop</div>
+          <div style="background:#fab387; color:#1e1e2e; text-align:center; padding:6px; border-radius:4px; font-size:12px; font-weight:bold;">Halt (긴급)</div>
+        </div>
+
+        <!-- Manual Actions -->
+        <div style="background:#313244; border-radius:6px; padding:8px;">
+          <div style="font-size:10px; color:#6c7086; text-transform:uppercase; margin-bottom:4px;">Manual Actions</div>
+          <div style="display:flex; flex-direction:column; gap:3px;">
+            <div style="background:#45475a; text-align:center; padding:4px; border-radius:3px; font-size:11px; color:#cdd6f4;">Screening</div>
+            <div style="background:#45475a; text-align:center; padding:4px; border-radius:3px; font-size:11px; color:#cdd6f4;">Force Close</div>
+            <div style="background:#45475a; text-align:center; padding:4px; border-radius:3px; font-size:11px; color:#cdd6f4;">Daily Report</div>
+            <div style="background:#45475a; text-align:center; padding:4px; border-radius:3px; font-size:11px; color:#cdd6f4;">WS Reconnect</div>
+          </div>
+        </div>
+
+        <!-- Spacer -->
+        <div style="flex:1;"></div>
+
+        <!-- Connection Status -->
+        <div style="background:#313244; border-radius:6px; padding:8px;">
+          <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+            <div style="width:6px; height:6px; border-radius:50%; background:#a6e3a1;"></div>
+            <span style="font-size:11px; color:#a6e3a1;">REST Connected</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <div style="width:6px; height:6px; border-radius:50%; background:#a6e3a1;"></div>
+            <span style="font-size:11px; color:#a6e3a1;">WS Connected</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT CONTENT AREA -->
+      <div style="flex:1; display:flex; flex-direction:column;">
+
+        <!-- Tab Bar -->
+        <div style="display:flex; background:#181825; border-bottom:1px solid #313244;">
+          <div style="padding:10px 20px; background:#1e1e2e; color:#cba6f7; font-size:13px; font-weight:bold; border-bottom:2px solid #cba6f7;">Dashboard</div>
+          <div style="padding:10px 20px; color:#6c7086; font-size:13px;">Screener</div>
+          <div style="padding:10px 20px; color:#6c7086; font-size:13px;">Backtest</div>
+          <div style="padding:10px 20px; color:#6c7086; font-size:13px;">Strategy</div>
+          <div style="padding:10px 20px; color:#6c7086; font-size:13px;">Log</div>
+        </div>
+
+        <!-- Dashboard Content -->
+        <div style="flex:1; padding:12px; display:flex; flex-direction:column; gap:10px; overflow:auto;">
+
+          <!-- Summary Bar -->
+          <div style="display:flex; gap:10px;">
+            <div style="flex:1; background:#313244; border-radius:6px; padding:10px;">
+              <div style="font-size:10px; color:#6c7086;">Daily P&L</div>
+              <div style="font-size:18px; font-weight:bold; color:#a6e3a1;">+125,000</div>
+              <div style="font-size:10px; color:#a6e3a1;">+0.63%</div>
+            </div>
+            <div style="flex:1; background:#313244; border-radius:6px; padding:10px;">
+              <div style="font-size:10px; color:#6c7086;">Trades Today</div>
+              <div style="font-size:18px; font-weight:bold; color:#cdd6f4;">3 / 5</div>
+              <div style="font-size:10px; color:#a6e3a1;">Win 2 / Loss 1</div>
+            </div>
+            <div style="flex:1; background:#313244; border-radius:6px; padding:10px;">
+              <div style="font-size:10px; color:#6c7086;">Win Rate</div>
+              <div style="font-size:18px; font-weight:bold; color:#f9e2af;">66.7%</div>
+              <div style="font-size:10px; color:#6c7086;">Avg: 72.3%</div>
+            </div>
+            <div style="flex:1; background:#313244; border-radius:6px; padding:10px;">
+              <div style="font-size:10px; color:#6c7086;">Risk Status</div>
+              <div style="font-size:18px; font-weight:bold; color:#a6e3a1;">Normal</div>
+              <div style="font-size:10px; color:#6c7086;">DD: -0.3%</div>
+            </div>
+          </div>
+
+          <!-- Positions Table -->
+          <div style="background:#313244; border-radius:6px; padding:10px; flex:1;">
+            <div style="font-size:12px; font-weight:bold; color:#cdd6f4; margin-bottom:8px;">Active Positions</div>
+            <table style="width:100%; font-size:11px; border-collapse:collapse;">
+              <tr style="color:#6c7086; border-bottom:1px solid #45475a;">
+                <td style="padding:4px;">Ticker</td><td>Name</td><td>Strategy</td><td>Entry</td><td>Current</td><td>P&L</td><td>SL</td><td>TP1</td><td>Status</td>
+              </tr>
+              <tr style="border-bottom:1px solid #45475a33;">
+                <td style="padding:4px; color:#89b4fa;">005930</td><td>삼성전자</td><td style="color:#cba6f7;">ORB</td><td>72,500</td><td>73,200</td><td style="color:#a6e3a1;">+0.97%</td><td style="color:#f38ba8;">71,413</td><td style="color:#a6e3a1;">73,950</td><td style="color:#f9e2af;">Holding</td>
+              </tr>
+            </table>
+          </div>
+
+          <!-- Today's Trades -->
+          <div style="background:#313244; border-radius:6px; padding:10px; flex:1;">
+            <div style="font-size:12px; font-weight:bold; color:#cdd6f4; margin-bottom:8px;">Today's Trades</div>
+            <table style="width:100%; font-size:11px; border-collapse:collapse;">
+              <tr style="color:#6c7086; border-bottom:1px solid #45475a;">
+                <td style="padding:4px;">Time</td><td>Ticker</td><td>Side</td><td>Price</td><td>Qty</td><td>P&L</td><td>Reason</td>
+              </tr>
+              <tr style="border-bottom:1px solid #45475a33;">
+                <td style="padding:4px;">09:18</td><td>005930</td><td style="color:#f38ba8;">SELL</td><td>73,950</td><td>50</td><td style="color:#a6e3a1;">+72,500</td><td>TP1 Hit</td>
+              </tr>
+              <tr style="border-bottom:1px solid #45475a33;">
+                <td style="padding:4px;">09:15</td><td>005930</td><td style="color:#89b4fa;">BUY</td><td>72,500</td><td>100</td><td style="color:#6c7086;">—</td><td>ORB Breakout</td>
+              </tr>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status Bar -->
+    <div style="display:flex; justify-content:space-between; padding:4px 12px; background:#181825; border-top:1px solid #313244; font-size:11px; color:#6c7086;">
+      <div style="display:flex; gap:16px;">
+        <span>Mode: <span style="color:#a6e3a1;">PAPER</span></span>
+        <span>Engine: <span style="color:#a6e3a1;">Running</span></span>
+        <span>Strategy: <span style="color:#cba6f7;">ORB</span></span>
+        <span>Target: 삼성전자(005930)</span>
+      </div>
+      <div>
+        <span>14:23:45 KST</span>
+      </div>
+    </div>
+
+  </div>
+</div>

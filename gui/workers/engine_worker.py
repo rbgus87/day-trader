@@ -232,14 +232,18 @@ class EngineWorker(QThread):
 
         logger.info("파이프라인 시작 -- 매매 대기 중 (GUI)")
 
-        # 4. Polling loop (2-second)
+        # 4. Polling loop (2-second interval, 0.2s check for fast stop)
         while self._running:
             self._emit_status()
             self._emit_positions()
             self._emit_trades()
             self._emit_pnl()
             self._emit_candidates()
-            await asyncio.sleep(2)
+            # 0.2초 간격으로 _running 체크 → 정지 요청 시 최대 0.2초 내 반응
+            for _ in range(10):
+                if not self._running:
+                    break
+                await asyncio.sleep(0.2)
 
     # ── Pipeline consumers (ported from main.py) ──
 
@@ -589,15 +593,18 @@ class EngineWorker(QThread):
 
     def _emit_trades(self):
         """당일 체결 내역을 시그널로 전송."""
-        if not self._db or not self._loop or not self._loop.is_running():
+        if not self._db or not self._loop:
             return
         try:
-            future = asyncio.run_coroutine_threadsafe(
-                self._fetch_today_trades(), self._loop,
-            )
-            # Non-blocking: result available on next poll cycle
-            # Use a callback to emit when ready
-            future.add_done_callback(self._on_trades_fetched)
+            asyncio.ensure_future(self._fetch_and_emit_trades(), loop=self._loop)
+        except Exception:
+            pass
+
+    async def _fetch_and_emit_trades(self):
+        """DB에서 당일 체결 내역 조회 후 시그널 전송."""
+        try:
+            trades = await self._fetch_today_trades()
+            self.signals.trades_updated.emit(trades)
         except Exception:
             pass
 
@@ -608,14 +615,6 @@ class EngineWorker(QThread):
             "SELECT * FROM trades WHERE traded_at LIKE ? || '%' ORDER BY traded_at DESC",
             (today,),
         )
-
-    def _on_trades_fetched(self, future):
-        """trades 조회 결과 콜백."""
-        try:
-            trades = future.result()
-            self.signals.trades_updated.emit(trades)
-        except Exception:
-            pass
 
     def _emit_pnl(self):
         """일일 손익을 시그널로 전송."""
@@ -673,16 +672,23 @@ class EngineWorker(QThread):
             logger.error(f"REST cleanup error: {e}")
 
         try:
-            # Send shutdown notification + close DB
+            # Send shutdown notification (fire-and-forget with 2s timeout)
             if self._notifier:
                 mode_tag = "[PAPER] " if self._mode == "paper" else ""
                 self._loop.run_until_complete(
-                    self._notifier.send(f"{mode_tag}시스템 종료 (GUI)")
+                    asyncio.wait_for(
+                        self._notifier.send(f"{mode_tag}시스템 종료 (GUI)"),
+                        timeout=2.0,
+                    )
                 )
+        except (asyncio.TimeoutError, Exception) as e:
+            logger.warning(f"Shutdown notification skipped: {e}")
+
+        try:
             if self._db:
                 self._loop.run_until_complete(self._db.close())
         except Exception as e:
-            logger.error(f"DB/Notifier cleanup error: {e}")
+            logger.error(f"DB cleanup error: {e}")
 
         try:
             # Cancel any remaining tasks

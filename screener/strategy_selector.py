@@ -12,33 +12,65 @@ class StrategySelector:
     """시장 데이터를 분석하여 당일 적용할 전략과 종목을 선택한다.
 
     우선순위: ORB > 모멘텀 > VWAP > 눌림목 > None
+    REST API로 실시간 시장 데이터를 자동 수집한다.
     """
 
-    # 임계값 상수
-    ORB_GAP_THRESHOLD: float = 0.5          # KOSPI 갭 기준 (%)
-    MOMENTUM_ETF_THRESHOLD: float = 1.5     # 섹터 ETF 변동 기준 (%)
-    VWAP_RANGE_THRESHOLD: float = 0.5       # 지수 변동폭 기준 (%)
+    # 기본 임계값 (config.yaml의 strategy.selector 섹션으로 오버라이드 가능)
+    DEFAULT_ORB_GAP_THRESHOLD: float = 0.5          # KOSPI 갭 기준 (%)
+    DEFAULT_MOMENTUM_ETF_THRESHOLD: float = 1.5     # 섹터 ETF 변동 기준 (%)
+    DEFAULT_VWAP_RANGE_THRESHOLD: float = 0.5       # 지수 변동폭 기준 (%)
 
     def __init__(self, config: AppConfig, rest_client: KiwoomRestClient) -> None:
         self._config = config
         self._rest_client = rest_client
 
+        # config.yaml에서 임계값 로드 (없으면 기본값)
+        sel = getattr(config, "selector", None) or {}
+        self._orb_gap_threshold = sel.get(
+            "orb_gap_threshold", self.DEFAULT_ORB_GAP_THRESHOLD,
+        )
+        self._momentum_etf_threshold = sel.get(
+            "momentum_etf_threshold", self.DEFAULT_MOMENTUM_ETF_THRESHOLD,
+        )
+        self._vwap_range_threshold = sel.get(
+            "vwap_range_threshold", self.DEFAULT_VWAP_RANGE_THRESHOLD,
+        )
+
+    async def collect_market_data(
+        self, candidate_ticker: str | None = None,
+    ) -> dict:
+        """REST API로 시장 데이터를 수집하여 반환한다.
+
+        Args:
+            candidate_ticker: 스크리닝에서 선정된 눌림목 후보 종목코드.
+
+        Returns:
+            전략 선택에 필요한 market_data dict.
+        """
+        snapshot = await self._rest_client.get_market_snapshot()
+        return {
+            "kospi_gap_pct": snapshot["kospi_gap_pct"],
+            "sector_etf_change_pct": snapshot["sector_etf_change_pct"],
+            "top_sector": snapshot.get("top_sector", ""),
+            "index_range_pct": snapshot["index_range_pct"],
+            "candidate_ticker": candidate_ticker,
+        }
+
     async def select(
-        self, market_data: dict
+        self, market_data: dict | None = None, candidate_ticker: str | None = None,
     ) -> tuple[str | None, str | None]:
         """시장 데이터를 분석하여 (전략명, 종목코드) 반환.
 
         Args:
-            market_data: {
-                "kospi_gap_pct": float,          # KOSPI 갭 등락률 (%)
-                "sector_etf_change_pct": float,  # 섹터 ETF 변동률 (%)
-                "index_range_pct": float,        # 지수 일중 변동폭 (%)
-                "candidate_ticker": str | None,  # 눌림목 후보 종목
-            }
+            market_data: 미리 수집한 시장 데이터. None이면 REST API로 자동 수집.
+            candidate_ticker: market_data가 None일 때 사용할 후보 종목코드.
 
         Returns:
             (strategy_name, ticker) 또는 (None, None)
         """
+        if market_data is None:
+            market_data = await self.collect_market_data(candidate_ticker)
+
         candidate = market_data.get("candidate_ticker")
 
         if self._check_orb(market_data):
@@ -47,8 +79,9 @@ class StrategySelector:
 
         if self._check_momentum(market_data):
             logger.info(
-                "전략 선택: 모멘텀 (섹터 ETF %.2f%%)",
+                "전략 선택: 모멘텀 (섹터 ETF %.2f%%, %s)",
                 market_data.get("sector_etf_change_pct", 0),
+                market_data.get("top_sector", ""),
             )
             return "momentum", candidate
 
@@ -71,16 +104,16 @@ class StrategySelector:
     # ------------------------------------------------------------------
 
     def _check_orb(self, market_data: dict) -> bool:
-        """KOSPI 갭이 +0.5% 이상이면 ORB 전략 적용."""
-        return float(market_data.get("kospi_gap_pct", 0)) >= self.ORB_GAP_THRESHOLD
+        """KOSPI 갭이 임계값 이상이면 ORB 전략 적용."""
+        return float(market_data.get("kospi_gap_pct", 0)) >= self._orb_gap_threshold
 
     def _check_momentum(self, market_data: dict) -> bool:
-        """특정 섹터 ETF가 +1.5% 이상이면 모멘텀 브레이크아웃 전략 적용."""
-        return float(market_data.get("sector_etf_change_pct", 0)) >= self.MOMENTUM_ETF_THRESHOLD
+        """섹터 ETF 등락률이 임계값 이상이면 모멘텀 브레이크아웃 전략 적용."""
+        return float(market_data.get("sector_etf_change_pct", 0)) >= self._momentum_etf_threshold
 
     def _check_vwap(self, market_data: dict) -> bool:
-        """지수 변동폭이 ±0.5% 이내(절댓값 기준)면 VWAP 회귀 전략 적용."""
-        return abs(float(market_data.get("index_range_pct", 999))) <= self.VWAP_RANGE_THRESHOLD
+        """지수 변동폭이 임계값 이내(절댓값 기준)면 VWAP 회귀 전략 적용."""
+        return abs(float(market_data.get("index_range_pct", 999))) <= self._vwap_range_threshold
 
     def _check_pullback(self, market_data: dict) -> bool:
         """눌림목 후보 종목이 존재하면 눌림목 매매 전략 적용 (폴백)."""

@@ -115,6 +115,11 @@ class RiskManager:
     def position_scale(self) -> float:
         return self._position_scale
 
+    @property
+    def available_capital(self) -> float:
+        """거래 가능 자본금. 0이면 거래 불가."""
+        return self._daily_capital
+
     async def reconcile_positions(self, api_holdings: list[dict]) -> list[str]:
         db_open = await self._db.fetch_all(
             "SELECT ticker, remaining_qty FROM positions WHERE status='open'"
@@ -130,6 +135,68 @@ class RiskManager:
             if db_qty != api_qty:
                 mismatches.append(f"{ticker}: DB={db_qty} vs API={api_qty}")
         return mismatches
+
+    async def save_daily_summary(self) -> dict | None:
+        """당일 매매 실적을 daily_pnl 테이블에 저장하고 요약 반환."""
+        from datetime import datetime
+
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        # trades 테이블에서 당일 매도(sell) 기록 집계
+        rows = await self._db.fetch_all(
+            "SELECT strategy, pnl, pnl_pct FROM trades "
+            "WHERE side='sell' AND traded_at LIKE ? || '%'",
+            (today,),
+        )
+
+        if not rows:
+            return None
+
+        total_trades = len(rows)
+        wins = sum(1 for r in rows if (r["pnl"] or 0) > 0)
+        losses = total_trades - wins
+        win_rate = wins / total_trades if total_trades > 0 else 0.0
+        total_pnl = sum(r["pnl"] or 0 for r in rows)
+
+        # 전략별 집계
+        strategies_used = set(r["strategy"] for r in rows if r["strategy"])
+        strategy_str = ",".join(sorted(strategies_used)) if strategies_used else "none"
+
+        # max drawdown (누적 PnL의 최저점)
+        cumulative = 0.0
+        peak = 0.0
+        max_dd = 0.0
+        for r in rows:
+            cumulative += r["pnl"] or 0
+            if cumulative > peak:
+                peak = cumulative
+            dd = peak - cumulative
+            if dd > max_dd:
+                max_dd = dd
+
+        # UPSERT into daily_pnl
+        await self._db.execute(
+            "INSERT INTO daily_pnl (date, strategy, total_trades, wins, losses, win_rate, total_pnl, max_drawdown) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(date) DO UPDATE SET "
+            "strategy=excluded.strategy, total_trades=excluded.total_trades, "
+            "wins=excluded.wins, losses=excluded.losses, win_rate=excluded.win_rate, "
+            "total_pnl=excluded.total_pnl, max_drawdown=excluded.max_drawdown",
+            (today, strategy_str, total_trades, wins, losses, win_rate, total_pnl, max_dd),
+        )
+
+        summary = {
+            "date": today,
+            "strategy": strategy_str,
+            "total_trades": total_trades,
+            "wins": wins,
+            "losses": losses,
+            "win_rate": win_rate,
+            "total_pnl": total_pnl,
+            "max_drawdown": max_dd,
+        }
+        logger.info(f"일일 실적 저장: {total_trades}건, 승률 {win_rate:.1%}, 손익 {total_pnl:+,.0f}원")
+        return summary
 
     def reset_daily(self) -> None:
         self._daily_pnl = 0.0

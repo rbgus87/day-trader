@@ -35,6 +35,7 @@ class MainWindow(QMainWindow):
         self.resize(1280, 800)
 
         self._worker: EngineWorker | None = None
+        self._stop_btn_pressed = False
 
         self._init_ui()
         self._apply_theme()
@@ -179,6 +180,13 @@ class MainWindow(QMainWindow):
 
     def _on_stop(self):
         if self._worker:
+            # 즉각적 UI 피드백: 버튼 비활성 + 상태 표시
+            self._stop_btn_pressed = True
+            self.sidebar._stop_btn.setEnabled(False)
+            self.sidebar._start_btn.setEnabled(False)
+            self._lbl_status_left.setText(
+                f"Mode: {self.sidebar.get_mode().upper()} | Engine: Stopping..."
+            )
             self._worker.signals.request_stop.emit()
 
     def _on_halt(self):
@@ -216,15 +224,25 @@ class MainWindow(QMainWindow):
         self.sidebar.update_connection(True, True)
 
     def _on_engine_stopped(self):
+        self._stop_btn_pressed = False
         self.sidebar.set_engine_running(False)
         self.sidebar.update_connection(False, False)
         self._lbl_status_left.setText(f"Mode: {self.sidebar.get_mode().upper()} | Engine: Stopped")
         self._worker = None
 
     def _on_engine_error(self, error: str):
+        # 에러 시에도 UI 상태 복구 (stopped 시그널이 뒤따라오지만 안전 차원)
+        self.sidebar.set_engine_running(False)
+        self._lbl_status_left.setText(
+            f"Mode: {self.sidebar.get_mode().upper()} | Engine: Error"
+        )
         QMessageBox.critical(self, "엔진 오류", error)
 
     def _on_status_updated(self, status: dict):
+        # 정지 요청 중이면 상태바 덮어쓰기 방지
+        if getattr(self, "_stop_btn_pressed", False):
+            return
+
         self.sidebar.update_status(status)
         # Update dashboard summary
         self.dashboard_tab.update_summary({

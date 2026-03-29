@@ -99,8 +99,11 @@ class VwapStrategy(BaseStrategy):
 
     def __init__(self, config: TradingConfig):
         self._config = config
-        self._touched_lower_band: bool = False   # VWAP-1σ 터치 여부
-        self._signal_fired: bool = False
+        self._touched_lower_band: bool = False
+        self.configure_multi_trade(
+            max_trades=config.max_trades_per_day,
+            cooldown_minutes=config.cooldown_minutes,
+        )
 
     # ------------------------------------------------------------------
     # BaseStrategy 인터페이스
@@ -116,7 +119,7 @@ class VwapStrategy(BaseStrategy):
         tick : dict
             최신 틱. 키: ticker, price
         """
-        if not self.is_tradable_time() or self._signal_fired:
+        if not self.can_trade():
             return None
 
         if candles is None or candles.empty or len(candles) < 2:
@@ -153,7 +156,6 @@ class VwapStrategy(BaseStrategy):
             return None
 
         # 신호 발생
-        self._signal_fired = True
         logger.info(
             f"VWAP 매수 신호: {tick['ticker']} price={current_price:,.0f} "
             f"VWAP={vwap:,.0f} σ={std:,.1f} RSI={rsi:.1f}"
@@ -183,5 +185,5 @@ class VwapStrategy(BaseStrategy):
 
     def reset(self) -> None:
         """일일 초기화."""
+        super().reset()
         self._touched_lower_band = False
-        self._signal_fired = False
