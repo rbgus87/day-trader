@@ -34,6 +34,27 @@ KR_HOLIDAYS_2026 = {
     date(2026, 12, 25), # 크리스마스
 }
 
+# 2027년 한국 공휴일
+KR_HOLIDAYS_2027 = {
+    date(2027, 1, 1),   # 신정
+    date(2027, 2, 6),   # 설날 연휴
+    date(2027, 2, 7),   # 설날
+    date(2027, 2, 8),   # 설날 연휴
+    date(2027, 3, 1),   # 삼일절
+    date(2027, 5, 5),   # 어린이날
+    date(2027, 5, 13),  # 석가탄신일
+    date(2027, 6, 6),   # 현충일
+    date(2027, 8, 15),  # 광복절
+    date(2027, 9, 14),  # 추석 연휴
+    date(2027, 9, 15),  # 추석
+    date(2027, 9, 16),  # 추석 연휴
+    date(2027, 10, 3),  # 개천절
+    date(2027, 10, 9),  # 한글날
+    date(2027, 12, 25), # 크리스마스
+}
+
+KR_HOLIDAYS = KR_HOLIDAYS_2026 | KR_HOLIDAYS_2027
+
 
 def now_local() -> datetime:
     """현재 로컬 시각 반환."""
@@ -63,6 +84,6 @@ def is_trading_day(target_date: date | None = None) -> bool:
     if d.weekday() >= 5:
         return False
     # 공휴일 체크
-    if d in KR_HOLIDAYS_2026:
+    if d in KR_HOLIDAYS:
         return False
     return True

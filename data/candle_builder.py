@@ -2,6 +2,7 @@
 
 import asyncio
 from collections import defaultdict
+from datetime import datetime
 
 from loguru import logger
 
@@ -19,6 +20,11 @@ class CandleBuilder:
         self._building: dict[str, dict] = {}
         self._min1_buffer: dict[str, list[dict]] = defaultdict(list)
         self._vwap_accum: dict[str, dict] = defaultdict(lambda: {"pv_sum": 0.0, "vol_sum": 0})
+        self._date_str: str | None = None  # 백테스트 모드에서 날짜 주입용
+
+    def set_date(self, date_str: str) -> None:
+        """백테스트 모드에서 날짜를 외부에서 주입."""
+        self._date_str = date_str
 
     async def on_tick(self, tick: dict) -> None:
         ticker = tick["ticker"]
@@ -34,11 +40,12 @@ class CandleBuilder:
         if current is None or current["_minute_key"] != minute_key:
             if current is not None:
                 await self._emit_candle(current)
+            date_part = self._date_str or datetime.now().strftime("%Y-%m-%d")
             self._building[ticker] = {
                 "ticker": ticker,
                 "tf": "1m",
                 "_minute_key": minute_key,
-                "ts": f"{time_str[:2]}:{time_str[2:4]}:00",
+                "ts": f"{date_part}T{time_str[:2]}:{time_str[2:4]}:00",
                 "open": price,
                 "high": price,
                 "low": price,

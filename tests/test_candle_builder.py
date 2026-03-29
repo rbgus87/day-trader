@@ -56,6 +56,25 @@ async def test_vwap_calculation():
 
 
 @pytest.mark.asyncio
+async def test_candle_ts_is_iso8601():
+    """캔들 ts가 ISO8601 형식(날짜 포함)인지 확인."""
+    out_queue = asyncio.Queue()
+    builder = CandleBuilder(candle_queue=out_queue)
+
+    ticks = [
+        {"ticker": "005930", "time": "090100", "price": 70000, "volume": 100, "cum_volume": 100},
+        {"ticker": "005930", "time": "090200", "price": 70200, "volume": 50, "cum_volume": 150},
+    ]
+    for t in ticks:
+        await builder.on_tick(t)
+
+    candle = await asyncio.wait_for(out_queue.get(), timeout=1.0)
+    # ts에 날짜 + 시간이 모두 포함되어야 함 (ISO8601: YYYY-MM-DDTHH:MM:SS)
+    assert "T" in candle["ts"], f"ts에 날짜가 포함되어야 한다: {candle['ts']}"
+    assert len(candle["ts"]) >= 19, f"ISO8601 형식이어야 한다: {candle['ts']}"
+
+
+@pytest.mark.asyncio
 async def test_5m_candle():
     out_queue = asyncio.Queue()
     builder = CandleBuilder(candle_queue=out_queue, timeframes=["1m", "5m"])

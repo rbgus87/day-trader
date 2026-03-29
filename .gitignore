@@ -15,5 +15,8 @@ build/
 *.spec
 DayTrader.exe
 
+# DB backups
+backups/
+
 # Superpowers
 .superpowers/

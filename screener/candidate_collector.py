@@ -73,6 +73,8 @@ class CandidateCollector:
         candidates = []
         total = len(universe)
 
+        logger.warning("수급 데이터(기관/외국인 순매수) 미구현 — 스크리닝 수급 필터 비활성 상태")
+
         for idx, stock in enumerate(universe, 1):
             ticker = stock["ticker"]
             name = stock.get("name", ticker)

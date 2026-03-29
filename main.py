@@ -315,8 +315,7 @@ async def main():
         """15:10 강제 청산."""
         nonlocal active_strategy
         logger.warning("15:10 강제 청산 시작")
-        for ticker, pos in list(risk_manager._positions.items()):
-            if pos["remaining_qty"] > 0:
+        for ticker, pos in risk_manager.get_open_positions().items():
                 await order_manager.execute_sell_force_close(
                     ticker=ticker, qty=pos["remaining_qty"],
                 )
@@ -360,9 +359,39 @@ async def main():
             await notifier.send_no_trade("당일 매매 기록 없음")
             logger.info("당일 매매 없음 — 무거래 알림 발송")
 
+    async def backup_db():
+        """15:35 DB 백업 (7일 보관)."""
+        import shutil
+        from datetime import datetime
+        from pathlib import Path
+
+        backup_dir = Path("backups")
+        backup_dir.mkdir(exist_ok=True)
+
+        db_path = Path(config.db_path)
+        if not db_path.exists():
+            return
+
+        backup_name = f"daytrader_backup_{datetime.now():%Y%m%d}.db"
+        shutil.copy2(db_path, backup_dir / backup_name)
+        logger.info(f"DB 백업 완료: {backup_name}")
+
+        # 7일 이상 된 백업 삭제
+        cutoff = datetime.now() - timedelta(days=7)
+        for f in backup_dir.glob("daytrader_backup_*.db"):
+            try:
+                date_str = f.stem.split("_")[-1]
+                file_date = datetime.strptime(date_str, "%Y%m%d")
+                if file_date < cutoff:
+                    f.unlink()
+                    logger.info(f"오래된 백업 삭제: {f.name}")
+            except (ValueError, OSError):
+                continue
+
     scheduler.add_job(run_screening, "cron", hour=8, minute=30)
     scheduler.add_job(force_close, "cron", hour=15, minute=10)
     scheduler.add_job(run_daily_report, "cron", hour=15, minute=30)
+    scheduler.add_job(backup_db, "cron", hour=15, minute=35)
     scheduler.start()
 
     # 08:30 이후 실행 시 즉시 스크리닝 (이미 지나간 스케줄 보상)

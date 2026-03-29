@@ -467,8 +467,7 @@ class EngineWorker(QThread):
     async def _force_close(self):
         """15:10 강제 청산."""
         logger.warning("15:10 강제 청산 시작")
-        for ticker, pos in list(self._risk_manager._positions.items()):
-            if pos["remaining_qty"] > 0:
+        for ticker, pos in self._risk_manager.get_open_positions().items():
                 await self._order_manager.execute_sell_force_close(
                     ticker=ticker, qty=pos["remaining_qty"],
                 )

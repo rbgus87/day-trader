@@ -46,6 +46,10 @@ class RiskManager:
     def get_position(self, ticker: str) -> dict | None:
         return self._positions.get(ticker)
 
+    def get_open_positions(self) -> dict[str, dict]:
+        """보유 중인 포지션 목록 반환 (읽기 전용 복사본)."""
+        return {k: {**v} for k, v in self._positions.items() if v.get("remaining_qty", 0) > 0}
+
     def check_stop_loss(self, ticker: str, current_price: float) -> bool:
         pos = self._positions.get(ticker)
         if not pos:
