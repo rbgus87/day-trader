@@ -102,11 +102,20 @@ class ScreenerConfig:
 
 
 @dataclass(frozen=True)
+class BacktestConfig:
+    commission: float = 0.00015     # 매수/매도 각 0.015%
+    tax: float = 0.0018             # 증권거래세 0.18%
+    slippage: float = 0.0003        # 슬리피지 0.03%
+    initial_capital: int = 1_000_000
+
+
+@dataclass(frozen=True)
 class AppConfig:
     kiwoom: KiwoomConfig = field(default_factory=KiwoomConfig)
     telegram: TelegramConfig = field(default_factory=TelegramConfig)
     trading: TradingConfig = field(default_factory=TradingConfig)
     screener: ScreenerConfig = field(default_factory=ScreenerConfig)
+    backtest: BacktestConfig = field(default_factory=BacktestConfig)
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
     debug: bool = field(default_factory=lambda: os.getenv("DEBUG", "false").lower() == "true")
     db_path: str = "daytrader.db"
@@ -186,11 +195,21 @@ class AppConfig:
         # 전략 선택기 임계값
         selector = s.get("selector", {})
 
+        # backtest 섹션
+        bt = cfg.get("backtest", {})
+        backtest = BacktestConfig(
+            commission=bt.get("commission", 0.00015),
+            tax=bt.get("tax", 0.0018),
+            slippage=bt.get("slippage", 0.0003),
+            initial_capital=bt.get("initial_capital", 1_000_000),
+        )
+
         return AppConfig(
             kiwoom=kiwoom,
             telegram=telegram,
             trading=trading,
             screener=screener,
+            backtest=backtest,
             log_level=os.getenv("LOG_LEVEL", "INFO"),
             debug=os.getenv("DEBUG", "false").lower() == "true",
             paper_mode=cfg.get("paper_mode", True),

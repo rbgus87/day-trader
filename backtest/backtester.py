@@ -14,11 +14,13 @@ from config.settings import TradingConfig
 from data.db_manager import DbManager
 from strategy.base_strategy import BaseStrategy, Signal
 
-# 기본 수수료 상수 (config.yaml backtest 섹션으로 덮어쓸 수 있음)
+# DEPRECATED: BacktestConfig 사용 권장
 ENTRY_FEE_RATE: float = 0.00015   # 0.015%
 EXIT_FEE_RATE: float = 0.00015    # 0.015%
 SELL_TAX_RATE: float = 0.0018     # 0.18% (증권거래세)
-SLIPPAGE_RATE: float = 0.00005    # 0.005% (슬리피지 가정)
+SLIPPAGE_RATE: float = 0.00005    # 0.005% (슬리피지 가정) — config.yaml은 0.03%
+
+from config.settings import BacktestConfig
 
 
 class Backtester:
@@ -31,14 +33,16 @@ class Backtester:
         commission: float | None = None,
         tax: float | None = None,
         slippage: float | None = None,
+        backtest_config: BacktestConfig | None = None,
     ) -> None:
         self._db = db
         self._config = config
-        # config.yaml backtest 섹션 값 우선, 없으면 글로벌 상수
-        self._entry_fee = commission if commission is not None else ENTRY_FEE_RATE
-        self._exit_fee = commission if commission is not None else EXIT_FEE_RATE
-        self._tax = tax if tax is not None else SELL_TAX_RATE
-        self._slippage = slippage if slippage is not None else SLIPPAGE_RATE
+        # 우선순위: 파라미터 > BacktestConfig > 글로벌 상수
+        bt = backtest_config or BacktestConfig()
+        self._entry_fee = commission if commission is not None else bt.commission
+        self._exit_fee = commission if commission is not None else bt.commission
+        self._tax = tax if tax is not None else bt.tax
+        self._slippage = slippage if slippage is not None else bt.slippage
 
     # ------------------------------------------------------------------
     # 데이터 로드
