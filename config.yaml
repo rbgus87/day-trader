@@ -49,13 +49,13 @@ strategy:
     rsi_high: 60.0                  # RSI(14) 상한
     stop_loss_pct: -0.012           # 손절 -1.2%
 
-  # 모멘텀 브레이크아웃 v2 — 전일 고점 돌파 + 리테스트 진입
+  # 모멘텀 브레이크아웃 — 전일 고점 돌파 + VWAP 필터
   momentum:
     volume_ratio: 1.5               # 전일 대비 거래량 150% (2.0→1.5 완화)
-    stop_loss_pct: -0.008           # 손절 -0.8% (동적 손절의 최소값)
-    retest_band_pct: 0.008          # 전일 고점 ±0.8% 리테스트 밴드
-    retest_timeout_minutes: 45      # 리테스트 최대 대기 (분)
+    stop_loss_pct: -0.008           # 손절 -0.8%
     vwap_filter: true               # VWAP 방향 필터 ON
+    # retest_band_pct: 0.008        # 향후 틱 백테스터에서 재검증용
+    # retest_timeout_minutes: 45
 
   # 눌림목 — 당일 상승 종목의 조정 후 반등
   pullback:
