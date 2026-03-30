@@ -3,7 +3,9 @@
 import ctypes
 import sys
 from datetime import datetime
+from pathlib import Path
 
+import yaml
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
@@ -43,6 +45,7 @@ class MainWindow(QMainWindow):
         self._setup_tray()
         self._setup_loguru_sink()
         self._setup_refresh_timer()
+        self._load_config_to_ui()
 
     # ── UI 초기화 ─────────────────────────────────────────────────────────────
 
@@ -70,11 +73,11 @@ class MainWindow(QMainWindow):
         self.strategy_tab = StrategyTab()
         self.log_tab = LogTab()
 
-        self.tabs.addTab(self.dashboard_tab, "Dashboard")
-        self.tabs.addTab(self.screener_tab, "Screener")
-        self.tabs.addTab(self.backtest_tab, "Backtest")
-        self.tabs.addTab(self.strategy_tab, "Strategy")
-        self.tabs.addTab(self.log_tab, "Log")
+        self.tabs.addTab(self.dashboard_tab, "대시보드")
+        self.tabs.addTab(self.screener_tab, "스크리너")
+        self.tabs.addTab(self.backtest_tab, "백테스트")
+        self.tabs.addTab(self.strategy_tab, "전략 설정")
+        self.tabs.addTab(self.log_tab, "로그")
 
         right.addWidget(self.tabs)
         root.addLayout(right, stretch=1)
@@ -97,6 +100,11 @@ class MainWindow(QMainWindow):
         self.sidebar.reconnect_clicked.connect(self._on_reconnect)
         self.sidebar.mode_changed.connect(self._on_mode_changed)
         self.sidebar.strategy_changed.connect(self._on_strategy_changed)
+
+        # Connect tab signals
+        self.screener_tab.run_screening_clicked.connect(self._on_screening)
+        self.strategy_tab.settings_saved.connect(self._on_settings_saved)
+        self.backtest_tab.run_backtest_clicked.connect(self._on_run_backtest)
 
     # ── 테마 / 타이틀바 ───────────────────────────────────────────────────────
 
@@ -194,6 +202,16 @@ class MainWindow(QMainWindow):
                 f"Mode: {self.sidebar.get_mode().upper()} | Engine: Stopping..."
             )
             self._worker.signals.request_stop.emit()
+            # 안전장치: 7초 후에도 stopped 시그널 미수신 시 강제 복구
+            QTimer.singleShot(7000, self._check_stop_timeout)
+
+    def _check_stop_timeout(self):
+        """Stop 요청 후 7초 경과 시 강제 UI 복구."""
+        if self._stop_btn_pressed and self._worker:
+            logger.warning("엔진 7초 내 미종료 — 강제 terminate")
+            self._worker.terminate()
+            self._worker.wait(2000)
+            self._on_engine_stopped()
 
     def _on_halt(self):
         if self._worker:
@@ -221,6 +239,167 @@ class MainWindow(QMainWindow):
     def _on_reconnect(self):
         if self._worker:
             self._worker.signals.request_reconnect.emit()
+
+    def _on_settings_saved(self):
+        """전략 탭 설정 저장 → config.yaml에 병합 기록."""
+        config_path = Path("config.yaml")
+        try:
+            existing = yaml.safe_load(open(config_path, encoding="utf-8")) or {}
+            new_values = self.strategy_tab.get_config()
+            # strategy 섹션 병합
+            existing.setdefault("strategy", {}).update(new_values.get("strategy", {}))
+            # trading 섹션 병합
+            existing.setdefault("trading", {}).update(new_values.get("trading", {}))
+            with open(config_path, "w", encoding="utf-8") as f:
+                yaml.dump(existing, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+            # 유니버스 저장
+            tickers = self.strategy_tab.get_universe()
+            if tickers:
+                uni_path = Path("config/universe.yaml")
+                uni_data = {"stocks": [{"ticker": t, "name": ""} for t in tickers]}
+                # 기존 이름 유지
+                if uni_path.exists():
+                    old_uni = yaml.safe_load(open(uni_path, encoding="utf-8")) or {}
+                    name_map = {s["ticker"]: s.get("name", "") for s in old_uni.get("stocks", [])}
+                    for s in uni_data["stocks"]:
+                        s["name"] = name_map.get(s["ticker"], "")
+                with open(uni_path, "w", encoding="utf-8") as f:
+                    yaml.dump(uni_data, f, allow_unicode=True, default_flow_style=False)
+            logger.info("config.yaml 저장 완료")
+            QMessageBox.information(self, "저장 완료", "설정이 config.yaml에 저장되었습니다.")
+        except Exception as e:
+            logger.error(f"config.yaml 저장 실패: {e}")
+            QMessageBox.critical(self, "저장 실패", str(e))
+
+    def _on_run_backtest(self, params: dict):
+        """백테스트 실행 (별도 스레드)."""
+        import asyncio
+        from threading import Thread
+
+        strategy_name = params["strategy"]
+        ticker = params["ticker"]
+        start = params["start_date"]
+        end = params["end_date"]
+
+        self.backtest_tab.set_progress(10)
+
+        def _run():
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                result = loop.run_until_complete(
+                    self._run_backtest_async(strategy_name, ticker, start, end)
+                )
+                loop.close()
+                # UI 업데이트는 메인 스레드에서
+                QTimer.singleShot(0, lambda: self._show_backtest_result(result))
+            except Exception as e:
+                QTimer.singleShot(0, lambda: self._show_backtest_error(str(e)))
+
+        Thread(target=_run, daemon=True).start()
+
+    async def _run_backtest_async(self, strategy_name, ticker, start, end):
+        from config.settings import TradingConfig, BacktestConfig
+        from data.db_manager import DbManager
+        from backtest.backtester import Backtester
+        from strategy.momentum_strategy import MomentumStrategy
+        from strategy.pullback_strategy import PullbackStrategy
+        from strategy.flow_strategy import FlowStrategy
+        from strategy.gap_strategy import GapStrategy
+        from strategy.open_break_strategy import OpenBreakStrategy
+        from strategy.big_candle_strategy import BigCandleStrategy
+
+        cfg_path = Path("config.yaml")
+        raw = yaml.safe_load(open(cfg_path, encoding="utf-8")) or {}
+        bt_cfg = raw.get("backtest", {})
+        backtest_config = BacktestConfig(
+            commission=bt_cfg.get("commission", 0.00015),
+            tax=bt_cfg.get("tax", 0.0018),
+            slippage=bt_cfg.get("slippage", 0.0003),
+        )
+        trading_config = TradingConfig()
+        strategies = {
+            "momentum": MomentumStrategy(trading_config),
+            "pullback": PullbackStrategy(trading_config),
+            "flow": FlowStrategy(trading_config),
+            "gap": GapStrategy(trading_config),
+            "openbreak": OpenBreakStrategy(trading_config),
+            "bigcandle": BigCandleStrategy(trading_config),
+        }
+        strategy = strategies.get(strategy_name)
+        if not strategy:
+            return {"error": f"Unknown strategy: {strategy_name}"}
+
+        db = DbManager("daytrader.db")
+        await db.init()
+        bt = Backtester(db=db, config=trading_config, backtest_config=backtest_config)
+        kpi = await bt.run_multi_day(ticker, start, end, strategy)
+        await db.close()
+        return kpi
+
+    def _show_backtest_result(self, result: dict):
+        self.backtest_tab.set_progress(0)
+        if "error" in result:
+            QMessageBox.critical(self, "백테스트 오류", result["error"])
+            return
+        trades = result.get("trades", [])
+        formatted_trades = []
+        cum_pnl = 0
+        for t in trades:
+            cum_pnl += t.get("pnl", 0)
+            entry_ts = t.get("entry_ts", "")
+            date_str = entry_ts.strftime("%m-%d") if hasattr(entry_ts, "strftime") else str(entry_ts)[:5]
+            time_str = entry_ts.strftime("%H:%M") if hasattr(entry_ts, "strftime") else str(entry_ts)[11:16]
+            formatted_trades.append({
+                "date": date_str,
+                "time": time_str,
+                "side": t.get("exit_reason", ""),
+                "price": t.get("exit_price", 0),
+                "qty": 0,
+                "pnl": t.get("pnl", 0),
+                "cumulative_pnl": cum_pnl,
+            })
+        total_pnl = result.get("total_pnl", 0)
+        capital = 1_000_000
+        self.backtest_tab.show_results(
+            {
+                "total_trades": result.get("total_trades", 0),
+                "win_rate": result.get("win_rate", 0) * 100,
+                "profit_factor": result.get("profit_factor", 0),
+                "sharpe": result.get("sharpe_ratio", 0),
+                "max_drawdown": result.get("max_drawdown", 0),
+                "total_return": (total_pnl / capital) * 100 if capital else 0,
+            },
+            formatted_trades,
+        )
+
+    def _show_backtest_error(self, error: str):
+        self.backtest_tab.set_progress(0)
+        QMessageBox.critical(self, "백테스트 오류", error)
+
+    def _load_config_to_ui(self):
+        """config.yaml → 전략 탭 UI에 로드."""
+        config_path = Path("config.yaml")
+        try:
+            cfg = yaml.safe_load(open(config_path, encoding="utf-8")) or {}
+            self.strategy_tab.load_config(cfg)
+            # 유니버스 로드
+            uni_path = Path("config/universe.yaml")
+            if uni_path.exists():
+                uni = yaml.safe_load(open(uni_path, encoding="utf-8")) or {}
+                tickers = [s["ticker"] for s in uni.get("stocks", [])]
+                self.strategy_tab.load_universe(tickers)
+                self.backtest_tab.set_tickers(tickers)
+            # force_strategy → 사이드바 콤보 동기화
+            force = cfg.get("strategy", {}).get("force", "")
+            if force:
+                combo = self.sidebar._strategy_combo
+                for i in range(combo.count()):
+                    if combo.itemText(i).lower() == force.lower():
+                        combo.setCurrentIndex(i)
+                        break
+        except Exception as e:
+            logger.warning(f"config UI 로드 실패: {e}")
 
     # ── 엔진 이벤트 핸들러 ────────────────────────────────────────────────────
 
@@ -255,6 +434,10 @@ class MainWindow(QMainWindow):
             return
 
         self.sidebar.update_status(status)
+        # 연결 상태 업데이트
+        ws_ok = status.get("ws_connected", False)
+        rest_ok = status.get("running", False)  # REST는 엔진 실행 중이면 연결
+        self.sidebar.update_connection(rest_ok, ws_ok)
         # Update dashboard summary
         self.dashboard_tab.update_summary({
             "daily_pnl": status.get("daily_pnl", 0),

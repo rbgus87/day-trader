@@ -50,6 +50,8 @@ class EngineWorker(QThread):
         # Candle history for strategy
         self._candle_history: dict[str, list[dict]] = {}
         self._MAX_HISTORY = 100
+        # 최신 틱 가격 (포지션 현재가 표시용)
+        self._latest_prices: dict[str, float] = {}
 
         # Screener results cache (for UI emission)
         self._screener_results: list[dict] = []
@@ -263,9 +265,10 @@ class EngineWorker(QThread):
                 tick = await asyncio.wait_for(self._tick_queue.get(), timeout=5.0)
                 # 1. 캔들 빌더에 전달 (기존)
                 await self._candle_builder.on_tick(tick)
-                # 2. 포지션 모니터링 (신규)
+                # 2. 최신 가격 기록 + 포지션 모니터링
                 ticker = tick["ticker"]
                 price = tick["price"]
+                self._latest_prices[ticker] = price
                 pos = self._risk_manager.get_position(ticker)
                 if pos is None or pos["remaining_qty"] <= 0:
                     continue
@@ -278,8 +281,10 @@ class EngineWorker(QThread):
                     self._risk_manager.remove_position(ticker)
                     logger.info(f"손절 실행: {ticker} {qty}주 @ {price:,} PnL={pnl:+,.0f}")
                     self.signals.trade_executed.emit({
+                        "time": datetime.now().strftime("%H:%M:%S"),
                         "side": "sell", "ticker": ticker,
-                        "price": int(price), "qty": qty, "reason": "stop_loss",
+                        "price": int(price), "qty": qty,
+                        "pnl": int(pnl), "reason": "stop_loss",
                     })
                     continue
                 # TP1 체크
@@ -293,8 +298,10 @@ class EngineWorker(QThread):
                     self._risk_manager.mark_tp1_hit(ticker, sell_qty)
                     logger.info(f"TP1 실행: {ticker} {sell_qty}주 @ {price:,} PnL={pnl:+,.0f}")
                     self.signals.trade_executed.emit({
+                        "time": datetime.now().strftime("%H:%M:%S"),
                         "side": "sell", "ticker": ticker,
-                        "price": int(price), "qty": sell_qty, "reason": "tp1",
+                        "price": int(price), "qty": sell_qty,
+                        "pnl": int(pnl), "reason": "tp1",
                     })
                     continue
                 # 트레일링 스톱 갱신
@@ -384,12 +391,13 @@ class EngineWorker(QThread):
                             stop_loss=sl,
                             tp1_price=tp1,
                         )
-                        # Emit trade event to UI
                         self.signals.trade_executed.emit({
+                            "time": datetime.now().strftime("%H:%M:%S"),
                             "side": "buy",
                             "ticker": signal.ticker,
                             "price": int(signal.price),
                             "qty": result["qty"],
+                            "pnl": 0, "reason": "entry",
                         })
             except Exception as e:
                 logger.error(f"signal_consumer 오류: {e}")
@@ -663,16 +671,34 @@ class EngineWorker(QThread):
         if self._config:
             force = getattr(self._config, "force_strategy", "")
 
+        # 대시보드 서머리용 데이터
+        rm = self._risk_manager
+        daily_pnl = rm._daily_pnl if rm else 0.0
+        capital = rm._daily_capital if rm and rm._daily_capital > 0 else 1
+        daily_pnl_pct = (daily_pnl / capital) * 100 if capital else 0
+        trades_count = rm._trade_count if rm else 0
+        max_trades = self._config.trading.max_trades_per_day if self._config else 3
+        wins = rm._win_count if rm and hasattr(rm, "_win_count") else 0
+        losses = rm._loss_count if rm and hasattr(rm, "_loss_count") else 0
+        win_rate = (wins / (wins + losses) * 100) if (wins + losses) > 0 else 0
+
         self.signals.status_updated.emit({
             "mode": self._mode,
             "running": self._running,
-            "halted": self._risk_manager._halted if self._risk_manager else False,
+            "halted": rm._halted if rm else False,
             "strategy": strategy_name,
             "target": target_ticker,
             "target_name": target_name,
             "force_strategy": force,
-            "positions_count": len(self._risk_manager._positions) if self._risk_manager else 0,
+            "positions_count": len(rm._positions) if rm else 0,
             "ws_connected": self._ws_client.connected if self._ws_client else False,
+            "daily_pnl": daily_pnl,
+            "daily_pnl_pct": daily_pnl_pct,
+            "trades_count": trades_count,
+            "max_trades": max_trades,
+            "wins": wins,
+            "losses": losses,
+            "win_rate": win_rate,
         })
 
     def _emit_positions(self):
@@ -682,15 +708,22 @@ class EngineWorker(QThread):
         try:
             positions = []
             for ticker, pos in self._risk_manager._positions.items():
+                entry = pos["entry_price"]
+                current = self._latest_prices.get(ticker, entry)
+                pnl_pct = ((current - entry) / entry * 100) if entry > 0 else 0
+                status = "TP1 hit" if pos.get("tp1_hit") else "보유 중"
                 positions.append({
                     "ticker": ticker,
-                    "entry_price": pos["entry_price"],
+                    "strategy": pos.get("strategy", ""),
+                    "entry_price": entry,
+                    "current_price": current,
+                    "pnl_pct": pnl_pct,
                     "qty": pos["qty"],
                     "remaining_qty": pos["remaining_qty"],
                     "stop_loss": pos["stop_loss"],
                     "tp1_price": pos.get("tp1_price"),
                     "tp1_hit": pos.get("tp1_hit", False),
-                    "highest_price": pos.get("highest_price"),
+                    "status": status,
                 })
             self.signals.positions_updated.emit(positions)
         except Exception:
@@ -739,76 +772,62 @@ class EngineWorker(QThread):
 
     # ── Cleanup ──
 
+    def _run_with_timeout(self, coro, timeout: float = 3.0, label: str = "") -> None:
+        """run_until_complete + timeout 래퍼. hang 방지."""
+        try:
+            self._loop.run_until_complete(asyncio.wait_for(coro, timeout=timeout))
+        except asyncio.TimeoutError:
+            logger.warning(f"Cleanup timeout ({label})")
+        except Exception as e:
+            logger.error(f"Cleanup error ({label}): {e}")
+
     def _cleanup_sync(self):
         """Synchronous cleanup in finally block."""
         if not self._loop:
             return
-        try:
-            # Cancel pipeline tasks
-            for t in self._pipeline_tasks:
-                if not t.done():
-                    t.cancel()
-            if self._pipeline_tasks:
-                self._loop.run_until_complete(
-                    asyncio.gather(*self._pipeline_tasks, return_exceptions=True)
-                )
-        except Exception as e:
-            logger.error(f"Pipeline cleanup error: {e}")
+
+        # Cancel pipeline tasks
+        for t in self._pipeline_tasks:
+            if not t.done():
+                t.cancel()
+        if self._pipeline_tasks:
+            self._run_with_timeout(
+                asyncio.gather(*self._pipeline_tasks, return_exceptions=True),
+                timeout=3.0, label="pipeline",
+            )
 
         try:
-            # Shutdown scheduler
             if self._scheduler and self._scheduler.running:
                 self._scheduler.shutdown(wait=False)
         except Exception as e:
             logger.error(f"Scheduler cleanup error: {e}")
 
-        try:
-            # Close WS
-            if self._ws_client:
-                self._loop.run_until_complete(self._ws_client.disconnect())
-        except Exception as e:
-            logger.error(f"WS cleanup error: {e}")
+        if self._ws_client:
+            self._run_with_timeout(self._ws_client.disconnect(), label="ws")
 
-        try:
-            # Close REST client
-            if self._rest_client:
-                self._loop.run_until_complete(self._rest_client.aclose())
-        except Exception as e:
-            logger.error(f"REST cleanup error: {e}")
+        if self._rest_client:
+            self._run_with_timeout(self._rest_client.aclose(), label="rest")
 
-        try:
-            # Send shutdown notification (fire-and-forget with 2s timeout)
-            if self._notifier:
-                mode_tag = "[PAPER] " if self._mode == "paper" else ""
-                self._loop.run_until_complete(
-                    asyncio.wait_for(
-                        self._notifier.send(f"{mode_tag}시스템 종료 (GUI)"),
-                        timeout=2.0,
-                    )
-                )
-        except (asyncio.TimeoutError, Exception) as e:
-            logger.warning(f"Shutdown notification skipped: {e}")
+        if self._notifier:
+            mode_tag = "[PAPER] " if self._mode == "paper" else ""
+            self._run_with_timeout(
+                self._notifier.send(f"{mode_tag}시스템 종료 (GUI)"),
+                timeout=2.0, label="notify",
+            )
+            self._run_with_timeout(self._notifier.aclose(), label="notifier_close")
 
-        try:
-            if self._notifier:
-                self._loop.run_until_complete(self._notifier.aclose())
-        except Exception as e:
-            logger.warning(f"Notifier cleanup skipped: {e}")
+        if self._db:
+            self._run_with_timeout(self._db.close(), label="db")
 
+        # Cancel remaining tasks
         try:
-            if self._db:
-                self._loop.run_until_complete(self._db.close())
-        except Exception as e:
-            logger.error(f"DB cleanup error: {e}")
-
-        try:
-            # Cancel any remaining tasks
             pending = asyncio.all_tasks(self._loop)
             for task in pending:
                 task.cancel()
             if pending:
-                self._loop.run_until_complete(
-                    asyncio.gather(*pending, return_exceptions=True)
+                self._run_with_timeout(
+                    asyncio.gather(*pending, return_exceptions=True),
+                    timeout=2.0, label="pending",
                 )
         except Exception:
             pass

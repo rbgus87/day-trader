@@ -150,11 +150,22 @@ class BacktestTab(QWidget):
     # ------------------------------------------------------------------
 
     def _on_run_clicked(self) -> None:
+        start = self.date_start.date()
+        end = self.date_end.date()
+        if start >= end:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "날짜 오류", "시작일이 종료일보다 앞서야 합니다.")
+            return
+        ticker = self.combo_ticker.currentText().strip()
+        if not ticker:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "종목 미선택", "백테스트할 종목을 선택하세요.")
+            return
         params = {
             "strategy": self.combo_strategy.currentText().lower(),
-            "start_date": self.date_start.date().toString("yyyy-MM-dd"),
-            "end_date": self.date_end.date().toString("yyyy-MM-dd"),
-            "ticker": self.combo_ticker.currentText(),
+            "start_date": start.toString("yyyy-MM-dd"),
+            "end_date": end.toString("yyyy-MM-dd"),
+            "ticker": ticker,
         }
         self.run_backtest_clicked.emit(params)
 

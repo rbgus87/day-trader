@@ -51,26 +51,22 @@ class DashboardTab(QWidget):
         layout = QHBoxLayout()
         layout.setSpacing(8)
 
-        # Daily P&L
-        frame, value, subtitle = self._make_summary_card("Daily P&L")
+        frame, value, subtitle = self._make_summary_card("일일 손익")
         self._pnl_value = value
         self._pnl_subtitle = subtitle
         layout.addWidget(frame)
 
-        # Trades Today
-        frame, value, subtitle = self._make_summary_card("Trades Today")
+        frame, value, subtitle = self._make_summary_card("당일 거래")
         self._trades_value = value
         self._trades_subtitle = subtitle
         layout.addWidget(frame)
 
-        # Win Rate
-        frame, value, subtitle = self._make_summary_card("Win Rate")
+        frame, value, subtitle = self._make_summary_card("승률")
         self._winrate_value = value
         self._winrate_subtitle = subtitle
         layout.addWidget(frame)
 
-        # Risk Status
-        frame, value, subtitle = self._make_summary_card("Risk Status")
+        frame, value, subtitle = self._make_summary_card("리스크")
         self._risk_value = value
         self._risk_subtitle = subtitle
         layout.addWidget(frame)
@@ -116,12 +112,12 @@ class DashboardTab(QWidget):
         vbox.setContentsMargins(0, 0, 0, 0)
         vbox.setSpacing(4)
 
-        title = QLabel("Active Positions")
+        title = QLabel("보유 포지션")
         title.setStyleSheet("font-size: 12px; font-weight: bold; color: #cdd6f4;")
         vbox.addWidget(title)
 
         self._positions_table = QTableWidget()
-        columns = ["Ticker", "종목명", "전략", "진입가", "현재가", "P&L%", "SL", "TP1", "상태"]
+        columns = ["종목코드", "전략", "진입가", "현재가", "수익률", "손절가", "TP1", "상태"]
         self._positions_table.setColumnCount(len(columns))
         self._positions_table.setHorizontalHeaderLabels(columns)
         self._positions_table.setAlternatingRowColors(True)
@@ -143,12 +139,12 @@ class DashboardTab(QWidget):
         vbox.setContentsMargins(0, 0, 0, 0)
         vbox.setSpacing(4)
 
-        title = QLabel("Today's Trades")
+        title = QLabel("당일 체결")
         title.setStyleSheet("font-size: 12px; font-weight: bold; color: #cdd6f4;")
         vbox.addWidget(title)
 
         self._trades_table = QTableWidget()
-        columns = ["시간", "Ticker", "Side", "가격", "수량", "P&L", "사유"]
+        columns = ["시간", "종목코드", "매매", "가격", "수량", "손익", "사유"]
         self._trades_table.setColumnCount(len(columns))
         self._trades_table.setHorizontalHeaderLabels(columns)
         self._trades_table.setAlternatingRowColors(True)
@@ -239,14 +235,10 @@ class DashboardTab(QWidget):
 
             cells = [
                 (row_data.get("ticker", ""), None),
-                (row_data.get("name", ""), None),
                 (row_data.get("strategy", ""), None),
                 (f"{row_data.get('entry_price', 0):,.0f}", None),
                 (f"{row_data.get('current_price', 0):,.0f}", None),
-                (
-                    f"{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%",
-                    pnl_color,
-                ),
+                (f"{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%", pnl_color),
                 (f"{row_data.get('stop_loss', 0):,.0f}", None),
                 (f"{row_data.get('tp1_price', 0):,.0f}", None),
                 (row_data.get("status", ""), None),
