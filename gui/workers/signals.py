@@ -50,3 +50,4 @@ class EngineSignals(QObject):
     request_report = pyqtSignal()
     request_reconnect = pyqtSignal()
     request_daily_reset = pyqtSignal()
+    request_strategy_change = pyqtSignal(str)  # 전략명 ("" = auto)

@@ -13,6 +13,7 @@
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QButtonGroup,
+    QComboBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -46,6 +47,7 @@ class Sidebar(QFrame):
     report_clicked = pyqtSignal()
     reconnect_clicked = pyqtSignal()
     mode_changed = pyqtSignal(str)  # "paper" or "live"
+    strategy_changed = pyqtSignal(str)  # 전략명 ("" = auto)
 
     # ── 색상 상수 ────────────────────────────────────────────────────────────
     _COLOR_MAUVE = "#cba6f7"
@@ -161,12 +163,25 @@ class Sidebar(QFrame):
         status_row.addStretch()
         parent_layout.addLayout(status_row)
 
-        # 강제 전략 표시
-        self._force_strategy_label = QLabel("Force: —")
-        self._force_strategy_label.setStyleSheet(
+        # 전략 선택
+        strategy_row = QHBoxLayout()
+        strategy_row.setSpacing(6)
+        strat_lbl = QLabel("전략:")
+        strat_lbl.setStyleSheet(
             f"color: {self._COLOR_OVERLAY0}; font-size: 10px;"
         )
-        parent_layout.addWidget(self._force_strategy_label)
+        strat_lbl.setFixedWidth(32)
+        strategy_row.addWidget(strat_lbl)
+
+        self._strategy_combo = QComboBox()
+        self._strategy_combo.addItems([
+            "Auto", "Momentum", "Pullback", "Flow",
+            "Gap", "OpenBreak", "BigCandle",
+        ])
+        self._strategy_combo.setFixedHeight(24)
+        self._strategy_combo.currentTextChanged.connect(self._on_strategy_changed)
+        strategy_row.addWidget(self._strategy_combo)
+        parent_layout.addLayout(strategy_row)
 
         # 전략 / 타겟 표시
         self._strategy_label = QLabel("Strategy: —")
@@ -333,6 +348,11 @@ class Sidebar(QFrame):
 
     # ── 슬롯 (내부) ──────────────────────────────────────────────────────────
 
+    def _on_strategy_changed(self, text: str) -> None:
+        """전략 콤보 변경 → signal emit."""
+        value = "" if text == "Auto" else text.lower()
+        self.strategy_changed.emit(value)
+
     def _on_paper_clicked(self) -> None:
         self._mode = "paper"
         self._apply_mode_btn_styles()
@@ -405,19 +425,6 @@ class Sidebar(QFrame):
         self._status_label.setStyleSheet(
             f"color: {dot_color}; font-size: 12px;"
         )
-
-        # 강제 전략 설정
-        force = status.get("force_strategy", "")
-        if force:
-            self._force_strategy_label.setText(f"Force: {force}")
-            self._force_strategy_label.setStyleSheet(
-                f"color: {self._COLOR_YELLOW}; font-size: 10px; font-weight: bold;"
-            )
-        else:
-            self._force_strategy_label.setText("Force: auto")
-            self._force_strategy_label.setStyleSheet(
-                f"color: {self._COLOR_OVERLAY0}; font-size: 10px;"
-            )
 
         # 전략명
         strategy_text = f"Strategy: {strategy}" if strategy else "Strategy: —"

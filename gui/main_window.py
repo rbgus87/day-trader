@@ -96,6 +96,7 @@ class MainWindow(QMainWindow):
         self.sidebar.report_clicked.connect(self._on_report)
         self.sidebar.reconnect_clicked.connect(self._on_reconnect)
         self.sidebar.mode_changed.connect(self._on_mode_changed)
+        self.sidebar.strategy_changed.connect(self._on_strategy_changed)
 
     # ── 테마 / 타이틀바 ───────────────────────────────────────────────────────
 
@@ -158,6 +159,11 @@ class MainWindow(QMainWindow):
                 # Revert to paper
                 self.sidebar._paper_btn.setChecked(True)
                 self.sidebar._on_paper_clicked()
+
+    def _on_strategy_changed(self, strategy: str):
+        """전략 변경 → 엔진에 전달."""
+        if self._worker:
+            self._worker.signals.request_strategy_change.emit(strategy)
 
     def _on_start(self):
         mode = self.sidebar.get_mode()
@@ -222,6 +228,11 @@ class MainWindow(QMainWindow):
         mode = self.sidebar.get_mode()
         self._lbl_status_left.setText(f"Mode: {mode.upper()} | Engine: Running")
         self.sidebar.update_connection(True, True)
+        # 콤보 선택값이 Auto가 아니면 엔진에 즉시 전달
+        combo_text = self.sidebar._strategy_combo.currentText()
+        if combo_text != "Auto":
+            strategy = combo_text.lower()
+            self._worker.signals.request_strategy_change.emit(strategy)
 
     def _on_engine_stopped(self):
         self._stop_btn_pressed = False
@@ -260,9 +271,9 @@ class MainWindow(QMainWindow):
         # Update status bar
         strategy = status.get("strategy", "—")
         target = status.get("target_name") or status.get("target", "—")
-        force = status.get("force_strategy", "")
         mode = self.sidebar.get_mode().upper()
-        force_tag = f" [Force: {force}]" if force else ""
+        combo_text = self.sidebar._strategy_combo.currentText()
+        force_tag = f" [{combo_text}]" if combo_text != "Auto" else ""
         self._lbl_status_left.setText(
             f"Mode: {mode}{force_tag} | Engine: Running | Strategy: {strategy} | Target: {target}"
         )

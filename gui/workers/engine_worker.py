@@ -64,6 +64,7 @@ class EngineWorker(QThread):
         self.signals.request_report.connect(self._on_request_report)
         self.signals.request_reconnect.connect(self._on_request_reconnect)
         self.signals.request_daily_reset.connect(self._on_request_daily_reset)
+        self.signals.request_strategy_change.connect(self._on_request_strategy_change)
 
         # daemon thread
         self.setTerminationEnabled(True)
@@ -588,6 +589,44 @@ class EngineWorker(QThread):
                 logger.info("WS 재연결 완료")
             except Exception as e:
                 logger.error(f"WS 재연결 실패: {e}")
+
+    def _on_request_strategy_change(self, strategy_name: str):
+        """전략 변경 요청 처리."""
+        if self._loop and self._loop.is_running():
+            asyncio.run_coroutine_threadsafe(
+                self._async_strategy_change(strategy_name), self._loop,
+            )
+
+    async def _async_strategy_change(self, strategy_name: str):
+        """force_strategy 변경 + 전략 인스턴스 교체."""
+        from strategy.momentum_strategy import MomentumStrategy
+        from strategy.pullback_strategy import PullbackStrategy
+        from strategy.flow_strategy import FlowStrategy
+        from strategy.gap_strategy import GapStrategy
+        from strategy.open_break_strategy import OpenBreakStrategy
+        from strategy.big_candle_strategy import BigCandleStrategy
+
+        # config의 force_strategy 갱신 (frozen dataclass이므로 런타임만 반영)
+        if self._config:
+            object.__setattr__(self._config, "force_strategy", strategy_name)
+
+        strategies = {
+            "momentum": MomentumStrategy(self._config.trading),
+            "pullback": PullbackStrategy(self._config.trading),
+            "flow": FlowStrategy(self._config.trading),
+            "gap": GapStrategy(self._config.trading),
+            "open_break": OpenBreakStrategy(self._config.trading),
+            "big_candle": BigCandleStrategy(self._config.trading),
+        }
+
+        if strategy_name and strategy_name in strategies:
+            self._active_strategy = strategies[strategy_name]
+            logger.info(f"전략 수동 변경: {strategy_name}")
+        elif not strategy_name:
+            # Auto 모드: 다음 스크리닝에서 자동 선택
+            logger.info("전략 Auto 모드로 전환 — 다음 스크리닝에서 자동 선택")
+
+        self._emit_status()
 
     def _on_request_daily_reset(self):
         """일일 리셋."""
