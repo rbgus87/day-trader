@@ -52,7 +52,7 @@ class BacktestTab(QWidget):
 
         # 전략
         self.combo_strategy = QComboBox()
-        self.combo_strategy.addItems(["ORB", "VWAP", "Momentum", "Pullback"])
+        self.combo_strategy.addItems(["Momentum", "Pullback", "Flow", "Gap", "OpenBreak", "BigCandle"])
         form.addRow("전략:", self.combo_strategy)
 
         # 시작일

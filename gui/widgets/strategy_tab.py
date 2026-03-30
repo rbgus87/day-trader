@@ -78,7 +78,7 @@ class StrategyTab(QWidget):
         layout.addWidget(label)
 
         self._combo_active_strategy = QComboBox()
-        self._combo_active_strategy.addItems(["ORB", "VWAP", "Momentum", "Pullback"])
+        self._combo_active_strategy.addItems(["Momentum", "Pullback", "Flow", "Gap", "OpenBreak", "BigCandle"])
         layout.addWidget(self._combo_active_strategy)
         layout.addStretch()
 
@@ -92,63 +92,14 @@ class StrategyTab(QWidget):
             self._param_stack.setCurrentIndex
         )
 
-        self._param_stack.addWidget(self._build_orb_page())
-        self._param_stack.addWidget(self._build_vwap_page())
         self._param_stack.addWidget(self._build_momentum_page())
         self._param_stack.addWidget(self._build_pullback_page())
+        self._param_stack.addWidget(self._build_flow_page())
+        self._param_stack.addWidget(self._build_gap_page())
+        self._param_stack.addWidget(self._build_open_break_page())
+        self._param_stack.addWidget(self._build_big_candle_page())
 
         return self._param_stack
-
-    def _build_orb_page(self) -> QGroupBox:
-        group = QGroupBox("ORB 파라미터")
-        form = QFormLayout(group)
-        form.setContentsMargins(10, 16, 10, 10)
-        form.setSpacing(8)
-
-        self._orb_range_start = QTimeEdit()
-        self._orb_range_start.setTime(QTime(9, 5))
-        form.addRow("range_start:", self._orb_range_start)
-
-        self._orb_range_end = QTimeEdit()
-        self._orb_range_end.setTime(QTime(9, 15))
-        form.addRow("range_end:", self._orb_range_end)
-
-        self._orb_min_range_pct = QDoubleSpinBox()
-        self._orb_min_range_pct.setRange(0.0, 5.0)
-        self._orb_min_range_pct.setValue(0.8)
-        self._orb_min_range_pct.setSuffix(" %")
-        self._orb_min_range_pct.setDecimals(1)
-        self._orb_min_range_pct.setSingleStep(0.1)
-        form.addRow("min_range_pct:", self._orb_min_range_pct)
-
-        self._orb_volume_ratio = QDoubleSpinBox()
-        self._orb_volume_ratio.setRange(0.0, 10.0)
-        self._orb_volume_ratio.setValue(0.0)
-        self._orb_volume_ratio.setDecimals(1)
-        self._orb_volume_ratio.setSingleStep(0.1)
-        form.addRow("volume_ratio:", self._orb_volume_ratio)
-
-        return group
-
-    def _build_vwap_page(self) -> QGroupBox:
-        group = QGroupBox("VWAP 파라미터")
-        form = QFormLayout(group)
-        form.setContentsMargins(10, 16, 10, 10)
-        form.setSpacing(8)
-
-        self._vwap_rsi_low = QDoubleSpinBox()
-        self._vwap_rsi_low.setRange(0.0, 100.0)
-        self._vwap_rsi_low.setValue(40.0)
-        self._vwap_rsi_low.setDecimals(1)
-        form.addRow("rsi_low:", self._vwap_rsi_low)
-
-        self._vwap_rsi_high = QDoubleSpinBox()
-        self._vwap_rsi_high.setRange(0.0, 100.0)
-        self._vwap_rsi_high.setValue(60.0)
-        self._vwap_rsi_high.setDecimals(1)
-        form.addRow("rsi_high:", self._vwap_rsi_high)
-
-        return group
 
     def _build_momentum_page(self) -> QGroupBox:
         group = QGroupBox("Momentum 파라미터")
@@ -161,7 +112,15 @@ class StrategyTab(QWidget):
         self._mom_volume_ratio.setValue(2.0)
         self._mom_volume_ratio.setSuffix(" 배")
         self._mom_volume_ratio.setDecimals(1)
-        form.addRow("momentum_volume_ratio:", self._mom_volume_ratio)
+        form.addRow("volume_ratio:", self._mom_volume_ratio)
+
+        self._mom_stop_loss = QDoubleSpinBox()
+        self._mom_stop_loss.setRange(0.0, 5.0)
+        self._mom_stop_loss.setValue(0.8)
+        self._mom_stop_loss.setSuffix(" %")
+        self._mom_stop_loss.setDecimals(1)
+        self._mom_stop_loss.setSingleStep(0.1)
+        form.addRow("stop_loss_pct:", self._mom_stop_loss)
 
         return group
 
@@ -173,10 +132,147 @@ class StrategyTab(QWidget):
 
         self._pullback_min_gain_pct = QDoubleSpinBox()
         self._pullback_min_gain_pct.setRange(0.0, 10.0)
-        self._pullback_min_gain_pct.setValue(3.0)
+        self._pullback_min_gain_pct.setValue(4.0)
         self._pullback_min_gain_pct.setSuffix(" %")
         self._pullback_min_gain_pct.setDecimals(1)
         form.addRow("min_gain_pct:", self._pullback_min_gain_pct)
+
+        self._pullback_stop_loss = QDoubleSpinBox()
+        self._pullback_stop_loss.setRange(0.0, 5.0)
+        self._pullback_stop_loss.setValue(1.8)
+        self._pullback_stop_loss.setSuffix(" %")
+        self._pullback_stop_loss.setDecimals(1)
+        self._pullback_stop_loss.setSingleStep(0.1)
+        form.addRow("stop_loss_pct:", self._pullback_stop_loss)
+
+        return group
+
+    def _build_flow_page(self) -> QGroupBox:
+        group = QGroupBox("Flow 파라미터")
+        form = QFormLayout(group)
+        form.setContentsMargins(10, 16, 10, 10)
+        form.setSpacing(8)
+
+        self._flow_volume_surge = QDoubleSpinBox()
+        self._flow_volume_surge.setRange(0.0, 10.0)
+        self._flow_volume_surge.setValue(2.5)
+        self._flow_volume_surge.setSuffix(" 배")
+        self._flow_volume_surge.setDecimals(1)
+        form.addRow("volume_surge_ratio:", self._flow_volume_surge)
+
+        self._flow_stop_loss = QDoubleSpinBox()
+        self._flow_stop_loss.setRange(0.0, 5.0)
+        self._flow_stop_loss.setValue(1.5)
+        self._flow_stop_loss.setSuffix(" %")
+        self._flow_stop_loss.setDecimals(1)
+        self._flow_stop_loss.setSingleStep(0.1)
+        form.addRow("stop_loss_pct:", self._flow_stop_loss)
+
+        self._flow_trailing_stop = QDoubleSpinBox()
+        self._flow_trailing_stop.setRange(0.0, 5.0)
+        self._flow_trailing_stop.setValue(1.5)
+        self._flow_trailing_stop.setSuffix(" %")
+        self._flow_trailing_stop.setDecimals(1)
+        self._flow_trailing_stop.setSingleStep(0.1)
+        form.addRow("trailing_stop_pct:", self._flow_trailing_stop)
+
+        self._flow_signal_start = QTimeEdit()
+        self._flow_signal_start.setTime(QTime(9, 30))
+        form.addRow("signal_start:", self._flow_signal_start)
+
+        self._flow_signal_end = QTimeEdit()
+        self._flow_signal_end.setTime(QTime(14, 30))
+        form.addRow("signal_end:", self._flow_signal_end)
+
+        return group
+
+    def _build_gap_page(self) -> QGroupBox:
+        group = QGroupBox("Gap 파라미터")
+        form = QFormLayout(group)
+        form.setContentsMargins(10, 16, 10, 10)
+        form.setSpacing(8)
+
+        self._gap_min_gap = QDoubleSpinBox()
+        self._gap_min_gap.setRange(0.0, 10.0)
+        self._gap_min_gap.setValue(1.5)
+        self._gap_min_gap.setSuffix(" %")
+        self._gap_min_gap.setDecimals(1)
+        self._gap_min_gap.setSingleStep(0.1)
+        form.addRow("min_gap_pct:", self._gap_min_gap)
+
+        self._gap_stop_loss = QDoubleSpinBox()
+        self._gap_stop_loss.setRange(0.0, 5.0)
+        self._gap_stop_loss.setValue(1.0)
+        self._gap_stop_loss.setSuffix(" %")
+        self._gap_stop_loss.setDecimals(1)
+        self._gap_stop_loss.setSingleStep(0.1)
+        form.addRow("stop_loss_pct:", self._gap_stop_loss)
+
+        return group
+
+    def _build_open_break_page(self) -> QGroupBox:
+        group = QGroupBox("OpenBreak 파라미터")
+        form = QFormLayout(group)
+        form.setContentsMargins(10, 16, 10, 10)
+        form.setSpacing(8)
+
+        self._ob_break_pct = QDoubleSpinBox()
+        self._ob_break_pct.setRange(0.0, 5.0)
+        self._ob_break_pct.setValue(0.5)
+        self._ob_break_pct.setSuffix(" %")
+        self._ob_break_pct.setDecimals(1)
+        self._ob_break_pct.setSingleStep(0.1)
+        form.addRow("break_pct:", self._ob_break_pct)
+
+        self._ob_volume_ratio = QDoubleSpinBox()
+        self._ob_volume_ratio.setRange(0.0, 5.0)
+        self._ob_volume_ratio.setValue(0.3)
+        self._ob_volume_ratio.setSuffix(" 배")
+        self._ob_volume_ratio.setDecimals(1)
+        self._ob_volume_ratio.setSingleStep(0.1)
+        form.addRow("volume_ratio:", self._ob_volume_ratio)
+
+        self._ob_stop_loss = QDoubleSpinBox()
+        self._ob_stop_loss.setRange(0.0, 5.0)
+        self._ob_stop_loss.setValue(0.5)
+        self._ob_stop_loss.setSuffix(" %")
+        self._ob_stop_loss.setDecimals(1)
+        self._ob_stop_loss.setSingleStep(0.1)
+        form.addRow("stop_loss_pct:", self._ob_stop_loss)
+
+        self._ob_signal_start = QTimeEdit()
+        self._ob_signal_start.setTime(QTime(9, 15))
+        form.addRow("signal_start:", self._ob_signal_start)
+
+        return group
+
+    def _build_big_candle_page(self) -> QGroupBox:
+        group = QGroupBox("BigCandle 파라미터")
+        form = QFormLayout(group)
+        form.setContentsMargins(10, 16, 10, 10)
+        form.setSpacing(8)
+
+        self._bc_atr_multiplier = QDoubleSpinBox()
+        self._bc_atr_multiplier.setRange(0.5, 5.0)
+        self._bc_atr_multiplier.setValue(1.5)
+        self._bc_atr_multiplier.setSuffix(" 배")
+        self._bc_atr_multiplier.setDecimals(1)
+        self._bc_atr_multiplier.setSingleStep(0.1)
+        form.addRow("atr_multiplier:", self._bc_atr_multiplier)
+
+        self._bc_timeout = QSpinBox()
+        self._bc_timeout.setRange(5, 120)
+        self._bc_timeout.setValue(30)
+        self._bc_timeout.setSuffix(" 분")
+        form.addRow("timeout_minutes:", self._bc_timeout)
+
+        self._bc_stop_loss = QDoubleSpinBox()
+        self._bc_stop_loss.setRange(0.0, 5.0)
+        self._bc_stop_loss.setValue(1.0)
+        self._bc_stop_loss.setSuffix(" %")
+        self._bc_stop_loss.setDecimals(1)
+        self._bc_stop_loss.setSingleStep(0.1)
+        form.addRow("stop_loss_pct:", self._bc_stop_loss)
 
         return group
 
@@ -196,7 +292,7 @@ class StrategyTab(QWidget):
 
         self._risk_tp1 = QDoubleSpinBox()
         self._risk_tp1.setRange(0.0, 10.0)
-        self._risk_tp1.setValue(2.0)
+        self._risk_tp1.setValue(3.0)
         self._risk_tp1.setSuffix(" %")
         self._risk_tp1.setDecimals(1)
         self._risk_tp1.setSingleStep(0.1)
@@ -212,12 +308,12 @@ class StrategyTab(QWidget):
 
         self._risk_max_trades = QSpinBox()
         self._risk_max_trades.setRange(1, 20)
-        self._risk_max_trades.setValue(5)
+        self._risk_max_trades.setValue(3)
         form.addRow("max_trades_per_day:", self._risk_max_trades)
 
         self._risk_cooldown = QSpinBox()
         self._risk_cooldown.setRange(0, 60)
-        self._risk_cooldown.setValue(10)
+        self._risk_cooldown.setValue(15)
         self._risk_cooldown.setSuffix(" 분")
         form.addRow("cooldown_minutes:", self._risk_cooldown)
 
@@ -287,87 +383,126 @@ class StrategyTab(QWidget):
     # ------------------------------------------------------------------
 
     def load_config(self, config: dict) -> None:
-        """Load values from config dict into all fields.
-        config structure mirrors config.yaml: strategy.orb.*, strategy.vwap.*,
-        trading.stop_loss_pct, etc.
-        """
+        """Load values from config dict into all fields."""
         strategy_cfg = config.get("strategy", {})
         trading_cfg = config.get("trading", {})
 
-        # ORB
-        orb = strategy_cfg.get("orb", {})
-        if "range_start" in orb:
-            t = QTime.fromString(str(orb["range_start"]), "hh:mm")
-            if t.isValid():
-                self._orb_range_start.setTime(t)
-        if "range_end" in orb:
-            t = QTime.fromString(str(orb["range_end"]), "hh:mm")
-            if t.isValid():
-                self._orb_range_end.setTime(t)
-        if "min_range_pct" in orb:
-            self._orb_min_range_pct.setValue(float(orb["min_range_pct"]))
-        if "volume_ratio" in orb:
-            self._orb_volume_ratio.setValue(float(orb["volume_ratio"]))
-
-        # VWAP
-        vwap = strategy_cfg.get("vwap", {})
-        if "rsi_low" in vwap:
-            self._vwap_rsi_low.setValue(float(vwap["rsi_low"]))
-        if "rsi_high" in vwap:
-            self._vwap_rsi_high.setValue(float(vwap["rsi_high"]))
-
         # Momentum
         momentum = strategy_cfg.get("momentum", {})
-        if "momentum_volume_ratio" in momentum:
-            self._mom_volume_ratio.setValue(float(momentum["momentum_volume_ratio"]))
+        if "volume_ratio" in momentum:
+            self._mom_volume_ratio.setValue(float(momentum["volume_ratio"]))
+        if "stop_loss_pct" in momentum:
+            self._mom_stop_loss.setValue(abs(float(momentum["stop_loss_pct"])) * 100)
 
         # Pullback
         pullback = strategy_cfg.get("pullback", {})
         if "min_gain_pct" in pullback:
-            self._pullback_min_gain_pct.setValue(float(pullback["min_gain_pct"]))
+            self._pullback_min_gain_pct.setValue(float(pullback["min_gain_pct"]) * 100)
+        if "stop_loss_pct" in pullback:
+            self._pullback_stop_loss.setValue(abs(float(pullback["stop_loss_pct"])) * 100)
+
+        # Flow
+        flow = strategy_cfg.get("flow", {})
+        if "volume_surge_ratio" in flow:
+            self._flow_volume_surge.setValue(float(flow["volume_surge_ratio"]))
+        if "stop_loss_pct" in flow:
+            self._flow_stop_loss.setValue(abs(float(flow["stop_loss_pct"])) * 100)
+        if "trailing_stop_pct" in flow:
+            self._flow_trailing_stop.setValue(float(flow["trailing_stop_pct"]) * 100)
+        if "signal_start" in flow:
+            t = QTime.fromString(str(flow["signal_start"]), "hh:mm")
+            if t.isValid():
+                self._flow_signal_start.setTime(t)
+        if "signal_end" in flow:
+            t = QTime.fromString(str(flow["signal_end"]), "hh:mm")
+            if t.isValid():
+                self._flow_signal_end.setTime(t)
+
+        # Gap
+        gap = strategy_cfg.get("gap", {})
+        if "min_gap_pct" in gap:
+            self._gap_min_gap.setValue(float(gap["min_gap_pct"]) * 100)
+        if "stop_loss_pct" in gap:
+            self._gap_stop_loss.setValue(abs(float(gap["stop_loss_pct"])) * 100)
+
+        # OpenBreak
+        ob = strategy_cfg.get("open_break", {})
+        if "break_pct" in ob:
+            self._ob_break_pct.setValue(float(ob["break_pct"]) * 100)
+        if "volume_ratio" in ob:
+            self._ob_volume_ratio.setValue(float(ob["volume_ratio"]))
+        if "stop_loss_pct" in ob:
+            self._ob_stop_loss.setValue(abs(float(ob["stop_loss_pct"])) * 100)
+        if "signal_start" in ob:
+            t = QTime.fromString(str(ob["signal_start"]), "hh:mm")
+            if t.isValid():
+                self._ob_signal_start.setTime(t)
+
+        # BigCandle
+        bc = strategy_cfg.get("big_candle", {})
+        if "atr_multiplier" in bc:
+            self._bc_atr_multiplier.setValue(float(bc["atr_multiplier"]))
+        if "timeout_minutes" in bc:
+            self._bc_timeout.setValue(int(bc["timeout_minutes"]))
+        if "stop_loss_pct" in bc:
+            self._bc_stop_loss.setValue(abs(float(bc["stop_loss_pct"])) * 100)
 
         # Risk / trading
         if "stop_loss_pct" in trading_cfg:
-            self._risk_stop_loss.setValue(float(trading_cfg["stop_loss_pct"]))
+            self._risk_stop_loss.setValue(abs(float(trading_cfg["stop_loss_pct"])) * 100)
         if "tp1_pct" in trading_cfg:
-            self._risk_tp1.setValue(float(trading_cfg["tp1_pct"]))
-        if "max_daily_loss_pct" in trading_cfg:
-            self._risk_max_daily_loss.setValue(float(trading_cfg["max_daily_loss_pct"]))
+            self._risk_tp1.setValue(float(trading_cfg["tp1_pct"]) * 100)
+        if "daily_max_loss_pct" in trading_cfg:
+            self._risk_max_daily_loss.setValue(abs(float(trading_cfg["daily_max_loss_pct"])) * 100)
         if "max_trades_per_day" in trading_cfg:
             self._risk_max_trades.setValue(int(trading_cfg["max_trades_per_day"]))
         if "cooldown_minutes" in trading_cfg:
             self._risk_cooldown.setValue(int(trading_cfg["cooldown_minutes"]))
-        if "first_leg_ratio" in trading_cfg:
-            self._risk_first_leg.setValue(float(trading_cfg["first_leg_ratio"]))
+        if "entry_1st_ratio" in trading_cfg:
+            self._risk_first_leg.setValue(float(trading_cfg["entry_1st_ratio"]))
 
     def get_config(self) -> dict:
         """Gather all field values into config dict matching config.yaml structure."""
         return {
             "strategy": {
-                "orb": {
-                    "range_start": self._orb_range_start.time().toString("hh:mm"),
-                    "range_end": self._orb_range_end.time().toString("hh:mm"),
-                    "min_range_pct": self._orb_min_range_pct.value(),
-                    "volume_ratio": self._orb_volume_ratio.value(),
-                },
-                "vwap": {
-                    "rsi_low": self._vwap_rsi_low.value(),
-                    "rsi_high": self._vwap_rsi_high.value(),
-                },
                 "momentum": {
-                    "momentum_volume_ratio": self._mom_volume_ratio.value(),
+                    "volume_ratio": self._mom_volume_ratio.value(),
+                    "stop_loss_pct": -self._mom_stop_loss.value() / 100,
                 },
                 "pullback": {
-                    "min_gain_pct": self._pullback_min_gain_pct.value(),
+                    "min_gain_pct": self._pullback_min_gain_pct.value() / 100,
+                    "stop_loss_pct": -self._pullback_stop_loss.value() / 100,
+                },
+                "flow": {
+                    "volume_surge_ratio": self._flow_volume_surge.value(),
+                    "stop_loss_pct": -self._flow_stop_loss.value() / 100,
+                    "trailing_stop_pct": self._flow_trailing_stop.value() / 100,
+                    "signal_start": self._flow_signal_start.time().toString("hh:mm"),
+                    "signal_end": self._flow_signal_end.time().toString("hh:mm"),
+                },
+                "gap": {
+                    "min_gap_pct": self._gap_min_gap.value() / 100,
+                    "stop_loss_pct": -self._gap_stop_loss.value() / 100,
+                },
+                "open_break": {
+                    "break_pct": self._ob_break_pct.value() / 100,
+                    "volume_ratio": self._ob_volume_ratio.value(),
+                    "stop_loss_pct": -self._ob_stop_loss.value() / 100,
+                    "signal_start": self._ob_signal_start.time().toString("hh:mm"),
+                },
+                "big_candle": {
+                    "atr_multiplier": self._bc_atr_multiplier.value(),
+                    "timeout_minutes": self._bc_timeout.value(),
+                    "stop_loss_pct": -self._bc_stop_loss.value() / 100,
                 },
             },
             "trading": {
-                "stop_loss_pct": self._risk_stop_loss.value(),
-                "tp1_pct": self._risk_tp1.value(),
-                "max_daily_loss_pct": self._risk_max_daily_loss.value(),
+                "stop_loss_pct": -self._risk_stop_loss.value() / 100,
+                "tp1_pct": self._risk_tp1.value() / 100,
+                "daily_max_loss_pct": -self._risk_max_daily_loss.value() / 100,
                 "max_trades_per_day": self._risk_max_trades.value(),
                 "cooldown_minutes": self._risk_cooldown.value(),
-                "first_leg_ratio": self._risk_first_leg.value(),
+                "entry_1st_ratio": self._risk_first_leg.value(),
             },
         }
 

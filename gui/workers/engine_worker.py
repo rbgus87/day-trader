@@ -423,6 +423,9 @@ class EngineWorker(QThread):
         from strategy.momentum_strategy import MomentumStrategy
         from strategy.pullback_strategy import PullbackStrategy
         from strategy.flow_strategy import FlowStrategy
+        from strategy.gap_strategy import GapStrategy
+        from strategy.open_break_strategy import OpenBreakStrategy
+        from strategy.big_candle_strategy import BigCandleStrategy
 
         today = datetime.now().strftime("%Y-%m-%d")
         logger.info(f"08:30 스크리닝 시작 ({today})")
@@ -459,6 +462,9 @@ class EngineWorker(QThread):
                 "momentum": MomentumStrategy(self._config.trading),
                 "pullback": PullbackStrategy(self._config.trading),
                 "flow": FlowStrategy(self._config.trading),
+                "gap": GapStrategy(self._config.trading),
+                "open_break": OpenBreakStrategy(self._config.trading),
+                "big_candle": BigCandleStrategy(self._config.trading),
             }
             self._active_strategy = strategies.get(strategy_name)
 
