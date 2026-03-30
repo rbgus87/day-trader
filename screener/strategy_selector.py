@@ -49,6 +49,11 @@ class StrategySelector:
 
         candidate = market_data.get("candidate_ticker")
 
+        force = getattr(self._config, "force_strategy", "")
+        if force:
+            logger.info("전략 강제 설정: %s", force)
+            return force, candidate
+
         if self._check_momentum(market_data):
             logger.info(
                 "전략 선택: 모멘텀 (섹터 ETF %.2f%%)",

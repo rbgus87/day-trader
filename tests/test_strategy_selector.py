@@ -13,6 +13,7 @@ from screener.strategy_selector import StrategySelector
 def selector():
     config = MagicMock()
     config.selector = {}
+    config.force_strategy = ""
     rest_client = MagicMock()
     return StrategySelector(config=config, rest_client=rest_client)
 
@@ -124,6 +125,7 @@ async def test_selects_none(selector):
 async def test_collect_market_data():
     config = MagicMock()
     config.selector = {}
+    config.force_strategy = ""
     rest_client = MagicMock()
     rest_client.get_market_snapshot = AsyncMock(return_value={
         "kospi_gap_pct": 0.7,
@@ -141,6 +143,7 @@ async def test_collect_market_data():
 async def test_select_auto_collects():
     config = MagicMock()
     config.selector = {}
+    config.force_strategy = ""
     rest_client = MagicMock()
     rest_client.get_market_snapshot = AsyncMock(return_value={
         "kospi_gap_pct": 0.0,
@@ -162,6 +165,7 @@ async def test_select_auto_collects():
 async def test_config_threshold_override():
     config = MagicMock()
     config.selector = {"momentum_etf_threshold": 3.0}
+    config.force_strategy = ""
     rest_client = MagicMock()
     sel = StrategySelector(config=config, rest_client=rest_client)
 
@@ -172,3 +176,42 @@ async def test_config_threshold_override():
     strategy, _ = await sel.select(market_data)
     # 2.5 < 3.0이므로 Momentum 아님 → Flow
     assert strategy == "flow"
+
+
+# ---------------------------------------------------------------------------
+# force_strategy 설정
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_force_strategy_flow():
+    """force_strategy='flow' → 항상 flow 반환."""
+    config = MagicMock()
+    config.selector = {}
+    config.force_strategy = "flow"
+    rest_client = MagicMock()
+    sel = StrategySelector(config=config, rest_client=rest_client)
+
+    market_data = {
+        "sector_etf_change_pct": 3.0,  # Momentum 조건 충족하지만 무시
+        "candidate_ticker": "005930",
+    }
+    strategy, ticker = await sel.select(market_data)
+    assert strategy == "flow"
+    assert ticker == "005930"
+
+
+@pytest.mark.asyncio
+async def test_force_strategy_empty_uses_selector():
+    """force_strategy='' → 기존 selector 로직 동작."""
+    config = MagicMock()
+    config.selector = {}
+    config.force_strategy = ""
+    rest_client = MagicMock()
+    sel = StrategySelector(config=config, rest_client=rest_client)
+
+    market_data = {
+        "sector_etf_change_pct": 3.0,
+        "candidate_ticker": "005930",
+    }
+    strategy, _ = await sel.select(market_data)
+    assert strategy == "momentum"

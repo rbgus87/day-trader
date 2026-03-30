@@ -154,6 +154,7 @@ class AppConfig:
     db_path: str = "daytrader.db"
     paper_mode: bool = True  # True=주문 시뮬레이션, False=실매매
     selector: dict = field(default_factory=dict)  # 전략 선택기 임계값
+    force_strategy: str = ""  # 비어있으면 selector 로직, 값 있으면 해당 전략 강제
 
     @staticmethod
     def from_yaml(path: str | Path | None = None) -> "AppConfig":
@@ -274,4 +275,5 @@ class AppConfig:
             debug=os.getenv("DEBUG", "false").lower() == "true",
             paper_mode=cfg.get("paper_mode", True),
             selector=selector,
+            force_strategy=s.get("force", ""),
         )
