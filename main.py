@@ -140,8 +140,8 @@ async def main():
     pre_market_screener = PreMarketScreener(rest_client, db, config.screener)
     strategy_selector = StrategySelector(config, rest_client)
 
-    # 활성 전략 (스크리닝 후 설정)
-    active_strategy = None
+    # 멀티 종목 활성 전략 (스크리닝 후 설정)
+    active_strategies: dict = {}  # {ticker: {"strategy": ..., "name": ..., "score": ...}}
 
     # 스케줄러
     scheduler = AsyncIOScheduler()
@@ -149,12 +149,10 @@ async def main():
     # --- 파이프라인 태스크 ---
 
     async def tick_consumer():
-        """틱 → 캔들 빌더 + 포지션 모니터링."""
+        """틱 → 캔들 빌더 + 포지션 모니터링 (멀티 종목)."""
         while True:
             tick = await tick_queue.get()
-            # 1. 캔들 빌더에 전달 (기존)
             await candle_builder.on_tick(tick)
-            # 2. 포지션 모니터링 (신규)
             ticker = tick["ticker"]
             price = tick["price"]
             pos = risk_manager.get_position(ticker)
@@ -178,75 +176,115 @@ async def main():
                 risk_manager.mark_tp1_hit(ticker, sell_qty)
                 logger.info(f"TP1 실행: {ticker} {sell_qty}주 @ {price:,} PnL={pnl:+,.0f}")
                 continue
+            # 시간 손절
+            if risk_manager.check_time_stop(
+                ticker, price,
+                config.trading.time_stop_minutes,
+                config.trading.time_stop_min_profit,
+            ):
+                qty = pos["remaining_qty"]
+                await order_manager.execute_sell_force_close(ticker=ticker, qty=qty)
+                pnl = (price - pos["entry_price"]) * qty
+                risk_manager.record_pnl(pnl)
+                risk_manager.remove_position(ticker)
+                logger.info(f"시간 손절: {ticker} {qty}주 @ {price:,} PnL={pnl:+,.0f} ({config.trading.time_stop_minutes}분)")
+                if notifier:
+                    await notifier.send(f"⏰ 시간 손절: {ticker} {config.trading.time_stop_minutes}분 경과")
+                continue
             # 트레일링 스톱 갱신
             risk_manager.update_trailing_stop(ticker, price)
 
     async def candle_consumer():
-        """캔들 → 전략 엔진. 롤링 DataFrame 유지."""
-        nonlocal active_strategy
+        """캔들 → 전략 엔진 (멀티 종목)."""
+        nonlocal active_strategies
         import pandas as pd
         candle_history: dict[str, list[dict]] = {}
         MAX_HISTORY = 100
 
         while True:
             candle = await candle_queue.get()
-            if active_strategy is None:
+            if not active_strategies:
                 continue
             if risk_manager.is_trading_halted():
                 continue
 
-            # 5분봉 수신 시 FlowStrategy에 거래량 히스토리 전달
-            if candle.get("tf") == "5m" and hasattr(active_strategy, "on_candle_5m"):
-                active_strategy.on_candle_5m(candle)
-
             ticker = candle["ticker"]
+            if ticker not in active_strategies:
+                continue
+
+            # 동시 포지션 한도
+            open_pos = risk_manager.get_open_positions()
+            if len(open_pos) >= config.trading.max_positions and ticker not in open_pos:
+                continue
+
+            # 이미 포지션 있으면 신호 생성 스킵
+            if risk_manager.get_position(ticker):
+                continue
+
+            strat_info = active_strategies[ticker]
+            strategy = strat_info["strategy"]
+
+            # 5분봉이면 Flow 거래량 히스토리 업데이트
+            if candle.get("tf") == "5m" and hasattr(strategy, "on_candle_5m"):
+                strategy.on_candle_5m(candle)
+
             candle_history.setdefault(ticker, [])
             candle_history[ticker].append(candle)
             if len(candle_history[ticker]) > MAX_HISTORY:
                 candle_history[ticker] = candle_history[ticker][-MAX_HISTORY:]
 
             df = pd.DataFrame(candle_history[ticker])
-            signal = active_strategy.generate_signal(df, candle)
+            signal = strategy.generate_signal(df, candle)
             if signal:
                 await signal_queue.put(signal)
 
     async def signal_consumer():
-        """신호 → 주문 실행."""
-        nonlocal active_strategy
+        """신호 → 주문 실행 (멀티 종목, 자본 분배)."""
+        nonlocal active_strategies
         while True:
             signal = await signal_queue.get()
-            if signal.side == "buy" and active_strategy:
-                sl = active_strategy.get_stop_loss(signal.price)
-                tp1, tp2 = active_strategy.get_take_profit(signal.price)
+            if signal.side != "buy" or signal.ticker not in active_strategies:
+                continue
 
-                # 포지션 사이즈 계산
-                capital = risk_manager.available_capital
-                if capital <= 0:
-                    logger.warning("available_capital이 0 이하 — config.trading.initial_capital로 대체")
-                    capital = config.trading.initial_capital
-                stop_dist = abs(signal.price - sl)
-                if stop_dist > 0:
-                    risk_amount = capital * 0.02
-                    max_qty = int(risk_amount / stop_dist)
-                else:
-                    max_qty = int(capital * 0.3 / signal.price)
-                total_qty = int(max_qty * risk_manager.position_scale)
-                total_qty = max(total_qty, 1)
+            # 포지션 한도 재확인
+            open_pos = risk_manager.get_open_positions()
+            if len(open_pos) >= config.trading.max_positions:
+                logger.info(f"포지션 한도 ({config.trading.max_positions}), 무시: {signal.ticker}")
+                continue
 
-                result = await order_manager.execute_buy(
+            strategy = active_strategies[signal.ticker]["strategy"]
+            sl = strategy.get_stop_loss(signal.price)
+            tp1, tp2 = strategy.get_take_profit(signal.price)
+
+            # 자본 분배
+            capital = risk_manager.available_capital
+            if capital <= 0:
+                capital = config.trading.initial_capital
+            position_capital = capital / config.trading.max_positions
+
+            stop_dist = abs(signal.price - sl)
+            if stop_dist > 0:
+                risk_amount = position_capital * 0.02
+                max_qty = int(risk_amount / stop_dist)
+            else:
+                max_qty = int(position_capital * 0.3 / signal.price)
+            total_qty = int(max_qty * risk_manager.position_scale)
+            total_qty = max(total_qty, 1)
+
+            result = await order_manager.execute_buy(
+                ticker=signal.ticker,
+                price=int(signal.price),
+                total_qty=total_qty,
+                strategy=signal.strategy,
+            )
+            if result:
+                risk_manager.register_position(
                     ticker=signal.ticker,
-                    price=int(signal.price),
-                    total_qty=total_qty,
-                    strategy=signal.strategy,
+                    entry_price=signal.price,
+                    qty=result["qty"],
+                    stop_loss=sl,
+                    tp1_price=tp1,
                 )
-                if result:
-                    risk_manager.register_position(
-                        ticker=signal.ticker,
-                        entry_price=signal.price,
-                        qty=result["qty"],
-                        stop_loss=sl,
-                        tp1_price=tp1,
-                    )
 
     async def order_confirmation_consumer():
         """WS 체결통보 처리."""
@@ -257,8 +295,8 @@ async def main():
     # --- 스케줄 등록 ---
 
     async def run_screening():
-        """08:30 장 전 스크리닝 — candidates 수집 → 필터 → 전략 선택."""
-        nonlocal active_strategy
+        """08:30 장 전 스크리닝 — candidates 수집 → 필터 → 멀티 종목 전략 설정."""
+        nonlocal active_strategies
         from datetime import datetime
         from strategy.momentum_strategy import MomentumStrategy
         from strategy.pullback_strategy import PullbackStrategy
@@ -268,51 +306,67 @@ async def main():
         logger.info(f"08:30 스크리닝 시작 ({today})")
 
         try:
-            # 1. Candidates 수집
             candidates = await candidate_collector.collect()
             if not candidates:
                 logger.warning("candidates 없음 — 당일 매매 없음")
-                await notifier.send("스크리닝 결과: candidates 없음 — 당일 매매 없음")
+                await notifier.send("스크리닝: candidates 없음 — 당일 매매 없음")
                 return
 
-            # 2. 4단계 필터 적용
             screened = await pre_market_screener.screen(candidates)
             if not screened:
                 logger.warning("스크리닝 통과 종목 없음 — 당일 매매 없음")
-                await notifier.send("스크리닝 결과: 통과 종목 없음 — 당일 매매 없음")
+                await notifier.send("스크리닝: 통과 종목 없음 — 당일 매매 없음")
                 return
 
-            # 3. 스크리닝 결과 DB 저장
             await pre_market_screener.save_results(today, screened)
 
-            # 4. 전략 선택 (상위 1종목 + 시장 데이터 자동 수집)
+            # 전략 선택
             top = screened[0]
-            strategy_name, ticker = await strategy_selector.select(
+            strategy_name, _ = await strategy_selector.select(
                 candidate_ticker=top["ticker"],
             )
+            if not strategy_name:
+                await notifier.send("전략 선택 없음 — 당일 매매 없음")
+                return
 
-            # 5. 전략 인스턴스 설정
-            strategies = {
-                "momentum": MomentumStrategy(config.trading),
-                "pullback": PullbackStrategy(config.trading),
-                "flow": FlowStrategy(config.trading),
+            # 상위 N종목 선택
+            top_n = config.trading.screening_top_n
+            selected = screened[:top_n]
+            tickers = [s["ticker"] for s in selected]
+
+            strategy_classes = {
+                "momentum": MomentumStrategy,
+                "pullback": PullbackStrategy,
+                "flow": FlowStrategy,
             }
-            active_strategy = strategies.get(strategy_name)
+            StratClass = strategy_classes.get(strategy_name)
+            if not StratClass:
+                logger.error(f"알 수 없는 전략: {strategy_name}")
+                return
 
-            if active_strategy and ticker:
-                # WS 구독 등록
-                await ws_client.subscribe([ticker])
-                logger.info(f"전략 활성화: {strategy_name} → {ticker} ({top['name']})")
-                await notifier.send(
-                    f"스크리닝 완료\n"
-                    f"선정: {top['name']} ({ticker})\n"
-                    f"전략: {strategy_name}\n"
-                    f"점수: {top.get('score', 0):.1f}\n"
-                    f"후보: {len(screened)}종목"
+            active_strategies = {}
+            for s in selected:
+                strat = StratClass(config.trading)
+                strat.configure_multi_trade(
+                    max_trades=config.trading.max_trades_per_day,
+                    cooldown_minutes=config.trading.cooldown_minutes,
                 )
-            else:
-                logger.info("전략 선택 없음 — 당일 매매 없음")
-                await notifier.send("스크리닝 완료 — 조건 미달, 당일 매매 없음")
+                active_strategies[s["ticker"]] = {
+                    "strategy": strat,
+                    "name": s.get("name", s["ticker"]),
+                    "score": s.get("score", 0),
+                }
+
+            await ws_client.subscribe(tickers)
+            logger.info(f"멀티 종목 감시: {len(selected)}종목 전략={strategy_name}")
+            await notifier.send(
+                f"스크리닝 완료 — {strategy_name}\n"
+                f"감시: {len(selected)}종목\n"
+                + "\n".join(
+                    f"  {s.get('name','')} ({s['ticker']}) 점수:{s.get('score',0):.1f}"
+                    for s in selected
+                )
+            )
 
         except Exception as exc:
             logger.error(f"스크리닝 실패: {exc}")
@@ -320,18 +374,18 @@ async def main():
 
     async def force_close():
         """15:10 강제 청산."""
-        nonlocal active_strategy
+        nonlocal active_strategies
         logger.warning("15:10 강제 청산 시작")
-        for ticker, pos in risk_manager.get_open_positions().items():
+        for ticker, pos in list(risk_manager.get_open_positions().items()):
+            if pos.get("remaining_qty", 0) > 0:
                 await order_manager.execute_sell_force_close(
                     ticker=ticker, qty=pos["remaining_qty"],
                 )
         await candle_builder.flush()
         candle_builder.reset()
-        # 일일 실적 저장 (reset 전에 수행)
         await risk_manager.save_daily_summary()
         risk_manager.reset_daily()
-        active_strategy = None  # 청산 후 전략 비활성화
+        active_strategies = {}
 
     async def run_daily_report():
         """15:30 일일 보고서 텔레그램 발송."""
@@ -414,7 +468,7 @@ async def main():
     # 08:30 이후 실행 시 즉시 스크리닝 (이미 지나간 스케줄 보상)
     from datetime import datetime, time as dt_time
     now = datetime.now().time()
-    if dt_time(8, 30) < now < dt_time(15, 10) and active_strategy is None:
+    if dt_time(8, 30) < now < dt_time(15, 10) and not active_strategies:
         logger.info("장중 실행 감지 — 즉시 스크리닝 시작")
         await run_screening()
 

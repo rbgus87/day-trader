@@ -7,8 +7,11 @@ def test_trading_config_defaults():
     assert tc.daily_max_loss_pct == -0.02
     assert tc.tp1_pct == 0.03
     assert tc.force_close_time == "15:10"
-    assert tc.max_trades_per_day == 3
-    assert tc.cooldown_minutes == 15
+    assert tc.max_trades_per_day == 1
+    assert tc.max_positions == 3
+    assert tc.cooldown_minutes == 999
+    assert tc.time_stop_minutes == 60
+    assert tc.time_stop_min_profit == 0.005
     assert tc.orb_volume_ratio == 0.0
     assert tc.pullback_min_gain_pct == 0.04
     assert tc.pullback_stop_loss_pct == -0.018
@@ -20,8 +23,9 @@ def test_trading_config_defaults_match_yaml():
     """TradingConfig 기본값과 config.yaml 값이 일치하는지 확인."""
     tc = TradingConfig()
     assert tc.tp1_pct == 0.03
-    assert tc.max_trades_per_day == 3
-    assert tc.cooldown_minutes == 15
+    assert tc.max_trades_per_day == 1
+    assert tc.max_positions == 3
+    assert tc.cooldown_minutes == 999
     assert tc.orb_volume_ratio == 0.0
     assert tc.pullback_min_gain_pct == 0.04
     assert tc.pullback_stop_loss_pct == -0.018

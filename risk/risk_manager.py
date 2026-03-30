@@ -1,5 +1,6 @@
-"""risk/risk_manager.py — 리스크 관리 (손절, 일일한도, 강제청산, 연속손실)."""
+"""risk/risk_manager.py — 리스크 관리 (손절, 일일한도, 강제청산, 연속손실, 시간손절)."""
 
+from datetime import datetime
 from loguru import logger
 
 from config.settings import TradingConfig
@@ -38,6 +39,7 @@ class RiskManager:
             "trailing_pct": trailing_pct or self._config.trailing_stop_pct,
             "highest_price": entry_price,
             "tp1_hit": False,
+            "entry_time": datetime.now(),
         }
 
     def remove_position(self, ticker: str) -> None:
@@ -71,6 +73,20 @@ class RiskManager:
         if pos["tp1_price"] and current_price >= pos["tp1_price"]:
             return True
         return False
+
+    def check_time_stop(
+        self, ticker: str, current_price: float,
+        time_stop_minutes: int = 60, min_profit: float = 0.005,
+    ) -> bool:
+        """진입 후 일정 시간 경과 + 최소 수익 미달 시 True."""
+        pos = self._positions.get(ticker)
+        if not pos or not pos.get("entry_time"):
+            return False
+        elapsed = (datetime.now() - pos["entry_time"]).total_seconds() / 60
+        if elapsed < time_stop_minutes:
+            return False
+        profit_pct = (current_price - pos["entry_price"]) / pos["entry_price"]
+        return profit_pct < min_profit
 
     def mark_tp1_hit(self, ticker: str, sold_qty: int) -> None:
         pos = self._positions.get(ticker)

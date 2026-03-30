@@ -59,8 +59,14 @@ class TradingConfig:
 
     # 진입
     entry_1st_ratio: float = 0.55
-    max_trades_per_day: int = 3
-    cooldown_minutes: int = 15
+    max_trades_per_day: int = 1
+    max_positions: int = 3
+    screening_top_n: int = 5
+    cooldown_minutes: int = 999
+
+    # 시간 손절
+    time_stop_minutes: int = 60
+    time_stop_min_profit: float = 0.005
 
     # 시간
     signal_block_until: str = "09:05"
@@ -200,8 +206,12 @@ class AppConfig:
             tp1_sell_ratio=t.get("tp1_sell_ratio", 0.5),
             trailing_stop_pct=t.get("trailing_stop_pct", 0.01),
             entry_1st_ratio=t.get("entry_1st_ratio", 0.55),
-            max_trades_per_day=t.get("max_trades_per_day", 3),
-            cooldown_minutes=t.get("cooldown_minutes", 15),
+            max_trades_per_day=t.get("max_trades_per_day", 1),
+            max_positions=t.get("max_positions", 3),
+            screening_top_n=t.get("screening_top_n", 5),
+            cooldown_minutes=t.get("cooldown_minutes", 999),
+            time_stop_minutes=t.get("time_stop_minutes", 60),
+            time_stop_min_profit=t.get("time_stop_min_profit", 0.005),
             signal_block_until=t.get("signal_block_until", "09:05"),
             force_close_time=t.get("force_close_time", "15:10"),
             screening_time=t.get("screening_time", "08:30"),

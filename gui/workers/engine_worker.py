@@ -34,6 +34,7 @@ class EngineWorker(QThread):
         self._order_manager = None
         self._scheduler = None
         self._active_strategy = None
+        self._active_strategies: dict = {}  # {ticker: {"strategy": ..., "name": ..., "score": ...}}
         self._pipeline_tasks: list[asyncio.Task] = []
 
         # Screener components
@@ -205,7 +206,7 @@ class EngineWorker(QThread):
 
         # Late screening (장중 실행 시 즉시 스크리닝)
         now = datetime.now().time()
-        if dt_time(8, 30) < now < dt_time(15, 10) and self._active_strategy is None:
+        if dt_time(8, 30) < now < dt_time(15, 10) and not self._active_strategies:
             logger.info("장중 실행 감지 -- 즉시 스크리닝 시작")
             await self._run_screening()
 
@@ -312,6 +313,29 @@ class EngineWorker(QThread):
                         "pnl": int(pnl), "reason": "tp1",
                     })
                     continue
+                # 시간 손절
+                if self._risk_manager.check_time_stop(
+                    ticker, price,
+                    self._config.trading.time_stop_minutes,
+                    self._config.trading.time_stop_min_profit,
+                ):
+                    qty = pos["remaining_qty"]
+                    await self._order_manager.execute_sell_force_close(ticker=ticker, qty=qty)
+                    pnl = (price - pos["entry_price"]) * qty
+                    self._risk_manager.record_pnl(pnl)
+                    self._risk_manager.remove_position(ticker)
+                    if pnl >= 0:
+                        self._rt_wins += 1
+                    else:
+                        self._rt_losses += 1
+                    logger.info(f"시간 손절: {ticker} {qty}주 @ {price:,} PnL={pnl:+,.0f}")
+                    self.signals.trade_executed.emit({
+                        "time": datetime.now().strftime("%H:%M:%S"),
+                        "side": "sell", "ticker": ticker,
+                        "price": int(price), "qty": qty,
+                        "pnl": int(pnl), "reason": "time_stop",
+                    })
+                    continue
                 # 트레일링 스톱 갱신
                 self._risk_manager.update_trailing_stop(ticker, price)
             except asyncio.TimeoutError:
@@ -334,23 +358,37 @@ class EngineWorker(QThread):
                 break
 
             try:
-                if self._active_strategy is None:
+                if not self._active_strategies:
                     continue
                 if self._risk_manager.is_trading_halted():
                     continue
 
-                # 5분봉 수신 시 FlowStrategy에 거래량 히스토리 전달
-                if candle.get("tf") == "5m" and hasattr(self._active_strategy, "on_candle_5m"):
-                    self._active_strategy.on_candle_5m(candle)
-
                 ticker = candle["ticker"]
+                if ticker not in self._active_strategies:
+                    continue
+
+                # 동시 포지션 한도
+                open_pos = self._risk_manager.get_open_positions()
+                if len(open_pos) >= self._config.trading.max_positions and ticker not in open_pos:
+                    continue
+                # 이미 포지션 있으면 스킵
+                if self._risk_manager.get_position(ticker):
+                    continue
+
+                strat_info = self._active_strategies[ticker]
+                strategy = strat_info["strategy"]
+
+                # 5분봉이면 Flow 거래량 히스토리 업데이트
+                if candle.get("tf") == "5m" and hasattr(strategy, "on_candle_5m"):
+                    strategy.on_candle_5m(candle)
+
                 self._candle_history.setdefault(ticker, [])
                 self._candle_history[ticker].append(candle)
                 if len(self._candle_history[ticker]) > self._MAX_HISTORY:
                     self._candle_history[ticker] = self._candle_history[ticker][-self._MAX_HISTORY:]
 
                 df = pd.DataFrame(self._candle_history[ticker])
-                signal = self._active_strategy.generate_signal(df, candle)
+                signal = strategy.generate_signal(df, candle)
                 if signal:
                     await self._signal_queue.put(signal)
             except Exception as e:
@@ -367,46 +405,54 @@ class EngineWorker(QThread):
                 break
 
             try:
-                if signal.side == "buy" and self._active_strategy:
-                    sl = self._active_strategy.get_stop_loss(signal.price)
-                    tp1, tp2 = self._active_strategy.get_take_profit(signal.price)
+                if signal.side != "buy" or signal.ticker not in self._active_strategies:
+                    continue
 
-                    # Position sizing
-                    capital = self._risk_manager.available_capital
-                    if capital <= 0:
-                        logger.warning("available_capital이 0 이하 — config.trading.initial_capital로 대체")
-                        capital = self._config.trading.initial_capital
-                    stop_dist = abs(signal.price - sl)
-                    if stop_dist > 0:
-                        risk_amount = capital * 0.02
-                        max_qty = int(risk_amount / stop_dist)
-                    else:
-                        max_qty = int(capital * 0.3 / signal.price)
-                    total_qty = int(max_qty * self._risk_manager.position_scale)
-                    total_qty = max(total_qty, 1)
+                # 포지션 한도 재확인
+                open_pos = self._risk_manager.get_open_positions()
+                if len(open_pos) >= self._config.trading.max_positions:
+                    logger.info(f"포지션 한도 ({self._config.trading.max_positions}), 무시: {signal.ticker}")
+                    continue
 
-                    result = await self._order_manager.execute_buy(
+                strategy = self._active_strategies[signal.ticker]["strategy"]
+                sl = strategy.get_stop_loss(signal.price)
+                tp1, tp2 = strategy.get_take_profit(signal.price)
+
+                capital = self._risk_manager.available_capital
+                if capital <= 0:
+                    capital = self._config.trading.initial_capital
+                position_capital = capital / self._config.trading.max_positions
+                stop_dist = abs(signal.price - sl)
+                if stop_dist > 0:
+                    risk_amount = position_capital * 0.02
+                    max_qty = int(risk_amount / stop_dist)
+                else:
+                    max_qty = int(position_capital * 0.3 / signal.price)
+                total_qty = int(max_qty * self._risk_manager.position_scale)
+                total_qty = max(total_qty, 1)
+
+                result = await self._order_manager.execute_buy(
+                    ticker=signal.ticker,
+                    price=int(signal.price),
+                    total_qty=total_qty,
+                    strategy=signal.strategy,
+                )
+                if result:
+                    self._risk_manager.register_position(
                         ticker=signal.ticker,
-                        price=int(signal.price),
-                        total_qty=total_qty,
-                        strategy=signal.strategy,
+                        entry_price=signal.price,
+                        qty=result["qty"],
+                        stop_loss=sl,
+                        tp1_price=tp1,
                     )
-                    if result:
-                        self._risk_manager.register_position(
-                            ticker=signal.ticker,
-                            entry_price=signal.price,
-                            qty=result["qty"],
-                            stop_loss=sl,
-                            tp1_price=tp1,
-                        )
-                        self.signals.trade_executed.emit({
-                            "time": datetime.now().strftime("%H:%M:%S"),
-                            "side": "buy",
-                            "ticker": signal.ticker,
-                            "price": int(signal.price),
-                            "qty": result["qty"],
-                            "pnl": 0, "reason": "entry",
-                        })
+                    self.signals.trade_executed.emit({
+                        "time": datetime.now().strftime("%H:%M:%S"),
+                        "side": "buy",
+                        "ticker": signal.ticker,
+                        "price": int(signal.price),
+                        "qty": result["qty"],
+                        "pnl": 0, "reason": "entry",
+                    })
             except Exception as e:
                 logger.error(f"signal_consumer 오류: {e}")
 
@@ -474,30 +520,54 @@ class EngineWorker(QThread):
                 candidate_ticker=top["ticker"],
             )
 
-            # 5. 전략 인스턴스 설정
-            strategies = {
-                "momentum": MomentumStrategy(self._config.trading),
-                "pullback": PullbackStrategy(self._config.trading),
-                "flow": FlowStrategy(self._config.trading),
-                "gap": GapStrategy(self._config.trading),
-                "open_break": OpenBreakStrategy(self._config.trading),
-                "big_candle": BigCandleStrategy(self._config.trading),
-            }
-            self._active_strategy = strategies.get(strategy_name)
+            if not strategy_name:
+                await self._notifier.send("전략 선택 없음 — 당일 매매 없음")
+                return
 
-            if self._active_strategy and ticker:
-                await self._ws_client.subscribe([ticker])
-                logger.info(f"전략 활성화: {strategy_name} -> {ticker} ({top['name']})")
-                await self._notifier.send(
-                    f"스크리닝 완료\n"
-                    f"선정: {top['name']} ({ticker})\n"
-                    f"전략: {strategy_name}\n"
-                    f"점수: {top.get('score', 0):.1f}\n"
-                    f"후보: {len(screened)}종목"
+            # 5. 상위 N종목 멀티 전략 설정
+            top_n = self._config.trading.screening_top_n
+            selected = screened[:top_n]
+            tickers = [s["ticker"] for s in selected]
+
+            strategy_classes = {
+                "momentum": MomentumStrategy,
+                "pullback": PullbackStrategy,
+                "flow": FlowStrategy,
+                "gap": GapStrategy,
+                "open_break": OpenBreakStrategy,
+                "big_candle": BigCandleStrategy,
+            }
+            StratClass = strategy_classes.get(strategy_name)
+            if not StratClass:
+                logger.error(f"알 수 없는 전략: {strategy_name}")
+                return
+
+            self._active_strategies = {}
+            for s in selected:
+                strat = StratClass(self._config.trading)
+                strat.configure_multi_trade(
+                    max_trades=self._config.trading.max_trades_per_day,
+                    cooldown_minutes=self._config.trading.cooldown_minutes,
                 )
-            else:
-                logger.info("전략 선택 없음 -- 당일 매매 없음")
-                await self._notifier.send("스크리닝 완료 -- 조건 미달, 당일 매매 없음")
+                self._active_strategies[s["ticker"]] = {
+                    "strategy": strat,
+                    "name": s.get("name", s["ticker"]),
+                    "score": s.get("score", 0),
+                }
+            self._active_strategy = self._active_strategies.get(
+                tickers[0], {}
+            ).get("strategy")  # 대표 전략 (상태 표시용)
+
+            await self._ws_client.subscribe(tickers)
+            logger.info(f"멀티 종목 감시: {len(selected)}종목 전략={strategy_name}")
+            await self._notifier.send(
+                f"스크리닝 완료 — {strategy_name}\n"
+                f"감시: {len(selected)}종목\n"
+                + "\n".join(
+                    f"  {s.get('name','')} ({s['ticker']}) 점수:{s.get('score',0):.1f}"
+                    for s in selected
+                )
+            )
 
         except Exception as exc:
             logger.error(f"스크리닝 실패: {exc}")
@@ -506,16 +576,17 @@ class EngineWorker(QThread):
     async def _force_close(self):
         """15:10 강제 청산."""
         logger.warning("15:10 강제 청산 시작")
-        for ticker, pos in self._risk_manager.get_open_positions().items():
+        for ticker, pos in list(self._risk_manager.get_open_positions().items()):
+            if pos.get("remaining_qty", 0) > 0:
                 await self._order_manager.execute_sell_force_close(
                     ticker=ticker, qty=pos["remaining_qty"],
                 )
         await self._candle_builder.flush()
         self._candle_builder.reset()
-        # 일일 실적 저장 (reset 전에 수행)
         await self._risk_manager.save_daily_summary()
         self._risk_manager.reset_daily()
         self._active_strategy = None
+        self._active_strategies = {}
         self._candle_history.clear()
 
     async def _run_daily_report(self):
@@ -637,9 +708,17 @@ class EngineWorker(QThread):
 
         if strategy_name and strategy_name in strategies:
             self._active_strategy = strategies[strategy_name]
+            # 기존 멀티 종목 전략도 교체
+            for ticker, info in self._active_strategies.items():
+                StratClass = type(strategies[strategy_name])
+                new_strat = StratClass(self._config.trading)
+                new_strat.configure_multi_trade(
+                    max_trades=self._config.trading.max_trades_per_day,
+                    cooldown_minutes=self._config.trading.cooldown_minutes,
+                )
+                info["strategy"] = new_strat
             logger.info(f"전략 수동 변경: {strategy_name}")
         elif not strategy_name:
-            # Auto 모드: 다음 스크리닝에서 자동 선택
             logger.info("전략 Auto 모드로 전환 — 다음 스크리닝에서 자동 선택")
 
         self._emit_status()

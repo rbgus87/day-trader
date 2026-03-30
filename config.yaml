@@ -22,10 +22,16 @@ trading:
   tp1_sell_ratio: 0.5               # 1차 익절 시 50% 매도
   trailing_stop_pct: 0.01           # 고점 대비 -1% 트레일링 스톱
 
-  # 진입
-  entry_1st_ratio: 0.55             # 1차 매수 비율 55% (나머지 2차 매수)
-  max_trades_per_day: 3             # 일일 최대 거래 횟수 (최적화 결과: 5→3)
-  cooldown_minutes: 15              # 청산 후 재진입 대기 (최적화 결과: 10→15분)
+  # 진입 (멀티 종목 모델)
+  entry_1st_ratio: 0.55             # 1차 매수 비율 55%
+  max_trades_per_day: 1             # 종목당 1회
+  max_positions: 3                  # 동시 포지션 최대 3개
+  screening_top_n: 5                # 스크리닝 상위 5종목 감시
+  cooldown_minutes: 999             # 사실상 재진입 금지
+
+  # 시간 손절
+  time_stop_minutes: 60             # 진입 후 60분
+  time_stop_min_profit: 0.005       # 60분 내 +0.5% 미도달 시 청산
 
   # 시간
   signal_block_until: "09:05"       # 09:05 이전 신호 차단 (장 초반 변동성 회피)

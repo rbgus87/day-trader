@@ -134,10 +134,39 @@ class CandidateCollector:
         market_cap = self._extract_market_cap(price_data)
         avg_volume_amount = self._calc_avg_volume_amount(df)
 
-        # 기본 점수: 거래대금 기반 (높을수록 유동성 좋음)
+        # Flow 최적화 점수: "오늘 움직일 가능성" (0~10점)
         score = 0.0
+
+        # 1. 전일 거래량 급증 (전전일 대비) — 0~3점
+        if prev_volume > 0:
+            vol_ratio = volume / prev_volume
+            if vol_ratio >= 2.0:
+                score += 3.0
+            elif vol_ratio >= 1.5:
+                score += 2.0
+            elif vol_ratio >= 1.2:
+                score += 1.0
+
+        # 2. 전일 종가 위치 (고가 대비) — 0~2점
+        if len(df) >= 1:
+            prev_close_val = float(df.iloc[-1]["close"])
+            prev_high_val = float(df.iloc[-1]["high"])
+            if prev_high_val > 0:
+                close_position = prev_close_val / prev_high_val
+                if close_position >= 0.98:
+                    score += 2.0
+                elif close_position >= 0.95:
+                    score += 1.0
+
+        # 3. ATR 변동성 — 0~2점
+        if atr_pct >= 0.04:
+            score += 2.0
+        elif atr_pct >= 0.03:
+            score += 1.0
+
+        # 4. 유동성 보장 (거래대금) — 0~3점
         if avg_volume_amount > 0:
-            score = min(avg_volume_amount / 1_000_000_000, 10.0)  # 10억당 1점, 최대 10점
+            score += min(avg_volume_amount / 5_000_000_000, 3.0)
 
         return {
             "ticker": ticker,
