@@ -41,7 +41,7 @@ trading:
 
 # --- 전략 파라미터 ---
 strategy:
-  force: "flow"                     # 비어있으면 selector 로직, 값 있으면 해당 전략 강제 (페이퍼 테스트용)
+  force: "momentum"                     # 비어있으면 selector 로직, 값 있으면 해당 전략 강제 (페이퍼 테스트용)
   # DEPRECATED: ORB — 백테스트 4종목 전부 PF<1.0 (2026-03-30 폐기)
   # orb:
   #   range_start: "09:05"
