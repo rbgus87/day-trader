@@ -100,6 +100,21 @@ class TradingConfig:
     # 자본금
     initial_capital: int = 1_000_000
 
+    # 갭 전략 (GapStrategy)
+    gap_min_gap_pct: float = 0.015
+    gap_stop_loss_pct: float = -0.01
+
+    # 시가 돌파 전략 (OpenBreakStrategy)
+    open_break_pct: float = 0.005
+    open_break_volume_ratio: float = 0.3
+    open_break_stop_loss_pct: float = -0.005
+    open_break_start: str = "09:15"
+
+    # 세력 캔들 전략 (BigCandleStrategy)
+    big_candle_atr_multiplier: float = 1.5
+    big_candle_timeout_min: int = 30
+    big_candle_stop_loss_pct: float = -0.01
+
     # 눌림목 전략
     pullback_min_gain_pct: float = 0.04
     pullback_stop_loss_pct: float = -0.018
@@ -171,6 +186,9 @@ class AppConfig:
         mom = s.get("momentum", {})
         pb = s.get("pullback", {})
         fl = s.get("flow", {})
+        gap = s.get("gap", {})
+        ob = s.get("open_break", {})
+        bc = s.get("big_candle", {})
 
         trading = TradingConfig(
             stop_loss_pct=t.get("stop_loss_pct", -0.015),
@@ -206,6 +224,15 @@ class AppConfig:
             pullback_ma_long=pb.get("ma_long", 10),
             pullback_ma_touch_band=pb.get("ma_touch_band", 0.01),
             pullback_min_atr_pct=pb.get("min_atr_pct", 0.025),
+            gap_min_gap_pct=gap.get("min_gap_pct", 0.015),
+            gap_stop_loss_pct=gap.get("stop_loss_pct", -0.01),
+            open_break_pct=ob.get("break_pct", 0.005),
+            open_break_volume_ratio=ob.get("volume_ratio", 0.3),
+            open_break_stop_loss_pct=ob.get("stop_loss_pct", -0.005),
+            open_break_start=ob.get("signal_start", "09:15"),
+            big_candle_atr_multiplier=bc.get("atr_multiplier", 1.5),
+            big_candle_timeout_min=bc.get("timeout_minutes", 30),
+            big_candle_stop_loss_pct=bc.get("stop_loss_pct", -0.01),
             flow_min_strength_pct=fl.get("min_strength_pct", 120.0),
             flow_volume_surge_ratio=fl.get("volume_surge_ratio", 2.5),
             flow_stop_loss_pct=fl.get("stop_loss_pct", -0.015),

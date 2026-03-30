@@ -76,6 +76,24 @@ strategy:
     signal_start: "09:30"           # 신호 활성 시작
     signal_end: "14:30"             # 신호 활성 종료
 
+  # 갭 앤 고 (GapStrategy) — 갭업 후 첫 양봉 매수
+  gap:
+    min_gap_pct: 0.015                # 최소 갭 1.5%
+    stop_loss_pct: -0.01              # 시가 기준 -1%
+
+  # 시가 돌파 (OpenBreakStrategy) — 시가 +0.5% 돌파 + 거래량
+  open_break:
+    break_pct: 0.005                  # 시가 +0.5% 돌파
+    volume_ratio: 0.3                 # 전일 대비 30% (시간대 보정)
+    stop_loss_pct: -0.005             # 시가 -0.5%
+    signal_start: "09:15"             # 장 초반 10분 노이즈 회피
+
+  # 세력 캔들 (BigCandleStrategy) — 큰 양봉 후 되돌림 반등
+  big_candle:
+    atr_multiplier: 1.5               # ATR 대비 캔들 크기
+    timeout_minutes: 30               # 되돌림 대기 타임아웃
+    stop_loss_pct: -0.01              # 세력 캔들 저가 기준 -1%
+
   # 전략 선택기 임계값 (StrategySelector)
   # 3전략 체제: Momentum > Flow > Pullback
   selector:

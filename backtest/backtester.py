@@ -477,6 +477,10 @@ class Backtester:
             open_price = float(day_df.iloc[0]["open"])
             strategy.set_open_price(open_price)
 
+        # GapStrategy: 전일 종가 설정
+        if hasattr(strategy, "set_prev_close") and prev_day_df is not None:
+            strategy.set_prev_close(float(prev_day_df.iloc[-1]["close"]))
+
     @staticmethod
     def _calc_max_drawdown(pnl_series: list[float]) -> float:
         """누적 PnL 곡선에서 peak-to-trough 최대 낙폭 계산."""
