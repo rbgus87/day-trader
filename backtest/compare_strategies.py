@@ -26,10 +26,11 @@ from strategy.pullback_strategy import PullbackStrategy
 from strategy.gap_strategy import GapStrategy
 from strategy.open_break_strategy import OpenBreakStrategy
 from strategy.big_candle_strategy import BigCandleStrategy
+from strategy.flow_strategy import FlowStrategy
 
 
-STRATEGY_KEYS = ["Momentum", "Pullback", "Gap", "OpenBreak", "BigCandle"]
-SHORT_KEYS = ["M", "P", "G", "O", "B"]
+STRATEGY_KEYS = ["Momentum", "Pullback", "Flow", "Gap", "OpenBreak", "BigCandle"]
+SHORT_KEYS = ["M", "P", "F", "G", "O", "B"]
 
 
 async def main() -> None:
@@ -101,6 +102,7 @@ async def main() -> None:
         strategies = {
             "Momentum": MomentumStrategy(trading_config),
             "Pullback": PullbackStrategy(trading_config),
+            "Flow": FlowStrategy(trading_config),
             "Gap": GapStrategy(trading_config),
             "OpenBreak": OpenBreakStrategy(trading_config),
             "BigCandle": BigCandleStrategy(trading_config),

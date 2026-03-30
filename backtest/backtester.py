@@ -113,6 +113,8 @@ class Backtester:
         trades: list[dict] = []
         position: dict | None = None          # 현재 보유 포지션
         accumulated: list[dict] = []          # 전략에 전달할 과거 캔들 누적
+        _has_5m = hasattr(strategy, "on_candle_5m")
+        _min1_buffer: list = []
 
         for idx, row in candles.iterrows():
             ts = row["ts"]
@@ -132,6 +134,22 @@ class Backtester:
                 if isinstance(idx, int)
                 else candles.loc[:idx]
             )
+
+            # 5분봉 빌딩 (FlowStrategy 등 on_candle_5m 지원)
+            if _has_5m:
+                _min1_buffer.append(row)
+                if len(_min1_buffer) >= 5:
+                    candle_5m = {
+                        "ticker": "BACKTEST",
+                        "tf": "5m",
+                        "open": float(_min1_buffer[0]["open"]),
+                        "high": max(float(r["high"]) for r in _min1_buffer),
+                        "low": min(float(r["low"]) for r in _min1_buffer),
+                        "close": float(_min1_buffer[-1]["close"]),
+                        "volume": sum(int(r.get("volume", 0)) for r in _min1_buffer),
+                    }
+                    strategy.on_candle_5m(candle_5m)
+                    _min1_buffer = []
 
             # ── 포지션 없음 → 진입 신호 탐색 ──────────────────────────
             if position is None:
