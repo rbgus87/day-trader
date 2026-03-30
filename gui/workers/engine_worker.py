@@ -52,6 +52,9 @@ class EngineWorker(QThread):
         self._MAX_HISTORY = 100
         # 최신 틱 가격 (포지션 현재가 표시용)
         self._latest_prices: dict[str, float] = {}
+        # 런타임 승/패 카운터
+        self._rt_wins: int = 0
+        self._rt_losses: int = 0
 
         # Screener results cache (for UI emission)
         self._screener_results: list[dict] = []
@@ -279,6 +282,10 @@ class EngineWorker(QThread):
                     pnl = (price - pos["entry_price"]) * qty
                     self._risk_manager.record_pnl(pnl)
                     self._risk_manager.remove_position(ticker)
+                    if pnl >= 0:
+                        self._rt_wins += 1
+                    else:
+                        self._rt_losses += 1
                     logger.info(f"손절 실행: {ticker} {qty}주 @ {price:,} PnL={pnl:+,.0f}")
                     self.signals.trade_executed.emit({
                         "time": datetime.now().strftime("%H:%M:%S"),
@@ -296,6 +303,7 @@ class EngineWorker(QThread):
                     pnl = (price - pos["entry_price"]) * sell_qty
                     self._risk_manager.record_pnl(pnl)
                     self._risk_manager.mark_tp1_hit(ticker, sell_qty)
+                    self._rt_wins += 1
                     logger.info(f"TP1 실행: {ticker} {sell_qty}주 @ {price:,} PnL={pnl:+,.0f}")
                     self.signals.trade_executed.emit({
                         "time": datetime.now().strftime("%H:%M:%S"),
@@ -676,10 +684,13 @@ class EngineWorker(QThread):
         daily_pnl = rm._daily_pnl if rm else 0.0
         capital = rm._daily_capital if rm and rm._daily_capital > 0 else 1
         daily_pnl_pct = (daily_pnl / capital) * 100 if capital else 0
-        trades_count = rm._trade_count if rm else 0
         max_trades = self._config.trading.max_trades_per_day if self._config else 3
-        wins = rm._win_count if rm and hasattr(rm, "_win_count") else 0
-        losses = rm._loss_count if rm and hasattr(rm, "_loss_count") else 0
+        # 전략의 거래 카운트 사용
+        strat = self._active_strategy
+        trades_count = strat._trade_count if strat else 0
+        # DB 기반이 아닌 런타임 추적용
+        wins = getattr(self, "_rt_wins", 0)
+        losses = getattr(self, "_rt_losses", 0)
         win_rate = (wins / (wins + losses) * 100) if (wins + losses) > 0 else 0
 
         self.signals.status_updated.emit({
