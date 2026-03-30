@@ -161,6 +161,13 @@ class Sidebar(QFrame):
         status_row.addStretch()
         parent_layout.addLayout(status_row)
 
+        # 강제 전략 표시
+        self._force_strategy_label = QLabel("Force: —")
+        self._force_strategy_label.setStyleSheet(
+            f"color: {self._COLOR_OVERLAY0}; font-size: 10px;"
+        )
+        parent_layout.addWidget(self._force_strategy_label)
+
         # 전략 / 타겟 표시
         self._strategy_label = QLabel("Strategy: —")
         self._strategy_label.setStyleSheet(
@@ -398,6 +405,19 @@ class Sidebar(QFrame):
         self._status_label.setStyleSheet(
             f"color: {dot_color}; font-size: 12px;"
         )
+
+        # 강제 전략 설정
+        force = status.get("force_strategy", "")
+        if force:
+            self._force_strategy_label.setText(f"Force: {force}")
+            self._force_strategy_label.setStyleSheet(
+                f"color: {self._COLOR_YELLOW}; font-size: 10px; font-weight: bold;"
+            )
+        else:
+            self._force_strategy_label.setText("Force: auto")
+            self._force_strategy_label.setStyleSheet(
+                f"color: {self._COLOR_OVERLAY0}; font-size: 10px;"
+            )
 
         # 전략명
         strategy_text = f"Strategy: {strategy}" if strategy else "Strategy: —"

@@ -259,10 +259,12 @@ class MainWindow(QMainWindow):
         })
         # Update status bar
         strategy = status.get("strategy", "—")
-        target = status.get("target_name", "—")
+        target = status.get("target_name") or status.get("target", "—")
+        force = status.get("force_strategy", "")
         mode = self.sidebar.get_mode().upper()
+        force_tag = f" [Force: {force}]" if force else ""
         self._lbl_status_left.setText(
-            f"Mode: {mode} | Engine: Running | Strategy: {strategy} | Target: {target}"
+            f"Mode: {mode}{force_tag} | Engine: Running | Strategy: {strategy} | Target: {target}"
         )
 
     def _on_positions_updated(self, positions: list):

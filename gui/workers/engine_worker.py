@@ -620,13 +620,18 @@ class EngineWorker(QThread):
             if subs:
                 target_ticker = subs[0]
 
+        force = ""
+        if self._config:
+            force = getattr(self._config, "force_strategy", "")
+
         self.signals.status_updated.emit({
             "mode": self._mode,
             "running": self._running,
             "halted": self._risk_manager._halted if self._risk_manager else False,
             "strategy": strategy_name,
-            "target_ticker": target_ticker,
+            "target": target_ticker,
             "target_name": target_name,
+            "force_strategy": force,
             "positions_count": len(self._risk_manager._positions) if self._risk_manager else 0,
             "ws_connected": self._ws_client.connected if self._ws_client else False,
         })
