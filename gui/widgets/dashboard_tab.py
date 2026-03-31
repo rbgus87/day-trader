@@ -44,7 +44,10 @@ class DashboardTab(QWidget):
         # Summary bar
         root.addLayout(self._build_summary_bar())
 
-        # 2-column: left (positions+trades) | right (chart + placeholder)
+        # PnL chart (전체 폭, 고정 높이)
+        root.addWidget(self._build_pnl_chart())
+
+        # 2-column: left (positions+trades) | right (watchlist)
         h_splitter = QSplitter(Qt.Orientation.Horizontal)
 
         # Left: positions + trades
@@ -55,14 +58,10 @@ class DashboardTab(QWidget):
         left_splitter.setStretchFactor(1, 1)
         h_splitter.addWidget(left_splitter)
 
-        # Right: PnL chart + placeholder (for future watchlist)
-        right_panel = QWidget()
-        right_vbox = QVBoxLayout(right_panel)
-        right_vbox.setContentsMargins(0, 0, 0, 0)
-        right_vbox.setSpacing(8)
-        right_vbox.addWidget(self._build_pnl_chart())
-        right_vbox.addWidget(self._build_watchlist_panel(), stretch=1)
-        h_splitter.addWidget(right_panel)
+        # Right: watchlist
+        watchlist = self._build_watchlist_panel()
+        watchlist.setMinimumWidth(200)
+        h_splitter.addWidget(watchlist)
 
         h_splitter.setStretchFactor(0, 3)
         h_splitter.setStretchFactor(1, 1)
@@ -198,7 +197,7 @@ class DashboardTab(QWidget):
 
         pg.setConfigOptions(antialias=True)
         plot_widget = pg.PlotWidget()
-        plot_widget.setFixedHeight(120)
+        plot_widget.setFixedHeight(100)
         plot_widget.setBackground("#313244")
         plot_widget.setTitle("일일 PnL", color="#6c7086", size="9pt")
         plot_widget.showGrid(x=False, y=True, alpha=0.15)
@@ -208,6 +207,31 @@ class DashboardTab(QWidget):
         plot_widget.getAxis("bottom").setTextPen(pg.mkPen("#6c7086"))
         plot_widget.setMouseEnabled(x=False, y=False)
         plot_widget.hideButtons()
+
+        # y축: 천원 단위 표시
+        left_axis = plot_widget.getAxis("left")
+        left_axis.setLabel("천원")
+        left_axis.enableAutoSIPrefix(False)
+
+        # x축: HH:MM 시간 포맷
+        bottom_axis = plot_widget.getAxis("bottom")
+
+        class _TimeAxisItem(pg.AxisItem):
+            def tickStrings(self, values, scale, spacing):
+                from datetime import datetime
+                result = []
+                for v in values:
+                    try:
+                        result.append(datetime.fromtimestamp(v).strftime("%H:%M"))
+                    except (OSError, ValueError):
+                        result.append("")
+                return result
+
+        # bottom axis를 커스텀 axis로 교체
+        time_axis = _TimeAxisItem(orientation="bottom")
+        time_axis.setPen(pg.mkPen("#6c7086"))
+        time_axis.setTextPen(pg.mkPen("#6c7086"))
+        plot_widget.setAxisItems({"bottom": time_axis})
 
         zero_line = pg.InfiniteLine(
             pos=0, angle=0,
@@ -298,11 +322,9 @@ class DashboardTab(QWidget):
         import numpy as np
 
         xs = np.array(self._pnl_timestamps)
-        ys = np.array(self._pnl_values)
+        ys = np.array(self._pnl_values) / 1000.0  # 천원 단위
 
-        xs_min = (xs - xs[0]) / 60.0 if len(xs) > 1 else np.array([0.0])
-
-        self._pnl_curve.setData(xs_min, ys)
+        self._pnl_curve.setData(xs, ys)
 
         zeros = np.zeros_like(ys)
         ys_pos = np.maximum(ys, 0)
@@ -314,9 +336,9 @@ class DashboardTab(QWidget):
         if self._pnl_fill_neg is not None:
             plot.removeItem(self._pnl_fill_neg)
 
-        curve_zero = pg.PlotDataItem(xs_min, zeros)
-        curve_pos = pg.PlotDataItem(xs_min, ys_pos)
-        curve_neg = pg.PlotDataItem(xs_min, ys_neg)
+        curve_zero = pg.PlotDataItem(xs, zeros)
+        curve_pos = pg.PlotDataItem(xs, ys_pos)
+        curve_neg = pg.PlotDataItem(xs, ys_neg)
 
         self._pnl_fill_pos = pg.FillBetweenItem(
             curve_zero, curve_pos, brush=pg.mkBrush(166, 227, 161, 40),
