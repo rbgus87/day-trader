@@ -61,9 +61,7 @@ class DashboardTab(QWidget):
         right_vbox.setContentsMargins(0, 0, 0, 0)
         right_vbox.setSpacing(8)
         right_vbox.addWidget(self._build_pnl_chart())
-        placeholder = QFrame()
-        placeholder.setStyleSheet("background-color: #313244; border-radius: 6px;")
-        right_vbox.addWidget(placeholder, stretch=1)
+        right_vbox.addWidget(self._build_watchlist_panel(), stretch=1)
         h_splitter.addWidget(right_panel)
 
         h_splitter.setStretchFactor(0, 3)
@@ -223,9 +221,71 @@ class DashboardTab(QWidget):
         self._pnl_plot = plot_widget
         return plot_widget
 
+    def _build_watchlist_panel(self) -> QWidget:
+        panel = QWidget()
+        vbox = QVBoxLayout(panel)
+        vbox.setContentsMargins(0, 0, 0, 0)
+        vbox.setSpacing(4)
+
+        title = QLabel("감시 종목")
+        title.setStyleSheet("font-size: 12px; font-weight: bold; color: #cdd6f4;")
+        vbox.addWidget(title)
+
+        self._watchlist_table = QTableWidget()
+        columns = ["종목코드", "종목명", "ATR%", "서지", "점수"]
+        self._watchlist_table.setColumnCount(len(columns))
+        self._watchlist_table.setHorizontalHeaderLabels(columns)
+        self._watchlist_table.setAlternatingRowColors(True)
+        self._watchlist_table.horizontalHeader().setStretchLastSection(True)
+        self._watchlist_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self._watchlist_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self._watchlist_table.verticalHeader().setVisible(False)
+        vbox.addWidget(self._watchlist_table)
+
+        return panel
+
     # ------------------------------------------------------------------
     # Public update methods
     # ------------------------------------------------------------------
+
+    def update_watchlist(self, candidates: list[dict]) -> None:
+        """감시 종목 테이블 업데이트 (최대 5종목)."""
+        table = self._watchlist_table
+        table.setRowCount(0)
+
+        for row_data in candidates[:5]:
+            row = table.rowCount()
+            table.insertRow(row)
+
+            name_color = QColor("#89b4fa")
+            score = row_data.get("score", 0)
+            score_color = (
+                QColor("#a6e3a1") if score >= 7
+                else QColor("#f9e2af") if score >= 5
+                else QColor("#6c7086")
+            )
+
+            cells = [
+                (row_data.get("ticker", ""), None),
+                (row_data.get("name", ""), name_color),
+                (f"{row_data.get('atr_pct', 0):.1%}", None),
+                (f"{row_data.get('volume_surge', 0):.1f}x", None),
+                (f"{score:.1f}", score_color),
+            ]
+
+            for col, (text, color) in enumerate(cells):
+                item = QTableWidgetItem(str(text))
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                if color is not None:
+                    item.setForeground(color)
+                table.setItem(row, col, item)
+
+        table.resizeColumnsToContents()
+        table.horizontalHeader().setStretchLastSection(True)
 
     def update_pnl_chart(self, timestamp: float, value: float) -> None:
         """PnL 데이터 포인트 추가 및 차트 업데이트."""

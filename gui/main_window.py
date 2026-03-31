@@ -473,6 +473,7 @@ class MainWindow(QMainWindow):
 
     def _on_candidates_updated(self, candidates: list):
         self.screener_tab.update_candidates(candidates)
+        self.dashboard_tab.update_watchlist(candidates[:5])
 
     # ── 트레이 ────────────────────────────────────────────────────────────────
 
