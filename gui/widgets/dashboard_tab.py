@@ -1,4 +1,4 @@
-"""Dashboard Tab — Active Positions + Today's Trades + Summary Bar."""
+"""Dashboard Tab — Active Positions + Today's Trades + PnL Chart + Summary Bar."""
 
 from PyQt6.QtWidgets import (
     QWidget,
@@ -16,12 +16,20 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 
+try:
+    import pyqtgraph as pg
+    _HAS_PYQTGRAPH = True
+except ImportError:
+    _HAS_PYQTGRAPH = False
+
 
 class DashboardTab(QWidget):
-    """Dashboard tab showing summary cards, active positions, and today's trades."""
+    """Dashboard tab showing summary cards, active positions, trades, and PnL chart."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._pnl_timestamps: list[float] = []
+        self._pnl_values: list[float] = []
         self._build_ui()
 
     # ------------------------------------------------------------------
@@ -34,18 +42,34 @@ class DashboardTab(QWidget):
         root.setSpacing(8)
 
         # Summary bar
-        summary_bar = self._build_summary_bar()
-        root.addLayout(summary_bar)
+        root.addLayout(self._build_summary_bar())
 
-        # Splitter: positions (top) + trades (bottom)
-        splitter = QSplitter(Qt.Orientation.Vertical)
+        # 2-column: left (positions+trades) | right (chart + placeholder)
+        h_splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        splitter.addWidget(self._build_positions_panel())
-        splitter.addWidget(self._build_trades_panel())
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 1)
+        # Left: positions + trades
+        left_splitter = QSplitter(Qt.Orientation.Vertical)
+        left_splitter.addWidget(self._build_positions_panel())
+        left_splitter.addWidget(self._build_trades_panel())
+        left_splitter.setStretchFactor(0, 1)
+        left_splitter.setStretchFactor(1, 1)
+        h_splitter.addWidget(left_splitter)
 
-        root.addWidget(splitter, stretch=1)
+        # Right: PnL chart + placeholder (for future watchlist)
+        right_panel = QWidget()
+        right_vbox = QVBoxLayout(right_panel)
+        right_vbox.setContentsMargins(0, 0, 0, 0)
+        right_vbox.setSpacing(8)
+        right_vbox.addWidget(self._build_pnl_chart())
+        placeholder = QFrame()
+        placeholder.setStyleSheet("background-color: #313244; border-radius: 6px;")
+        right_vbox.addWidget(placeholder, stretch=1)
+        h_splitter.addWidget(right_panel)
+
+        h_splitter.setStretchFactor(0, 3)
+        h_splitter.setStretchFactor(1, 1)
+
+        root.addWidget(h_splitter, stretch=1)
 
     def _build_summary_bar(self) -> QHBoxLayout:
         layout = QHBoxLayout()
@@ -160,9 +184,88 @@ class DashboardTab(QWidget):
 
         return panel
 
+    def _build_pnl_chart(self) -> QWidget:
+        """PnL 미니 차트. pyqtgraph 없으면 빈 프레임."""
+        if not _HAS_PYQTGRAPH:
+            fallback = QFrame()
+            fallback.setFixedHeight(120)
+            fallback.setStyleSheet("background-color: #313244; border-radius: 6px;")
+            lbl = QLabel("PnL 차트 (pyqtgraph 미설치)", fallback)
+            lbl.setStyleSheet("color: #6c7086; font-size: 10px; padding: 8px;")
+            self._pnl_plot = None
+            self._pnl_curve = None
+            self._pnl_fill_pos = None
+            self._pnl_fill_neg = None
+            return fallback
+
+        pg.setConfigOptions(antialias=True)
+        plot_widget = pg.PlotWidget()
+        plot_widget.setFixedHeight(120)
+        plot_widget.setBackground("#313244")
+        plot_widget.setTitle("일일 PnL", color="#6c7086", size="9pt")
+        plot_widget.showGrid(x=False, y=True, alpha=0.15)
+        plot_widget.getAxis("left").setPen(pg.mkPen("#6c7086"))
+        plot_widget.getAxis("bottom").setPen(pg.mkPen("#6c7086"))
+        plot_widget.getAxis("left").setTextPen(pg.mkPen("#6c7086"))
+        plot_widget.getAxis("bottom").setTextPen(pg.mkPen("#6c7086"))
+        plot_widget.setMouseEnabled(x=False, y=False)
+        plot_widget.hideButtons()
+
+        zero_line = pg.InfiniteLine(
+            pos=0, angle=0,
+            pen=pg.mkPen("#585b70", width=1, style=Qt.PenStyle.DashLine),
+        )
+        plot_widget.addItem(zero_line)
+
+        self._pnl_curve = plot_widget.plot(pen=pg.mkPen("#cdd6f4", width=1.5))
+        self._pnl_fill_pos = None
+        self._pnl_fill_neg = None
+        self._pnl_plot = plot_widget
+        return plot_widget
+
     # ------------------------------------------------------------------
     # Public update methods
     # ------------------------------------------------------------------
+
+    def update_pnl_chart(self, timestamp: float, value: float) -> None:
+        """PnL 데이터 포인트 추가 및 차트 업데이트."""
+        if self._pnl_curve is None:
+            return
+
+        self._pnl_timestamps.append(timestamp)
+        self._pnl_values.append(value)
+
+        import numpy as np
+
+        xs = np.array(self._pnl_timestamps)
+        ys = np.array(self._pnl_values)
+
+        xs_min = (xs - xs[0]) / 60.0 if len(xs) > 1 else np.array([0.0])
+
+        self._pnl_curve.setData(xs_min, ys)
+
+        zeros = np.zeros_like(ys)
+        ys_pos = np.maximum(ys, 0)
+        ys_neg = np.minimum(ys, 0)
+
+        plot = self._pnl_plot
+        if self._pnl_fill_pos is not None:
+            plot.removeItem(self._pnl_fill_pos)
+        if self._pnl_fill_neg is not None:
+            plot.removeItem(self._pnl_fill_neg)
+
+        curve_zero = pg.PlotDataItem(xs_min, zeros)
+        curve_pos = pg.PlotDataItem(xs_min, ys_pos)
+        curve_neg = pg.PlotDataItem(xs_min, ys_neg)
+
+        self._pnl_fill_pos = pg.FillBetweenItem(
+            curve_zero, curve_pos, brush=pg.mkBrush(166, 227, 161, 40),
+        )
+        self._pnl_fill_neg = pg.FillBetweenItem(
+            curve_neg, curve_zero, brush=pg.mkBrush(243, 139, 168, 40),
+        )
+        plot.addItem(self._pnl_fill_pos)
+        plot.addItem(self._pnl_fill_neg)
 
     def update_summary(self, data: dict) -> None:
         """Update summary bar.
