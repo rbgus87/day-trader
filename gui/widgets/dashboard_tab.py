@@ -18,6 +18,7 @@ from PyQt6.QtGui import QColor
 
 try:
     import pyqtgraph as pg
+    pg.setConfigOptions(useOpenGL=False, enableExperimental=False)
     _HAS_PYQTGRAPH = True
 except ImportError:
     _HAS_PYQTGRAPH = False
@@ -180,22 +181,31 @@ class DashboardTab(QWidget):
 
         return panel
 
-    def _make_chart_fallback(self, height: int, text: str = "") -> QFrame:
+    def _daily_history_fallback(self) -> QWidget:
         fallback = QFrame()
-        fallback.setFixedHeight(height)
+        fallback.setFixedHeight(60)
         fallback.setStyleSheet("background-color: #313244; border-radius: 6px;")
-        if text:
-            lbl = QLabel(text, fallback)
-            lbl.setStyleSheet("color: #6c7086; font-size: 10px; padding: 8px;")
+        self._daily_bar_plot = None
+        self._daily_bar_item = None
+        return fallback
+
+    def _pnl_fallback(self) -> QWidget:
+        fallback = QFrame()
+        fallback.setFixedHeight(140)
+        fallback.setStyleSheet("background-color: #313244; border-radius: 6px;")
+        lbl = QLabel("PnL 차트 (초기화 실패)", fallback)
+        lbl.setStyleSheet("color: #6c7086; font-size: 10px; padding: 8px;")
+        self._pnl_plot = None
+        self._pnl_curve = None
+        self._pnl_fill_pos = None
+        self._pnl_fill_neg = None
+        self._pnl_empty_label = None
         return fallback
 
     def _build_daily_history(self) -> QWidget:
         """최근 5일 일일 PnL 바 차트."""
         if not _HAS_PYQTGRAPH:
-            self._daily_bar_plot = None
-            self._daily_bar_item = None
-            return self._make_chart_fallback(60)
-
+            return self._daily_history_fallback()
         try:
             from PyQt6.QtGui import QFont
             plot_widget = pg.PlotWidget()
@@ -214,28 +224,21 @@ class DashboardTab(QWidget):
             self._daily_bar_plot = plot_widget
             self._daily_bar_item = None
             return plot_widget
-        except Exception:
-            self._daily_bar_plot = None
-            self._daily_bar_item = None
-            return self._make_chart_fallback(60)
+        except Exception as e:
+            from loguru import logger
+            logger.warning(f"일일 성과 차트 초기화 실패: {e}")
+            return self._daily_history_fallback()
 
     def _build_pnl_chart(self) -> QWidget:
         """PnL 미니 차트. pyqtgraph 없으면 빈 프레임."""
-        def _pnl_fallback():
-            self._pnl_plot = None
-            self._pnl_curve = None
-            self._pnl_fill_pos = None
-            self._pnl_fill_neg = None
-            self._pnl_empty_label = None
-            return self._make_chart_fallback(140, "PnL 차트 (pyqtgraph 미설치)")
 
         if not _HAS_PYQTGRAPH:
-            return _pnl_fallback()
+            return self._pnl_fallback()
 
         try:
             from PyQt6.QtGui import QFont
 
-            pg.setConfigOptions(antialias=True)
+            pg.setConfigOptions(antialias=True, useOpenGL=False, enableExperimental=False)
 
             class _TimeAxisItem(pg.AxisItem):
                 def tickStrings(self, values, scale, spacing):
@@ -287,8 +290,10 @@ class DashboardTab(QWidget):
             self._pnl_fill_neg = None
             self._pnl_plot = plot_widget
             return plot_widget
-        except Exception:
-            return _pnl_fallback()
+        except Exception as e:
+            from loguru import logger
+            logger.warning(f"PnL 차트 초기화 실패 (pyqtgraph): {e}")
+            return self._pnl_fallback()
 
     def _build_watchlist_panel(self) -> QWidget:
         panel = QWidget()
