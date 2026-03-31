@@ -802,8 +802,10 @@ class EngineWorker(QThread):
                 current = self._latest_prices.get(ticker, entry)
                 pnl_pct = ((current - entry) / entry * 100) if entry > 0 else 0
                 status = "TP1 hit" if pos.get("tp1_hit") else "보유 중"
+                name = self._active_strategies.get(ticker, {}).get("name", "")
                 positions.append({
                     "ticker": ticker,
+                    "name": name,
                     "strategy": pos.get("strategy", ""),
                     "entry_price": entry,
                     "current_price": current,

@@ -176,38 +176,11 @@ class Sidebar(QFrame):
         self._strategy_combo = QComboBox()
         self._strategy_combo.addItems([
             "Auto", "Momentum", "Pullback", "Flow",
-            "Gap", "OpenBreak", "BigCandle",
         ])
         self._strategy_combo.setFixedHeight(24)
         self._strategy_combo.currentTextChanged.connect(self._on_strategy_changed)
         strategy_row.addWidget(self._strategy_combo)
         parent_layout.addLayout(strategy_row)
-
-        # 전략 / 타겟 표시
-        self._strategy_label = QLabel("Strategy: —")
-        self._strategy_label.setStyleSheet(
-            f"color: {self._COLOR_OVERLAY0}; font-size: 10px;"
-        )
-        parent_layout.addWidget(self._strategy_label)
-
-        self._target_label = QLabel("Target: —")
-        self._target_label.setStyleSheet(
-            f"color: {self._COLOR_OVERLAY0}; font-size: 10px;"
-        )
-        parent_layout.addWidget(self._target_label)
-
-        # 일일 PnL + 거래 정보
-        self._pnl_label = QLabel("PnL: —")
-        self._pnl_label.setStyleSheet(
-            f"color: {self._COLOR_OVERLAY0}; font-size: 11px; font-weight: bold;"
-        )
-        parent_layout.addWidget(self._pnl_label)
-
-        self._trades_label = QLabel("거래: 0 / 3")
-        self._trades_label.setStyleSheet(
-            f"color: {self._COLOR_OVERLAY0}; font-size: 10px;"
-        )
-        parent_layout.addWidget(self._trades_label)
 
     def _build_control_buttons(self, parent_layout: QVBoxLayout) -> None:
         """시작 / 정지 / 긴급 정지 버튼 섹션."""
@@ -416,9 +389,6 @@ class Sidebar(QFrame):
         """
         running = status.get("running", False)
         halted = status.get("halted", False)
-        strategy = status.get("strategy", "")
-        target = status.get("target", "")
-        target_name = status.get("target_name", "")
 
         # 상태 dot + 텍스트
         if running and not halted:
@@ -437,39 +407,6 @@ class Sidebar(QFrame):
         self._status_label.setText(status_text)
         self._status_label.setStyleSheet(
             f"color: {dot_color}; font-size: 12px;"
-        )
-
-        # 전략명
-        strategy_text = f"Strategy: {strategy}" if strategy else "Strategy: —"
-        self._strategy_label.setText(strategy_text)
-
-        # 타겟 종목
-        if target and target_name:
-            target_text = f"Target: {target_name}({target})"
-        elif target:
-            target_text = f"Target: {target}"
-        else:
-            target_text = "Target: —"
-        self._target_label.setText(target_text)
-
-        # 일일 PnL
-        pnl = status.get("daily_pnl", 0)
-        pnl_pct = status.get("daily_pnl_pct", 0)
-        pnl_sign = "+" if pnl >= 0 else ""
-        pnl_color = self._COLOR_GREEN if pnl >= 0 else self._COLOR_RED
-        self._pnl_label.setText(f"PnL: {pnl_sign}{pnl:,.0f} ({pnl_sign}{pnl_pct:.1f}%)")
-        self._pnl_label.setStyleSheet(
-            f"color: {pnl_color}; font-size: 11px; font-weight: bold;"
-        )
-
-        # 거래 횟수
-        trades = status.get("trades_count", 0)
-        max_t = status.get("max_trades", 3)
-        wins = status.get("wins", 0)
-        losses = status.get("losses", 0)
-        self._trades_label.setText(f"거래: {trades}/{max_t} (W{wins} L{losses})")
-        self._trades_label.setStyleSheet(
-            f"color: {self._COLOR_OVERLAY0}; font-size: 10px;"
         )
 
     def update_connection(self, rest_ok: bool, ws_ok: bool) -> None:
