@@ -12,7 +12,7 @@ pyyaml>=6.0
 
 # GUI
 PyQt6>=6.6
-pyqtgraph>=0.13
+matplotlib>=3.8
 
 # Backtest (vectorbt requires Python <3.14, install separately on 3.12)
 # vectorbt>=0.26

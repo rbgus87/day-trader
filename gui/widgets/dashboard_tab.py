@@ -1,31 +1,40 @@
-"""Dashboard Tab — Active Positions + Today's Trades + PnL + Summary Bar."""
+"""Dashboard Tab — matplotlib 차트 + 멀티종목 대시보드."""
 
 from PyQt6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QFrame,
-    QLabel,
-    QTableWidget,
-    QTableWidgetItem,
-    QSplitter,
-    QHeaderView,
-    QAbstractItemView,
-    QSizePolicy,
+    QWidget, QVBoxLayout, QHBoxLayout, QFrame, QLabel,
+    QTableWidget, QTableWidgetItem, QSplitter, QHeaderView,
+    QAbstractItemView, QSizePolicy, QProgressBar,
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor
 
+# matplotlib 차트 (OpenGL 불필요, segfault 안전)
+try:
+    import matplotlib
+    matplotlib.use("QtAgg")
+    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+    from matplotlib.figure import Figure
+    import matplotlib.dates as mdates
+    matplotlib.rcParams["font.family"] = ["Malgun Gothic", "NanumGothic", "sans-serif"]
+    matplotlib.rcParams["axes.unicode_minus"] = False
+    _HAS_MATPLOTLIB = True
+except ImportError:
+    _HAS_MATPLOTLIB = False
+
 
 class DashboardTab(QWidget):
-    """Dashboard tab showing summary cards, active positions, trades, and PnL."""
+    """Dashboard tab — summary, PnL chart, positions, watchlist, trades, daily history."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._pnl_timestamps: list[float] = []
         self._pnl_values: list[float] = []
-        self._pnl_high: float = 0.0
-        self._pnl_low: float = 0.0
+        self._pnl_fig = None
+        self._pnl_ax = None
+        self._pnl_canvas = None
+        self._daily_fig = None
+        self._daily_ax = None
+        self._daily_canvas = None
         self._build_ui()
 
     # ------------------------------------------------------------------
@@ -35,69 +44,68 @@ class DashboardTab(QWidget):
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
-        root.setSpacing(8)
+        root.setSpacing(6)
 
+        # 1. 서머리 바
         root.addLayout(self._build_summary_bar())
-        root.addWidget(self._build_daily_history())
+
+        # 2. PnL 차트 (전체 폭)
         root.addWidget(self._build_pnl_chart())
 
-        # 2-column: left (positions+trades) | right (watchlist)
-        h_splitter = QSplitter(Qt.Orientation.Horizontal)
+        # 3. 중앙: 포지션(좌) + 감시종목(우)
+        mid_splitter = QSplitter(Qt.Orientation.Horizontal)
+        mid_splitter.addWidget(self._build_positions_panel())
+        mid_splitter.addWidget(self._build_watchlist_panel())
+        mid_splitter.setSizes([600, 400])
+        root.addWidget(mid_splitter, stretch=1)
 
-        left_splitter = QSplitter(Qt.Orientation.Vertical)
-        left_splitter.addWidget(self._build_positions_panel())
-        left_splitter.addWidget(self._build_trades_panel())
-        left_splitter.setSizes([360, 240])
-        h_splitter.addWidget(left_splitter)
+        # 4. 당일 체결
+        root.addWidget(self._build_trades_panel())
 
-        watchlist = self._build_watchlist_panel()
-        watchlist.setMinimumWidth(250)
-        h_splitter.addWidget(watchlist)
-
-        h_splitter.setSizes([700, 300])
-        root.addWidget(h_splitter, stretch=1)
+        # 5. 최근 성과 바 차트
+        root.addWidget(self._build_daily_history())
 
     def _build_summary_bar(self) -> QHBoxLayout:
         layout = QHBoxLayout()
-        layout.setSpacing(8)
+        layout.setSpacing(6)
 
-        frame, value, subtitle = self._make_summary_card("일일 손익")
-        self._pnl_value = value
-        self._pnl_subtitle = subtitle
-        layout.addWidget(frame)
+        # 카드 1: PnL (넓게 + 미니 바)
+        frame, self._pnl_value, self._pnl_subtitle = self._make_summary_card("일일 손익", wide=True)
+        self._pnl_bar = QProgressBar()
+        self._pnl_bar.setRange(-100, 100)
+        self._pnl_bar.setValue(0)
+        self._pnl_bar.setFixedHeight(4)
+        self._pnl_bar.setTextVisible(False)
+        self._pnl_bar.setStyleSheet(
+            "QProgressBar { background-color: #45475a; border-radius: 2px; }"
+            "QProgressBar::chunk { background-color: #a6e3a1; border-radius: 2px; }"
+        )
+        frame.layout().addWidget(self._pnl_bar)
+        layout.addWidget(frame, stretch=2)
 
-        frame, value, subtitle = self._make_summary_card("당일 거래")
-        self._trades_value = value
-        self._trades_subtitle = subtitle
-        layout.addWidget(frame)
+        frame, self._trades_value, self._trades_subtitle = self._make_summary_card("당일 거래")
+        layout.addWidget(frame, stretch=1)
 
-        frame, value, subtitle = self._make_summary_card("승률")
-        self._winrate_value = value
-        self._winrate_subtitle = subtitle
-        layout.addWidget(frame)
+        frame, self._winrate_value, self._winrate_subtitle = self._make_summary_card("승률")
+        layout.addWidget(frame, stretch=1)
 
-        frame, value, subtitle = self._make_summary_card("리스크")
-        self._risk_value = value
-        self._risk_subtitle = subtitle
-        layout.addWidget(frame)
+        frame, self._risk_value, self._risk_subtitle = self._make_summary_card("리스크")
+        layout.addWidget(frame, stretch=1)
 
         return layout
 
-    def _make_summary_card(self, title: str) -> tuple["QFrame", "QLabel", "QLabel"]:
+    def _make_summary_card(self, title: str, wide: bool = False) -> tuple["QFrame", "QLabel", "QLabel"]:
         frame = QFrame()
-        frame.setStyleSheet(
-            "QFrame { background-color: #313244; border-radius: 6px; padding: 10px; }"
-        )
-        frame.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-
+        frame.setStyleSheet("QFrame { background-color: #313244; border-radius: 6px; }")
         vbox = QVBoxLayout(frame)
-        vbox.setContentsMargins(10, 10, 10, 10)
-        vbox.setSpacing(4)
+        vbox.setContentsMargins(10, 8, 10, 8)
+        vbox.setSpacing(2)
 
         title_label = QLabel(title)
         title_label.setStyleSheet("font-size: 10px; color: #6c7086;")
+        size = "22px" if wide else "18px"
         value_label = QLabel("—")
-        value_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #cdd6f4;")
+        value_label.setStyleSheet(f"font-size: {size}; font-weight: bold; color: #cdd6f4;")
         subtitle_label = QLabel("")
         subtitle_label.setStyleSheet("font-size: 10px; color: #6c7086;")
 
@@ -107,18 +115,70 @@ class DashboardTab(QWidget):
 
         return frame, value_label, subtitle_label
 
+    def _build_pnl_chart(self) -> QWidget:
+        """일중 PnL 영역 차트 (matplotlib)."""
+        if not _HAS_MATPLOTLIB:
+            return self._pnl_text_fallback()
+
+        try:
+            self._pnl_fig = Figure(figsize=(10, 1.5), dpi=100)
+            self._pnl_fig.patch.set_facecolor("#313244")
+            self._pnl_ax = self._pnl_fig.add_subplot(111)
+            self._pnl_ax.set_facecolor("#313244")
+            self._pnl_ax.tick_params(colors="#6c7086", labelsize=8)
+            self._pnl_ax.spines["top"].set_visible(False)
+            self._pnl_ax.spines["right"].set_visible(False)
+            self._pnl_ax.spines["left"].set_color("#45475a")
+            self._pnl_ax.spines["bottom"].set_color("#45475a")
+            self._pnl_ax.axhline(y=0, color="#585b70", linewidth=0.5, linestyle="--")
+            self._pnl_ax.set_ylabel("PnL (천원)", color="#6c7086", fontsize=8)
+            self._pnl_fig.tight_layout(pad=0.5)
+
+            canvas = FigureCanvasQTAgg(self._pnl_fig)
+            canvas.setFixedHeight(150)
+            self._pnl_canvas = canvas
+            return canvas
+        except Exception as e:
+            from loguru import logger
+            logger.warning(f"PnL 차트 초기화 실패: {e}")
+            return self._pnl_text_fallback()
+
+    def _pnl_text_fallback(self) -> QWidget:
+        frame = QFrame()
+        frame.setFixedHeight(60)
+        frame.setStyleSheet("background-color: #313244; border-radius: 6px;")
+        layout = QHBoxLayout(frame)
+        layout.setContentsMargins(12, 8, 12, 8)
+        self._pnl_chart_label = QLabel("일중 PnL: —")
+        self._pnl_chart_label.setStyleSheet("color: #cdd6f4; font-size: 14px; font-weight: bold;")
+        layout.addWidget(self._pnl_chart_label)
+        layout.addStretch()
+        self._pnl_range_label = QLabel("고: — / 저: —")
+        self._pnl_range_label.setStyleSheet("color: #6c7086; font-size: 11px;")
+        layout.addWidget(self._pnl_range_label)
+        self._pnl_canvas = None
+        self._pnl_fig = None
+        self._pnl_ax = None
+        return frame
+
     def _build_positions_panel(self) -> QWidget:
         panel = QWidget()
         vbox = QVBoxLayout(panel)
-        vbox.setContentsMargins(0, 0, 0, 0)
+        vbox.setContentsMargins(0, 0, 4, 0)
         vbox.setSpacing(4)
 
+        header = QHBoxLayout()
         title = QLabel("보유 포지션")
         title.setStyleSheet("font-size: 12px; font-weight: bold; color: #cdd6f4;")
-        vbox.addWidget(title)
+        header.addWidget(title)
+        self._positions_count_label = QLabel("0 / 3")
+        self._positions_count_label.setStyleSheet("font-size: 11px; color: #6c7086;")
+        header.addWidget(self._positions_count_label)
+        header.addStretch()
+        vbox.addLayout(header)
 
         self._positions_table = QTableWidget()
-        columns = ["종목코드", "종목명", "전략", "진입가", "현재가", "수익률", "경과", "손절가", "TP1", "상태"]
+        columns = ["종목", "전략", "수익률", "경과", "손절가", "TP1", "상태"]
         self._positions_table.setColumnCount(len(columns))
         self._positions_table.setHorizontalHeaderLabels(columns)
         self._positions_table.setAlternatingRowColors(True)
@@ -126,98 +186,28 @@ class DashboardTab(QWidget):
         self._positions_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._positions_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._positions_table.verticalHeader().setVisible(False)
+        self._positions_table.setMaximumHeight(160)
         vbox.addWidget(self._positions_table)
         return panel
-
-    def _build_trades_panel(self) -> QWidget:
-        panel = QWidget()
-        vbox = QVBoxLayout(panel)
-        vbox.setContentsMargins(0, 0, 0, 0)
-        vbox.setSpacing(4)
-
-        title = QLabel("당일 체결")
-        title.setStyleSheet("font-size: 12px; font-weight: bold; color: #cdd6f4;")
-        vbox.addWidget(title)
-
-        self._trades_table = QTableWidget()
-        columns = ["시간", "종목코드", "매매", "가격", "수량", "손익", "사유"]
-        self._trades_table.setColumnCount(len(columns))
-        self._trades_table.setHorizontalHeaderLabels(columns)
-        self._trades_table.setAlternatingRowColors(True)
-        self._trades_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self._trades_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._trades_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._trades_table.verticalHeader().setVisible(False)
-        vbox.addWidget(self._trades_table)
-        return panel
-
-    def _build_daily_history(self) -> QWidget:
-        """최근 5일 일일 PnL — 순수 Qt 텍스트."""
-        frame = QFrame()
-        frame.setFixedHeight(40)
-        frame.setStyleSheet("background-color: #313244; border-radius: 6px;")
-
-        layout = QHBoxLayout(frame)
-        layout.setContentsMargins(12, 4, 12, 4)
-
-        title = QLabel("최근 성과:")
-        title.setStyleSheet("color: #6c7086; font-size: 10px;")
-        layout.addWidget(title)
-
-        self._daily_history_labels: list[QLabel] = []
-        for _ in range(5):
-            lbl = QLabel("—")
-            lbl.setStyleSheet("color: #6c7086; font-size: 11px; font-weight: bold;")
-            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            lbl.setFixedWidth(80)
-            layout.addWidget(lbl)
-            self._daily_history_labels.append(lbl)
-
-        layout.addStretch()
-        self._daily_bar_plot = None
-        self._daily_bar_item = None
-        return frame
-
-    def _build_pnl_chart(self) -> QWidget:
-        """일중 PnL — 순수 Qt 텍스트 기반."""
-        frame = QFrame()
-        frame.setFixedHeight(60)
-        frame.setStyleSheet("background-color: #313244; border-radius: 6px;")
-
-        layout = QHBoxLayout(frame)
-        layout.setContentsMargins(12, 8, 12, 8)
-
-        self._pnl_chart_label = QLabel("일중 PnL: —")
-        self._pnl_chart_label.setStyleSheet(
-            "color: #cdd6f4; font-size: 14px; font-weight: bold;"
-        )
-        layout.addWidget(self._pnl_chart_label)
-
-        layout.addStretch()
-
-        self._pnl_range_label = QLabel("고: — / 저: —")
-        self._pnl_range_label.setStyleSheet("color: #6c7086; font-size: 11px;")
-        layout.addWidget(self._pnl_range_label)
-
-        self._pnl_plot = None
-        self._pnl_curve = None
-        self._pnl_fill_pos = None
-        self._pnl_fill_neg = None
-        self._pnl_empty_label = None
-        return frame
 
     def _build_watchlist_panel(self) -> QWidget:
         panel = QWidget()
         vbox = QVBoxLayout(panel)
-        vbox.setContentsMargins(0, 0, 0, 0)
+        vbox.setContentsMargins(4, 0, 0, 0)
         vbox.setSpacing(4)
 
+        header = QHBoxLayout()
         title = QLabel("감시 종목")
         title.setStyleSheet("font-size: 12px; font-weight: bold; color: #cdd6f4;")
-        vbox.addWidget(title)
+        header.addWidget(title)
+        self._watchlist_count_label = QLabel("0종목")
+        self._watchlist_count_label.setStyleSheet("font-size: 11px; color: #6c7086;")
+        header.addWidget(self._watchlist_count_label)
+        header.addStretch()
+        vbox.addLayout(header)
 
         self._watchlist_table = QTableWidget()
-        columns = ["종목코드", "종목명", "현재가", "등락%", "ATR%", "점수"]
+        columns = ["종목", "현재가", "등락%", "점수"]
         self._watchlist_table.setColumnCount(len(columns))
         self._watchlist_table.setHorizontalHeaderLabels(columns)
         self._watchlist_table.setAlternatingRowColors(True)
@@ -228,83 +218,152 @@ class DashboardTab(QWidget):
         vbox.addWidget(self._watchlist_table)
         return panel
 
+    def _build_trades_panel(self) -> QWidget:
+        panel = QWidget()
+        vbox = QVBoxLayout(panel)
+        vbox.setContentsMargins(0, 4, 0, 0)
+        vbox.setSpacing(4)
+
+        title = QLabel("당일 체결")
+        title.setStyleSheet("font-size: 12px; font-weight: bold; color: #cdd6f4;")
+        vbox.addWidget(title)
+
+        self._trades_table = QTableWidget()
+        columns = ["시간", "종목", "매매", "가격", "수량", "손익", "사유"]
+        self._trades_table.setColumnCount(len(columns))
+        self._trades_table.setHorizontalHeaderLabels(columns)
+        self._trades_table.setAlternatingRowColors(True)
+        self._trades_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self._trades_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._trades_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._trades_table.verticalHeader().setVisible(False)
+        self._trades_table.setMaximumHeight(120)
+        vbox.addWidget(self._trades_table)
+        return panel
+
+    def _build_daily_history(self) -> QWidget:
+        """최근 5일 일일 PnL 바 차트 (matplotlib)."""
+        if not _HAS_MATPLOTLIB:
+            return self._daily_history_fallback()
+
+        try:
+            self._daily_fig = Figure(figsize=(10, 0.8), dpi=100)
+            self._daily_fig.patch.set_facecolor("#313244")
+            self._daily_ax = self._daily_fig.add_subplot(111)
+            self._daily_ax.set_facecolor("#313244")
+            self._daily_ax.tick_params(colors="#6c7086", labelsize=7)
+            self._daily_ax.spines["top"].set_visible(False)
+            self._daily_ax.spines["right"].set_visible(False)
+            self._daily_ax.spines["left"].set_color("#45475a")
+            self._daily_ax.spines["bottom"].set_color("#45475a")
+            self._daily_ax.axhline(y=0, color="#585b70", linewidth=0.5)
+            self._daily_ax.set_title("최근 5일 성과 (천원)", color="#6c7086", fontsize=8, loc="left", pad=2)
+            self._daily_fig.tight_layout(pad=0.5)
+
+            canvas = FigureCanvasQTAgg(self._daily_fig)
+            canvas.setFixedHeight(80)
+            self._daily_canvas = canvas
+            return canvas
+        except Exception as e:
+            from loguru import logger
+            logger.warning(f"일일 성과 차트 초기화 실패: {e}")
+            return self._daily_history_fallback()
+
+    def _daily_history_fallback(self) -> QWidget:
+        frame = QFrame()
+        frame.setFixedHeight(40)
+        frame.setStyleSheet("background-color: #313244; border-radius: 6px;")
+        layout = QHBoxLayout(frame)
+        layout.setContentsMargins(12, 4, 12, 4)
+        lbl = QLabel("최근 성과: matplotlib 미설치")
+        lbl.setStyleSheet("color: #6c7086; font-size: 10px;")
+        layout.addWidget(lbl)
+        self._daily_canvas = None
+        self._daily_ax = None
+        self._daily_fig = None
+        return frame
+
     # ------------------------------------------------------------------
     # Public update methods
     # ------------------------------------------------------------------
 
-    def update_daily_history(self, daily_data: list[dict]) -> None:
-        """최근 N일 PnL 텍스트 업데이트."""
-        if not hasattr(self, "_daily_history_labels"):
-            return
-        for i, lbl in enumerate(self._daily_history_labels):
-            if i < len(daily_data):
-                d = daily_data[i]
-                pnl = d.get("pnl", 0)
-                date = d.get("date", "")
-                sign = "+" if pnl >= 0 else ""
-                color = "#a6e3a1" if pnl >= 0 else "#f38ba8"
-                lbl.setText(f"{date}\n{sign}{pnl/1000:.0f}K")
-                lbl.setStyleSheet(f"color: {color}; font-size: 10px; font-weight: bold;")
-            else:
-                lbl.setText("—")
-                lbl.setStyleSheet("color: #6c7086; font-size: 10px;")
-
     def update_pnl_chart(self, timestamp: float, value: float) -> None:
-        """PnL 텍스트 업데이트."""
-        if not hasattr(self, "_pnl_chart_label") or self._pnl_chart_label is None:
-            return
-
+        """PnL 데이터 포인트 추가 및 차트 업데이트."""
         self._pnl_timestamps.append(timestamp)
         self._pnl_values.append(value)
 
-        self._pnl_high = max(self._pnl_high, value)
-        self._pnl_low = min(self._pnl_low, value)
+        if self._pnl_ax is None or self._pnl_canvas is None:
+            # 텍스트 폴백
+            if hasattr(self, "_pnl_chart_label") and self._pnl_chart_label:
+                color = "#a6e3a1" if value >= 0 else "#f38ba8"
+                sign = "+" if value >= 0 else ""
+                self._pnl_chart_label.setText(f"일중 PnL: {sign}{value:,.0f}원")
+                self._pnl_chart_label.setStyleSheet(
+                    f"color: {color}; font-size: 14px; font-weight: bold;"
+                )
+                high = max(self._pnl_values)
+                low = min(self._pnl_values)
+                self._pnl_range_label.setText(f"고: +{high:,.0f} / 저: {low:,.0f}")
+            return
 
-        color = "#a6e3a1" if value >= 0 else "#f38ba8"
-        sign = "+" if value >= 0 else ""
+        from datetime import datetime
 
-        self._pnl_chart_label.setText(f"일중 PnL: {sign}{value:,.0f}원")
-        self._pnl_chart_label.setStyleSheet(
-            f"color: {color}; font-size: 14px; font-weight: bold;"
-        )
-        self._pnl_range_label.setText(
-            f"고: +{self._pnl_high:,.0f} / 저: {self._pnl_low:,.0f}"
-        )
+        ax = self._pnl_ax
+        ax.clear()
+        ax.set_facecolor("#313244")
+        ax.axhline(y=0, color="#585b70", linewidth=0.5, linestyle="--")
 
-    def update_watchlist(self, candidates: list[dict]) -> None:
-        """감시 종목 테이블 업데이트 (최대 5종목)."""
-        table = self._watchlist_table
-        table.setRowCount(0)
+        times = [datetime.fromtimestamp(t) for t in self._pnl_timestamps]
+        values_k = [v / 1000.0 for v in self._pnl_values]
 
-        for row_data in candidates[:5]:
-            row = table.rowCount()
-            table.insertRow(row)
+        ax.plot(times, values_k, color="#89b4fa", linewidth=1.5)
+        ax.fill_between(times, values_k, 0,
+                        where=[v >= 0 for v in values_k],
+                        color="#a6e3a1", alpha=0.15)
+        ax.fill_between(times, values_k, 0,
+                        where=[v < 0 for v in values_k],
+                        color="#f38ba8", alpha=0.15)
 
-            name_color = QColor("#89b4fa")
-            score = row_data.get("score", 0)
-            score_color = (
-                QColor("#a6e3a1") if score >= 7
-                else QColor("#f9e2af") if score >= 5
-                else QColor("#6c7086")
-            )
+        ax.tick_params(colors="#6c7086", labelsize=7)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_color("#45475a")
+        ax.spines["bottom"].set_color("#45475a")
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
 
-            change_pct = row_data.get("change_pct", 0)
-            change_color = QColor("#a6e3a1") if change_pct >= 0 else QColor("#f38ba8")
-            cells = [
-                (row_data.get("ticker", ""), None),
-                (row_data.get("name", ""), name_color),
-                (f"{row_data.get('current_price', 0):,.0f}", None),
-                (f"{change_pct:+.2f}%", change_color),
-                (f"{row_data.get('atr_pct', 0):.1%}", None),
-                (f"{score:.1f}", score_color),
-            ]
+        self._pnl_fig.tight_layout(pad=0.5)
+        self._pnl_canvas.draw_idle()
 
-            for col, (text, color) in enumerate(cells):
-                item = QTableWidgetItem(str(text))
-                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                if color is not None:
-                    item.setForeground(color)
-                table.setItem(row, col, item)
+    def update_daily_history(self, daily_data: list[dict]) -> None:
+        """최근 N일 PnL 바 차트 업데이트."""
+        if self._daily_ax is None or self._daily_canvas is None:
+            return
+
+        ax = self._daily_ax
+        ax.clear()
+        ax.set_facecolor("#313244")
+        ax.axhline(y=0, color="#585b70", linewidth=0.5)
+        ax.set_title("최근 5일 성과 (천원)", color="#6c7086", fontsize=8, loc="left", pad=2)
+
+        if not daily_data:
+            self._daily_canvas.draw_idle()
+            return
+
+        dates = [d.get("date", "") for d in daily_data]
+        values = [d.get("pnl", 0) / 1000 for d in daily_data]
+        colors = ["#a6e3a1" if v >= 0 else "#f38ba8" for v in values]
+
+        ax.bar(range(len(dates)), values, color=colors, width=0.6, alpha=0.8)
+        ax.set_xticks(range(len(dates)))
+        ax.set_xticklabels(dates, color="#6c7086", fontsize=7)
+        ax.tick_params(colors="#6c7086", labelsize=7)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_color("#45475a")
+        ax.spines["bottom"].set_color("#45475a")
+
+        self._daily_fig.tight_layout(pad=0.5)
+        self._daily_canvas.draw_idle()
 
     def update_summary(self, data: dict) -> None:
         """Update summary bar."""
@@ -314,9 +373,17 @@ class DashboardTab(QWidget):
         sign = "+" if pnl >= 0 else ""
         self._pnl_value.setText(f"{sign}{pnl:,.0f}")
         self._pnl_value.setStyleSheet(
-            f"font-size: 18px; font-weight: bold; color: {pnl_color};"
+            f"font-size: 22px; font-weight: bold; color: {pnl_color};"
         )
         self._pnl_subtitle.setText(f"{sign}{pnl_pct:.2f}%")
+
+        # PnL 미니 바
+        bar_value = max(-100, min(100, int(pnl_pct * 50)))
+        self._pnl_bar.setValue(bar_value)
+        self._pnl_bar.setStyleSheet(
+            f"QProgressBar {{ background-color: #45475a; border-radius: 2px; }}"
+            f"QProgressBar::chunk {{ background-color: {pnl_color}; border-radius: 2px; }}"
+        )
 
         count = data.get("trades_count", 0)
         max_t = data.get("max_trades", 0)
@@ -344,10 +411,48 @@ class DashboardTab(QWidget):
         )
         self._risk_subtitle.setText(f"DD: -{abs(dd):.2f}%")
 
+    def update_watchlist(self, candidates: list[dict]) -> None:
+        """감시 종목 테이블 업데이트."""
+        table = self._watchlist_table
+        table.setRowCount(0)
+        self._watchlist_count_label.setText(f"{len(candidates)}종목")
+
+        for row_data in candidates[:10]:
+            row = table.rowCount()
+            table.insertRow(row)
+
+            name = row_data.get("name", "")
+            ticker = row_data.get("ticker", "")
+            ticker_text = f"{name}\n{ticker}" if name else ticker
+
+            change_pct = row_data.get("change_pct", 0)
+            change_color = QColor("#a6e3a1") if change_pct >= 0 else QColor("#f38ba8")
+            score = row_data.get("score", 0)
+            score_color = (
+                QColor("#a6e3a1") if score >= 7
+                else QColor("#f9e2af") if score >= 5
+                else QColor("#6c7086")
+            )
+
+            cells = [
+                (ticker_text, QColor("#89b4fa")),
+                (f"{row_data.get('current_price', 0):,.0f}", None),
+                (f"{change_pct:+.2f}%", change_color),
+                (f"{score:.1f}", score_color),
+            ]
+
+            for col, (text, color) in enumerate(cells):
+                item = QTableWidgetItem(str(text))
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                if color is not None:
+                    item.setForeground(color)
+                table.setItem(row, col, item)
+
     def update_positions(self, positions: list[dict]) -> None:
         """Rebuild the active positions table."""
         table = self._positions_table
         table.setRowCount(0)
+        self._positions_count_label.setText(f"{len(positions)} / 3")
 
         for row_data in positions:
             row = table.rowCount()
@@ -356,27 +461,32 @@ class DashboardTab(QWidget):
             pnl_pct = row_data.get("pnl_pct", 0.0)
             pnl_color = QColor("#a6e3a1") if pnl_pct >= 0 else QColor("#f38ba8")
 
+            ticker = row_data.get("ticker", "")
+            name = row_data.get("name", "")
+            ticker_text = f"{name}\n{ticker}" if name else ticker
+
             entry_time = row_data.get("entry_time")
             if entry_time:
                 from datetime import datetime as _dt
                 if isinstance(entry_time, str):
-                    entry_time = _dt.fromisoformat(entry_time)
+                    try:
+                        entry_time = _dt.fromisoformat(entry_time)
+                    except ValueError:
+                        entry_time = None
+            if entry_time:
+                from datetime import datetime as _dt
                 elapsed_min = int((_dt.now() - entry_time).total_seconds() / 60)
                 time_limit = row_data.get("time_stop_minutes", 60)
                 remaining = max(0, time_limit - elapsed_min)
-                elapsed_text = f"{elapsed_min}분/{time_limit}분"
-                elapsed_color = QColor("#f9e2af") if remaining <= 10 else None
+                elapsed_text = f"{elapsed_min}m / {time_limit}m"
+                elapsed_color = QColor("#f9e2af") if remaining <= 10 else QColor("#6c7086")
             else:
                 elapsed_text = "—"
-                elapsed_color = None
+                elapsed_color = QColor("#6c7086")
 
-            name_color = QColor("#89b4fa")
             cells = [
-                (row_data.get("ticker", ""), None),
-                (row_data.get("name", ""), name_color),
+                (ticker_text, QColor("#89b4fa")),
                 (row_data.get("strategy", ""), None),
-                (f"{row_data.get('entry_price', 0):,.0f}", None),
-                (f"{row_data.get('current_price', 0):,.0f}", None),
                 (f"{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%", pnl_color),
                 (elapsed_text, elapsed_color),
                 (f"{row_data.get('stop_loss', 0):,.0f}", None),
@@ -402,7 +512,6 @@ class DashboardTab(QWidget):
 
             side = row_data.get("side", "")
             side_color = QColor("#89b4fa") if side.upper() == "BUY" else QColor("#f38ba8")
-
             pnl = row_data.get("pnl", 0.0)
             pnl_color = QColor("#a6e3a1") if pnl >= 0 else QColor("#f38ba8")
             pnl_sign = "+" if pnl >= 0 else ""
