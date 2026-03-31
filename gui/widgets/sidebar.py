@@ -176,6 +176,7 @@ class Sidebar(QFrame):
         self._strategy_combo = QComboBox()
         self._strategy_combo.addItems([
             "Auto", "Momentum", "Pullback", "Flow",
+            "Gap", "OpenBreak", "BigCandle",
         ])
         self._strategy_combo.setFixedHeight(24)
         self._strategy_combo.currentTextChanged.connect(self._on_strategy_changed)

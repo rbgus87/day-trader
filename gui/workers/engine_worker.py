@@ -228,9 +228,18 @@ class EngineWorker(QThread):
 
         await self._risk_manager.check_consecutive_losses()
 
-        # WS connect
+        # WS connect + 유니버스 전체 구독
         try:
             await self._ws_client.connect()
+            import yaml
+            from pathlib import Path
+            uni_path = Path("config/universe.yaml")
+            if uni_path.exists():
+                uni = yaml.safe_load(open(uni_path, encoding="utf-8")) or {}
+                all_tickers = [s["ticker"] for s in uni.get("stocks", [])]
+                if all_tickers:
+                    await self._ws_client.subscribe(all_tickers)
+                    logger.info(f"유니버스 전체 WS 구독: {len(all_tickers)}종목")
         except Exception as e:
             logger.error(f"WS 연결 실패: {e}")
 
@@ -329,6 +338,10 @@ class EngineWorker(QThread):
                     else:
                         self._rt_losses += 1
                     logger.info(f"시간 손절: {ticker} {qty}주 @ {price:,} PnL={pnl:+,.0f}")
+                    if self._notifier:
+                        await self._notifier.send(
+                            f"⏰ 시간 손절: {ticker} {self._config.trading.time_stop_minutes}분 경과"
+                        )
                     self.signals.trade_executed.emit({
                         "time": datetime.now().strftime("%H:%M:%S"),
                         "side": "sell", "ticker": ticker,
@@ -358,12 +371,19 @@ class EngineWorker(QThread):
                 break
 
             try:
+                ticker = candle["ticker"]
+
+                # 캔들 히스토리는 모든 종목에 대해 유지 (장중 재스크리닝 대비)
+                self._candle_history.setdefault(ticker, [])
+                self._candle_history[ticker].append(candle)
+                if len(self._candle_history[ticker]) > self._MAX_HISTORY:
+                    self._candle_history[ticker] = self._candle_history[ticker][-self._MAX_HISTORY:]
+
+                # 전략 판단은 active_strategies에 등록된 종목만
                 if not self._active_strategies:
                     continue
                 if self._risk_manager.is_trading_halted():
                     continue
-
-                ticker = candle["ticker"]
                 if ticker not in self._active_strategies:
                     continue
 
@@ -371,21 +391,14 @@ class EngineWorker(QThread):
                 open_pos = self._risk_manager.get_open_positions()
                 if len(open_pos) >= self._config.trading.max_positions and ticker not in open_pos:
                     continue
-                # 이미 포지션 있으면 스킵
                 if self._risk_manager.get_position(ticker):
                     continue
 
                 strat_info = self._active_strategies[ticker]
                 strategy = strat_info["strategy"]
 
-                # 5분봉이면 Flow 거래량 히스토리 업데이트
                 if candle.get("tf") == "5m" and hasattr(strategy, "on_candle_5m"):
                     strategy.on_candle_5m(candle)
-
-                self._candle_history.setdefault(ticker, [])
-                self._candle_history[ticker].append(candle)
-                if len(self._candle_history[ticker]) > self._MAX_HISTORY:
-                    self._candle_history[ticker] = self._candle_history[ticker][-self._MAX_HISTORY:]
 
                 df = pd.DataFrame(self._candle_history[ticker])
                 signal = strategy.generate_signal(df, candle)
@@ -558,7 +571,7 @@ class EngineWorker(QThread):
                 tickers[0], {}
             ).get("strategy")  # 대표 전략 (상태 표시용)
 
-            await self._ws_client.subscribe(tickers)
+            # WS는 유니버스 전체 구독 완료, 전략 인스턴스만 설정
             logger.info(f"멀티 종목 감시: {len(selected)}종목 전략={strategy_name}")
             await self._notifier.send(
                 f"스크리닝 완료 — {strategy_name}\n"
@@ -772,6 +785,10 @@ class EngineWorker(QThread):
         losses = getattr(self, "_rt_losses", 0)
         win_rate = (wins / (wins + losses) * 100) if (wins + losses) > 0 else 0
 
+        active_count = len(self._active_strategies)
+        positions_count = len(rm.get_open_positions()) if rm else 0
+        max_pos = self._config.trading.max_positions if self._config else 3
+
         self.signals.status_updated.emit({
             "mode": self._mode,
             "running": self._running,
@@ -780,7 +797,10 @@ class EngineWorker(QThread):
             "target": target_ticker,
             "target_name": target_name,
             "force_strategy": force,
-            "positions_count": len(rm._positions) if rm else 0,
+            "positions_count": positions_count,
+            "max_positions": max_pos,
+            "active_count": active_count,
+            "watched_tickers": list(self._active_strategies.keys())[:5],
             "ws_connected": self._ws_client.connected if self._ws_client else False,
             "daily_pnl": daily_pnl,
             "daily_pnl_pct": daily_pnl_pct,

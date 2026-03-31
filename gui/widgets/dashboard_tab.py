@@ -183,7 +183,7 @@ class DashboardTab(QWidget):
         """PnL 미니 차트. pyqtgraph 없으면 빈 프레임."""
         if not _HAS_PYQTGRAPH:
             fallback = QFrame()
-            fallback.setFixedHeight(80)
+            fallback.setFixedHeight(140)
             fallback.setStyleSheet("background-color: #313244; border-radius: 6px;")
             lbl = QLabel("PnL 차트 (pyqtgraph 미설치)", fallback)
             lbl.setStyleSheet("color: #6c7086; font-size: 10px; padding: 8px;")
@@ -216,7 +216,7 @@ class DashboardTab(QWidget):
         time_axis.setStyle(maxTickLevel=2)
 
         plot_widget = pg.PlotWidget(axisItems={"bottom": time_axis})
-        plot_widget.setFixedHeight(80)
+        plot_widget.setFixedHeight(140)
         plot_widget.setBackground("#313244")
         plot_widget.showGrid(x=False, y=True, alpha=0.15)
         plot_widget.setMouseEnabled(x=False, y=False)
