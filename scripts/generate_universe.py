@@ -169,7 +169,7 @@ def generate_universe(
     top_kospi: int = 200,
     min_amount_billion: float = 50.0,
     min_atr_pct: float = 0.02,
-    max_total: int = 80,
+    max_total: int = 60,
     dry_run: bool = False,
 ) -> list[dict]:
     """코스닥+코스피에서 단타 유니버스를 생성한다."""
@@ -260,13 +260,19 @@ def generate_universe(
     kospi_passed = [u for u in universe if u["market"] == "KOSPI"]
     print(f"\n  ATR 필터 통과: 코스닥 {len(kosdaq_passed)} + 코스피 {len(kospi_passed)} = {len(universe)}종목 (ATR {min_atr_pct:.1%}+)")
 
-    # 5. 총 종목 수 제한 (거래대금 상위)
+    # 5. 총 종목 수 제한 (코스닥 우선 보존 + 코스피 보충)
     if len(universe) > max_total:
-        universe.sort(key=lambda x: x["amount_billion"], reverse=True)
-        universe = universe[:max_total]
+        if len(kosdaq_passed) >= max_total:
+            # 코스닥만으로 초과 → 코스닥 내 거래대금 상위
+            universe = sorted(kosdaq_passed, key=lambda x: x["amount_billion"], reverse=True)[:max_total]
+        else:
+            # 코스닥 전량 유지 + 남은 자리를 코스피 거래대금 상위로
+            remaining = max_total - len(kosdaq_passed)
+            kospi_top_n = sorted(kospi_passed, key=lambda x: x["amount_billion"], reverse=True)[:remaining]
+            universe = kosdaq_passed + kospi_top_n
         kosdaq_passed = [u for u in universe if u["market"] == "KOSDAQ"]
         kospi_passed = [u for u in universe if u["market"] == "KOSPI"]
-        print(f"  종목 수 제한 적용: 거래대금 상위 {max_total}종목 (코스닥 {len(kosdaq_passed)} + 코스피 {len(kospi_passed)})")
+        print(f"  종목 수 제한 적용: {max_total}종목 (코스닥 {len(kosdaq_passed)} 전량 + 코스피 {len(kospi_passed)} 보충)")
 
     # 6. 결과 요약
     print(f"\n{'=' * 70}")
@@ -330,7 +336,7 @@ def main():
     parser.add_argument("--top-kospi", type=int, default=200, help="코스피 시총 상위 N종목 (기본: 200)")
     parser.add_argument("--min-amount", type=float, default=50.0, help="최소 거래대금 (억원, 기본: 50)")
     parser.add_argument("--min-atr", type=float, default=0.02, help="최소 ATR%% (기본: 2%%)")
-    parser.add_argument("--max-total", type=int, default=80, help="최대 총 종목 수 (기본: 80)")
+    parser.add_argument("--max-total", type=int, default=60, help="최대 총 종목 수 (기본: 60)")
     parser.add_argument("--dry-run", action="store_true", help="파일 생성 없이 미리보기")
 
     args = parser.parse_args()
