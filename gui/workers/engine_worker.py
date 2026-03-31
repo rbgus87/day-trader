@@ -835,6 +835,8 @@ class EngineWorker(QThread):
                     "stop_loss": pos["stop_loss"],
                     "tp1_price": pos.get("tp1_price"),
                     "tp1_hit": pos.get("tp1_hit", False),
+                    "entry_time": pos.get("entry_time"),
+                    "time_stop_minutes": self._config.trading.time_stop_minutes if self._config else 60,
                     "status": status,
                 })
             self.signals.positions_updated.emit(positions)
@@ -876,9 +878,20 @@ class EngineWorker(QThread):
             pass
 
     def _emit_candidates(self):
-        """스크리너 후보 목록을 시그널로 전송."""
+        """스크리너 후보 목록 + 실시간 가격을 시그널로 전송."""
         try:
-            self.signals.candidates_updated.emit(self._screener_results)
+            enriched = []
+            for c in self._screener_results:
+                ticker = c.get("ticker", "")
+                current_price = self._latest_prices.get(ticker, 0)
+                prev_close = c.get("prev_close", 0)
+                change_pct = ((current_price - prev_close) / prev_close * 100) if prev_close > 0 else 0
+                enriched.append({
+                    **c,
+                    "current_price": current_price,
+                    "change_pct": change_pct,
+                })
+            self.signals.candidates_updated.emit(enriched)
         except Exception:
             pass
 

@@ -453,12 +453,15 @@ class MainWindow(QMainWindow):
         })
         # Update status bar
         strategy = status.get("strategy", "—")
-        target = status.get("target_name") or status.get("target", "—")
+        active = status.get("active_count", 0)
+        pos_count = status.get("positions_count", 0)
+        max_pos = status.get("max_positions", 3)
         mode = self.sidebar.get_mode().upper()
         combo_text = self.sidebar._strategy_combo.currentText()
         force_tag = f" [{combo_text}]" if combo_text != "Auto" else ""
         self._lbl_status_left.setText(
-            f"Mode: {mode}{force_tag} | Engine: Running | Strategy: {strategy} | Target: {target}"
+            f"Mode: {mode}{force_tag} | Engine: Running | "
+            f"Strategy: {strategy} | 감시: {active}종목 | 포지션: {pos_count}/{max_pos}"
         )
 
     def _on_positions_updated(self, positions: list):

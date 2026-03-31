@@ -324,6 +324,36 @@ class StrategyTab(QWidget):
         self._risk_first_leg.setSingleStep(0.05)
         form.addRow("first_leg_ratio:", self._risk_first_leg)
 
+        # 멀티 종목 설정
+        form.addRow(QLabel(""))
+        sep = QLabel("── 멀티 종목 설정 ──")
+        sep.setStyleSheet("color: #6c7086; font-size: 10px;")
+        form.addRow(sep)
+
+        self._risk_max_positions = QSpinBox()
+        self._risk_max_positions.setRange(1, 10)
+        self._risk_max_positions.setValue(3)
+        form.addRow("max_positions:", self._risk_max_positions)
+
+        self._risk_screening_top_n = QSpinBox()
+        self._risk_screening_top_n.setRange(1, 20)
+        self._risk_screening_top_n.setValue(5)
+        form.addRow("screening_top_n:", self._risk_screening_top_n)
+
+        self._risk_time_stop_minutes = QSpinBox()
+        self._risk_time_stop_minutes.setRange(0, 300)
+        self._risk_time_stop_minutes.setValue(60)
+        self._risk_time_stop_minutes.setSuffix(" 분")
+        form.addRow("time_stop_minutes:", self._risk_time_stop_minutes)
+
+        self._risk_time_stop_min_profit = QDoubleSpinBox()
+        self._risk_time_stop_min_profit.setRange(0.0, 5.0)
+        self._risk_time_stop_min_profit.setValue(0.5)
+        self._risk_time_stop_min_profit.setSuffix(" %")
+        self._risk_time_stop_min_profit.setDecimals(1)
+        self._risk_time_stop_min_profit.setSingleStep(0.1)
+        form.addRow("time_stop_min_profit:", self._risk_time_stop_min_profit)
+
         return group
 
     def _build_universe_editor(self) -> QGroupBox:
@@ -460,6 +490,14 @@ class StrategyTab(QWidget):
             self._risk_cooldown.setValue(int(trading_cfg["cooldown_minutes"]))
         if "entry_1st_ratio" in trading_cfg:
             self._risk_first_leg.setValue(float(trading_cfg["entry_1st_ratio"]))
+        if "max_positions" in trading_cfg:
+            self._risk_max_positions.setValue(int(trading_cfg["max_positions"]))
+        if "screening_top_n" in trading_cfg:
+            self._risk_screening_top_n.setValue(int(trading_cfg["screening_top_n"]))
+        if "time_stop_minutes" in trading_cfg:
+            self._risk_time_stop_minutes.setValue(int(trading_cfg["time_stop_minutes"]))
+        if "time_stop_min_profit" in trading_cfg:
+            self._risk_time_stop_min_profit.setValue(float(trading_cfg["time_stop_min_profit"]) * 100)
 
     def get_config(self) -> dict:
         """Gather all field values into config dict matching config.yaml structure."""
@@ -503,6 +541,10 @@ class StrategyTab(QWidget):
                 "max_trades_per_day": self._risk_max_trades.value(),
                 "cooldown_minutes": self._risk_cooldown.value(),
                 "entry_1st_ratio": self._risk_first_leg.value(),
+                "max_positions": self._risk_max_positions.value(),
+                "screening_top_n": self._risk_screening_top_n.value(),
+                "time_stop_minutes": self._risk_time_stop_minutes.value(),
+                "time_stop_min_profit": self._risk_time_stop_min_profit.value() / 100,
             },
         }
 

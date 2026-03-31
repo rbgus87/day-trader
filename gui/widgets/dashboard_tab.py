@@ -136,7 +136,7 @@ class DashboardTab(QWidget):
         vbox.addWidget(title)
 
         self._positions_table = QTableWidget()
-        columns = ["종목코드", "종목명", "전략", "진입가", "현재가", "수익률", "손절가", "TP1", "상태"]
+        columns = ["종목코드", "종목명", "전략", "진입가", "현재가", "수익률", "경과", "손절가", "TP1", "상태"]
         self._positions_table.setColumnCount(len(columns))
         self._positions_table.setHorizontalHeaderLabels(columns)
         self._positions_table.setAlternatingRowColors(True)
@@ -262,7 +262,7 @@ class DashboardTab(QWidget):
         vbox.addWidget(title)
 
         self._watchlist_table = QTableWidget()
-        columns = ["종목코드", "종목명", "ATR%", "서지", "점수"]
+        columns = ["종목코드", "종목명", "현재가", "등락%", "ATR%", "점수"]
         self._watchlist_table.setColumnCount(len(columns))
         self._watchlist_table.setHorizontalHeaderLabels(columns)
         self._watchlist_table.setAlternatingRowColors(True)
@@ -299,11 +299,14 @@ class DashboardTab(QWidget):
                 else QColor("#6c7086")
             )
 
+            change_pct = row_data.get("change_pct", 0)
+            change_color = QColor("#a6e3a1") if change_pct >= 0 else QColor("#f38ba8")
             cells = [
                 (row_data.get("ticker", ""), None),
                 (row_data.get("name", ""), name_color),
+                (f"{row_data.get('current_price', 0):,.0f}", None),
+                (f"{change_pct:+.2f}%", change_color),
                 (f"{row_data.get('atr_pct', 0):.1%}", None),
-                (f"{row_data.get('volume_surge', 0):.1f}x", None),
                 (f"{score:.1f}", score_color),
             ]
 
@@ -428,6 +431,21 @@ class DashboardTab(QWidget):
             pnl_pct = row_data.get("pnl_pct", 0.0)
             pnl_color = QColor("#a6e3a1") if pnl_pct >= 0 else QColor("#f38ba8")
 
+            # 경과 시간
+            entry_time = row_data.get("entry_time")
+            if entry_time:
+                from datetime import datetime as _dt
+                if isinstance(entry_time, str):
+                    entry_time = _dt.fromisoformat(entry_time)
+                elapsed_min = int((_dt.now() - entry_time).total_seconds() / 60)
+                time_limit = row_data.get("time_stop_minutes", 60)
+                remaining = max(0, time_limit - elapsed_min)
+                elapsed_text = f"{elapsed_min}분/{time_limit}분"
+                elapsed_color = QColor("#f9e2af") if remaining <= 10 else None
+            else:
+                elapsed_text = "—"
+                elapsed_color = None
+
             name_color = QColor("#89b4fa")
             cells = [
                 (row_data.get("ticker", ""), None),
@@ -436,6 +454,7 @@ class DashboardTab(QWidget):
                 (f"{row_data.get('entry_price', 0):,.0f}", None),
                 (f"{row_data.get('current_price', 0):,.0f}", None),
                 (f"{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%", pnl_color),
+                (elapsed_text, elapsed_color),
                 (f"{row_data.get('stop_loss', 0):,.0f}", None),
                 (f"{row_data.get('tp1_price', 0):,.0f}", None),
                 (row_data.get("status", ""), None),
