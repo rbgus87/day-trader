@@ -468,7 +468,8 @@ class MainWindow(QMainWindow):
         self.dashboard_tab.update_trades(trades)
 
     def _on_pnl_updated(self, pnl: float):
-        pass  # Already handled via status_updated
+        import time as _time
+        self.dashboard_tab.update_pnl_chart(_time.time(), pnl)
 
     def _on_candidates_updated(self, candidates: list):
         self.screener_tab.update_candidates(candidates)
