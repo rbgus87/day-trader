@@ -54,17 +54,15 @@ class DashboardTab(QWidget):
         left_splitter = QSplitter(Qt.Orientation.Vertical)
         left_splitter.addWidget(self._build_positions_panel())
         left_splitter.addWidget(self._build_trades_panel())
-        left_splitter.setStretchFactor(0, 1)
-        left_splitter.setStretchFactor(1, 1)
+        left_splitter.setSizes([360, 240])
         h_splitter.addWidget(left_splitter)
 
         # Right: watchlist
         watchlist = self._build_watchlist_panel()
-        watchlist.setMinimumWidth(200)
+        watchlist.setMinimumWidth(250)
         h_splitter.addWidget(watchlist)
 
-        h_splitter.setStretchFactor(0, 3)
-        h_splitter.setStretchFactor(1, 1)
+        h_splitter.setSizes([700, 300])
 
         root.addWidget(h_splitter, stretch=1)
 
@@ -142,7 +140,7 @@ class DashboardTab(QWidget):
         self._positions_table.setColumnCount(len(columns))
         self._positions_table.setHorizontalHeaderLabels(columns)
         self._positions_table.setAlternatingRowColors(True)
-        self._positions_table.horizontalHeader().setStretchLastSection(True)
+        self._positions_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self._positions_table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
         )
@@ -169,7 +167,7 @@ class DashboardTab(QWidget):
         self._trades_table.setColumnCount(len(columns))
         self._trades_table.setHorizontalHeaderLabels(columns)
         self._trades_table.setAlternatingRowColors(True)
-        self._trades_table.horizontalHeader().setStretchLastSection(True)
+        self._trades_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self._trades_table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
         )
@@ -185,7 +183,7 @@ class DashboardTab(QWidget):
         """PnL 미니 차트. pyqtgraph 없으면 빈 프레임."""
         if not _HAS_PYQTGRAPH:
             fallback = QFrame()
-            fallback.setFixedHeight(120)
+            fallback.setFixedHeight(80)
             fallback.setStyleSheet("background-color: #313244; border-radius: 6px;")
             lbl = QLabel("PnL 차트 (pyqtgraph 미설치)", fallback)
             lbl.setStyleSheet("color: #6c7086; font-size: 10px; padding: 8px;")
@@ -193,29 +191,14 @@ class DashboardTab(QWidget):
             self._pnl_curve = None
             self._pnl_fill_pos = None
             self._pnl_fill_neg = None
+            self._pnl_empty_label = None
             return fallback
 
+        from PyQt6.QtGui import QFont
+
         pg.setConfigOptions(antialias=True)
-        plot_widget = pg.PlotWidget()
-        plot_widget.setFixedHeight(100)
-        plot_widget.setBackground("#313244")
-        plot_widget.setTitle("일일 PnL", color="#6c7086", size="9pt")
-        plot_widget.showGrid(x=False, y=True, alpha=0.15)
-        plot_widget.getAxis("left").setPen(pg.mkPen("#6c7086"))
-        plot_widget.getAxis("bottom").setPen(pg.mkPen("#6c7086"))
-        plot_widget.getAxis("left").setTextPen(pg.mkPen("#6c7086"))
-        plot_widget.getAxis("bottom").setTextPen(pg.mkPen("#6c7086"))
-        plot_widget.setMouseEnabled(x=False, y=False)
-        plot_widget.hideButtons()
 
-        # y축: 천원 단위 표시
-        left_axis = plot_widget.getAxis("left")
-        left_axis.setLabel("천원")
-        left_axis.enableAutoSIPrefix(False)
-
-        # x축: HH:MM 시간 포맷
-        bottom_axis = plot_widget.getAxis("bottom")
-
+        # 커스텀 시간 축
         class _TimeAxisItem(pg.AxisItem):
             def tickStrings(self, values, scale, spacing):
                 from datetime import datetime
@@ -227,17 +210,40 @@ class DashboardTab(QWidget):
                         result.append("")
                 return result
 
-        # bottom axis를 커스텀 axis로 교체
         time_axis = _TimeAxisItem(orientation="bottom")
         time_axis.setPen(pg.mkPen("#6c7086"))
         time_axis.setTextPen(pg.mkPen("#6c7086"))
-        plot_widget.setAxisItems({"bottom": time_axis})
+        time_axis.setStyle(maxTickLevel=2)
+
+        plot_widget = pg.PlotWidget(axisItems={"bottom": time_axis})
+        plot_widget.setFixedHeight(80)
+        plot_widget.setBackground("#313244")
+        plot_widget.showGrid(x=False, y=True, alpha=0.15)
+        plot_widget.setMouseEnabled(x=False, y=False)
+        plot_widget.hideButtons()
+
+        tick_font = QFont()
+        tick_font.setPointSize(8)
+
+        left_axis = plot_widget.getAxis("left")
+        left_axis.setPen(pg.mkPen("#6c7086"))
+        left_axis.setTextPen(pg.mkPen("#6c7086"))
+        left_axis.enableAutoSIPrefix(False)
+        left_axis.setTickFont(tick_font)
+        left_axis.setWidth(40)
+
+        time_axis.setTickFont(tick_font)
 
         zero_line = pg.InfiniteLine(
             pos=0, angle=0,
             pen=pg.mkPen("#585b70", width=1, style=Qt.PenStyle.DashLine),
         )
         plot_widget.addItem(zero_line)
+
+        # 빈 데이터 텍스트
+        self._pnl_empty_label = pg.TextItem("데이터 없음", color="#6c7086", anchor=(0.5, 0.5))
+        plot_widget.addItem(self._pnl_empty_label)
+        self._pnl_empty_label.setPos(0, 0)
 
         self._pnl_curve = plot_widget.plot(pen=pg.mkPen("#cdd6f4", width=1.5))
         self._pnl_fill_pos = None
@@ -260,7 +266,7 @@ class DashboardTab(QWidget):
         self._watchlist_table.setColumnCount(len(columns))
         self._watchlist_table.setHorizontalHeaderLabels(columns)
         self._watchlist_table.setAlternatingRowColors(True)
-        self._watchlist_table.horizontalHeader().setStretchLastSection(True)
+        self._watchlist_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self._watchlist_table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
         )
@@ -308,8 +314,7 @@ class DashboardTab(QWidget):
                     item.setForeground(color)
                 table.setItem(row, col, item)
 
-        table.resizeColumnsToContents()
-        table.horizontalHeader().setStretchLastSection(True)
+        # Stretch 모드에서 자동 균등 분배
 
     def update_pnl_chart(self, timestamp: float, value: float) -> None:
         """PnL 데이터 포인트 추가 및 차트 업데이트."""
@@ -318,6 +323,11 @@ class DashboardTab(QWidget):
 
         self._pnl_timestamps.append(timestamp)
         self._pnl_values.append(value)
+
+        # 빈 데이터 라벨 숨기기
+        if self._pnl_empty_label is not None:
+            self._pnl_plot.removeItem(self._pnl_empty_label)
+            self._pnl_empty_label = None
 
         import numpy as np
 
@@ -438,8 +448,7 @@ class DashboardTab(QWidget):
                     item.setForeground(color)
                 table.setItem(row, col, item)
 
-        table.resizeColumnsToContents()
-        table.horizontalHeader().setStretchLastSection(True)
+        # Stretch 모드에서 자동 균등 분배
 
     def update_trades(self, trades: list[dict]) -> None:
         """Rebuild today's trades table from a list of trade dicts.
@@ -478,5 +487,4 @@ class DashboardTab(QWidget):
                     item.setForeground(color)
                 table.setItem(row, col, item)
 
-        table.resizeColumnsToContents()
-        table.horizontalHeader().setStretchLastSection(True)
+        # Stretch 모드에서 자동 균등 분배
