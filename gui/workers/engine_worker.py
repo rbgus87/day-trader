@@ -256,6 +256,9 @@ class EngineWorker(QThread):
 
         logger.info("파이프라인 시작 -- 매매 대기 중 (GUI)")
 
+        # 일일 성과 히스토리 전송 (1회)
+        await self._emit_daily_history()
+
         # 4. Polling loop (2-second interval, 0.2s check for fast stop)
         while self._running:
             self._emit_status()
@@ -892,6 +895,20 @@ class EngineWorker(QThread):
                     "change_pct": change_pct,
                 })
             self.signals.candidates_updated.emit(enriched)
+        except Exception:
+            pass
+
+    async def _emit_daily_history(self):
+        """최근 5일 일일 PnL을 DB에서 조회하여 전송."""
+        if not self._db:
+            return
+        try:
+            rows = await self._db.fetch_all(
+                "SELECT date, total_pnl FROM daily_pnl ORDER BY date DESC LIMIT 5"
+            )
+            if rows:
+                data = [{"date": r["date"][-5:], "pnl": r["total_pnl"]} for r in reversed(rows)]
+                self.signals.daily_history_updated.emit(data)
         except Exception:
             pass
 

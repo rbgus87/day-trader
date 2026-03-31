@@ -44,7 +44,8 @@ class DashboardTab(QWidget):
         # Summary bar
         root.addLayout(self._build_summary_bar())
 
-        # PnL chart (전체 폭, 고정 높이)
+        # 일일 성과 + PnL chart (전체 폭)
+        root.addWidget(self._build_daily_history())
         root.addWidget(self._build_pnl_chart())
 
         # 2-column: left (positions+trades) | right (watchlist)
@@ -178,6 +179,35 @@ class DashboardTab(QWidget):
         vbox.addWidget(self._trades_table)
 
         return panel
+
+    def _build_daily_history(self) -> QWidget:
+        """최근 5일 일일 PnL 바 차트."""
+        if not _HAS_PYQTGRAPH:
+            fallback = QFrame()
+            fallback.setFixedHeight(60)
+            fallback.setStyleSheet("background-color: #313244; border-radius: 6px;")
+            self._daily_bar_plot = None
+            self._daily_bar_item = None
+            return fallback
+
+        from PyQt6.QtGui import QFont
+        plot_widget = pg.PlotWidget()
+        plot_widget.setFixedHeight(60)
+        plot_widget.setBackground("#313244")
+        plot_widget.showGrid(x=False, y=True, alpha=0.15)
+        plot_widget.setMouseEnabled(x=False, y=False)
+        plot_widget.hideButtons()
+        plot_widget.getAxis("left").setPen(pg.mkPen("#6c7086"))
+        plot_widget.getAxis("left").setTextPen(pg.mkPen("#6c7086"))
+        plot_widget.getAxis("left").setTickFont(QFont("", 7))
+        plot_widget.getAxis("left").setWidth(35)
+        plot_widget.getAxis("bottom").setPen(pg.mkPen("#6c7086"))
+        plot_widget.getAxis("bottom").setTextPen(pg.mkPen("#6c7086"))
+        plot_widget.getAxis("bottom").setTickFont(QFont("", 7))
+
+        self._daily_bar_plot = plot_widget
+        self._daily_bar_item = None
+        return plot_widget
 
     def _build_pnl_chart(self) -> QWidget:
         """PnL 미니 차트. pyqtgraph 없으면 빈 프레임."""
@@ -318,6 +348,25 @@ class DashboardTab(QWidget):
                 table.setItem(row, col, item)
 
         # Stretch 모드에서 자동 균등 분배
+
+    def update_daily_history(self, daily_data: list[dict]) -> None:
+        """최근 N일 일일 PnL 바 차트."""
+        if not _HAS_PYQTGRAPH or self._daily_bar_plot is None:
+            return
+        import numpy as np
+        if self._daily_bar_item is not None:
+            self._daily_bar_plot.removeItem(self._daily_bar_item)
+            self._daily_bar_item = None
+        if not daily_data:
+            return
+        xs = np.arange(len(daily_data))
+        ys = np.array([d.get("pnl", 0) / 1000 for d in daily_data])
+        colors = [pg.mkBrush("#a6e3a1" if y >= 0 else "#f38ba8") for y in ys]
+        bar = pg.BarGraphItem(x=xs, height=ys, width=0.6, brushes=colors)
+        self._daily_bar_plot.addItem(bar)
+        self._daily_bar_item = bar
+        ticks = [(i, d.get("date", "")) for i, d in enumerate(daily_data)]
+        self._daily_bar_plot.getAxis("bottom").setTicks([ticks])
 
     def update_pnl_chart(self, timestamp: float, value: float) -> None:
         """PnL 데이터 포인트 추가 및 차트 업데이트."""

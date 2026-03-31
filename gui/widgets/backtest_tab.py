@@ -23,6 +23,7 @@ class BacktestTab(QWidget):
     """Backtest tab for running strategy backtests and viewing KPI results."""
 
     run_backtest_clicked = pyqtSignal(dict)
+    run_compare_clicked = pyqtSignal(dict)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -81,6 +82,12 @@ class BacktestTab(QWidget):
         btn_run.setObjectName("startBtn")
         btn_run.clicked.connect(self._on_run_clicked)
         layout.addWidget(btn_run)
+
+        btn_compare = QPushButton("전략 비교")
+        btn_compare.setObjectName("manualBtn")
+        btn_compare.setToolTip("선택 종목에 대해 6전략 비교 백테스트")
+        btn_compare.clicked.connect(self._on_compare_clicked)
+        layout.addWidget(btn_compare)
 
         self._progress_bar = QProgressBar()
         self._progress_bar.setRange(0, 100)
@@ -168,6 +175,24 @@ class BacktestTab(QWidget):
             "ticker": ticker,
         }
         self.run_backtest_clicked.emit(params)
+
+    def _on_compare_clicked(self) -> None:
+        start = self.date_start.date()
+        end = self.date_end.date()
+        if start >= end:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "날짜 오류", "시작일이 종료일보다 앞서야 합니다.")
+            return
+        ticker = self.combo_ticker.currentText().strip()
+        if not ticker:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "종목 미선택", "종목을 선택하세요.")
+            return
+        self.run_compare_clicked.emit({
+            "start_date": start.toString("yyyy-MM-dd"),
+            "end_date": end.toString("yyyy-MM-dd"),
+            "ticker": ticker,
+        })
 
     # ------------------------------------------------------------------
     # Public methods
@@ -257,3 +282,46 @@ class BacktestTab(QWidget):
         table.horizontalHeader().setStretchLastSection(True)
 
         self._results_panel.setVisible(True)
+
+    def show_compare_results(self, results: list[dict]) -> None:
+        """6전략 비교 결과 표시."""
+        self._results_panel.setVisible(True)
+        # KPI 라벨 초기화
+        self._lbl_total_trades.setText("비교 모드")
+        self._lbl_win_rate.setText("—")
+        self._lbl_profit_factor.setText("—")
+        self._lbl_sharpe.setText("—")
+        self._lbl_max_drawdown.setText("—")
+        self._lbl_total_return.setText("—")
+
+        table = self._trades_table
+        table.setColumnCount(6)
+        table.setHorizontalHeaderLabels(["전략", "거래", "승률", "PF", "총PnL", "판정"])
+        table.setRowCount(0)
+
+        for r in results:
+            row = table.rowCount()
+            table.insertRow(row)
+            pf = r.get("profit_factor", 0)
+            pnl = r.get("total_pnl", 0)
+            pf_text = f"{pf:.2f}" if pf < 100 else "INF"
+            pnl_color = QColor("#a6e3a1") if pnl >= 0 else QColor("#f38ba8")
+            pf_color = QColor("#a6e3a1") if pf >= 1.0 else QColor("#f38ba8")
+
+            cells = [
+                (r.get("strategy", ""), None),
+                (str(r.get("total_trades", 0)), None),
+                (f"{r.get('win_rate', 0)*100:.1f}%", None),
+                (pf_text, pf_color),
+                (f"{pnl:+,.0f}", pnl_color),
+                (r.get("verdict", ""), None),
+            ]
+            for col, (text, color) in enumerate(cells):
+                cell = QTableWidgetItem(text)
+                cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                if color:
+                    cell.setForeground(color)
+                table.setItem(row, col, cell)
+
+        table.resizeColumnsToContents()
+        table.horizontalHeader().setStretchLastSection(True)

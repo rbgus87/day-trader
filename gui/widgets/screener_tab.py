@@ -103,7 +103,7 @@ class ScreenerTab(QWidget):
         return layout
 
     def _build_candidates_table(self) -> QTableWidget:
-        columns = ["#", "Ticker", "종목명", "시가총액", "거래대금", "서지비율", "ATR%", "MA20", "점수"]
+        columns = ["#", "Ticker", "종목명", "시가총액", "거래대금", "서지비율", "종가위치", "ATR%", "점수"]
         self._candidates_table = QTableWidget()
         self._candidates_table.setColumnCount(len(columns))
         self._candidates_table.setHorizontalHeaderLabels(columns)
@@ -145,25 +145,36 @@ class ScreenerTab(QWidget):
             atr_pct = item.get("atr_pct", 0.0)
             surge = item.get("volume_surge", 0.0)
             score = item.get("score", 0.0)
-            ma20 = item.get("ma20_trend", "")
+
+            # 종가위치: 전일 종가/전일 고가
+            vol = item.get("volume", 0)
+            prev_vol = item.get("prev_volume", 0)
+            close_pos = item.get("close_position", 0.0)
+            cp_color = None
+            if close_pos >= 0.98:
+                cp_color = QColor("#a6e3a1")
+            elif close_pos >= 0.95:
+                cp_color = QColor("#f9e2af")
 
             cells = [
-                str(idx + 1),
-                item.get("ticker", ""),
-                item.get("name", ""),
-                f"{market_cap:,.0f} 억",
-                f"{volume_amount:,.0f} 억",
-                f"{surge:.1f} 배",
-                f"{atr_pct:.1f}%",
-                str(ma20),
-                f"{score:.1f}",
+                (str(idx + 1), None),
+                (item.get("ticker", ""), None),
+                (item.get("name", ""), None),
+                (f"{market_cap / 1e8:,.0f} 억", None),
+                (f"{volume_amount / 1e8:,.0f} 억", None),
+                (f"{surge:.1f}배", None),
+                (f"{close_pos:.1%}" if close_pos > 0 else "—", cp_color),
+                (f"{atr_pct * 100:.1f}%", None),
+                (f"{score:.1f}", None),
             ]
 
-            for col, text in enumerate(cells):
+            for col, (text, color) in enumerate(cells):
                 cell = QTableWidgetItem(text)
                 cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 if selected:
                     cell.setBackground(highlight_color)
+                if color:
+                    cell.setForeground(color)
                 table.setItem(row, col, cell)
 
         table.resizeColumnsToContents()

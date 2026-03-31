@@ -12,11 +12,14 @@ from PyQt6.QtWidgets import (
     QTimeEdit,
     QLabel,
     QPushButton,
-    QListWidget,
     QLineEdit,
     QStackedWidget,
     QScrollArea,
     QSizePolicy,
+    QTableWidget,
+    QTableWidgetItem,
+    QHeaderView,
+    QAbstractItemView,
 )
 from PyQt6.QtCore import Qt, QTime, pyqtSignal
 
@@ -362,8 +365,27 @@ class StrategyTab(QWidget):
         vbox.setContentsMargins(10, 16, 10, 10)
         vbox.setSpacing(8)
 
-        self._universe_list = QListWidget()
-        vbox.addWidget(self._universe_list)
+        self._universe_count_label = QLabel("0종목")
+        self._universe_count_label.setStyleSheet("font-size: 11px; color: #6c7086;")
+        vbox.addWidget(self._universe_count_label)
+
+        self._universe_table = QTableWidget()
+        columns = ["코드", "종목명", "시장"]
+        self._universe_table.setColumnCount(len(columns))
+        self._universe_table.setHorizontalHeaderLabels(columns)
+        self._universe_table.setAlternatingRowColors(True)
+        self._universe_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+        self._universe_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self._universe_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self._universe_table.verticalHeader().setVisible(False)
+        self._universe_table.setMaximumHeight(200)
+        vbox.addWidget(self._universe_table)
 
         controls = QHBoxLayout()
         controls.setSpacing(8)
@@ -401,12 +423,20 @@ class StrategyTab(QWidget):
     def _on_add_ticker(self) -> None:
         text = self._universe_input.text().strip()
         if text:
-            self._universe_list.addItem(text)
+            row = self._universe_table.rowCount()
+            self._universe_table.insertRow(row)
+            for col, val in enumerate([text, "", ""]):
+                item = QTableWidgetItem(val)
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._universe_table.setItem(row, col, item)
             self._universe_input.clear()
+            self._universe_count_label.setText(f"{self._universe_table.rowCount()}종목")
 
     def _on_remove_ticker(self) -> None:
-        for item in self._universe_list.selectedItems():
-            self._universe_list.takeItem(self._universe_list.row(item))
+        rows = sorted(set(idx.row() for idx in self._universe_table.selectedIndexes()), reverse=True)
+        for row in rows:
+            self._universe_table.removeRow(row)
+        self._universe_count_label.setText(f"{self._universe_table.rowCount()}종목")
 
     # ------------------------------------------------------------------
     # Public methods
@@ -548,14 +578,26 @@ class StrategyTab(QWidget):
             },
         }
 
-    def load_universe(self, tickers: list[str]) -> None:
-        """Populate the universe list widget."""
-        self._universe_list.clear()
-        self._universe_list.addItems(tickers)
+    def load_universe(self, stocks: list[dict]) -> None:
+        """Populate universe table. stocks: [{"ticker": ..., "name": ..., "market": ...}, ...]"""
+        self._universe_table.setRowCount(0)
+        for s in stocks:
+            row = self._universe_table.rowCount()
+            self._universe_table.insertRow(row)
+            ticker = s.get("ticker", "") if isinstance(s, dict) else str(s)
+            name = s.get("name", "") if isinstance(s, dict) else ""
+            market = s.get("market", "") if isinstance(s, dict) else ""
+            for col, text in enumerate([ticker, name, market]):
+                item = QTableWidgetItem(str(text))
+                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self._universe_table.setItem(row, col, item)
+        self._universe_count_label.setText(f"{self._universe_table.rowCount()}종목")
 
     def get_universe(self) -> list[str]:
         """Return current universe ticker list."""
-        return [
-            self._universe_list.item(i).text()
-            for i in range(self._universe_list.count())
-        ]
+        tickers = []
+        for i in range(self._universe_table.rowCount()):
+            item = self._universe_table.item(i, 0)
+            if item and item.text().strip():
+                tickers.append(item.text().strip())
+        return tickers

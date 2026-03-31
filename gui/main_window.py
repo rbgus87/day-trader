@@ -105,6 +105,7 @@ class MainWindow(QMainWindow):
         self.screener_tab.run_screening_clicked.connect(self._on_screening)
         self.strategy_tab.settings_saved.connect(self._on_settings_saved)
         self.backtest_tab.run_backtest_clicked.connect(self._on_run_backtest)
+        self.backtest_tab.run_compare_clicked.connect(self._on_run_compare)
 
     # ── 테마 / 타이틀바 ───────────────────────────────────────────────────────
 
@@ -191,6 +192,7 @@ class MainWindow(QMainWindow):
         s.trades_updated.connect(self._on_trades_updated)
         s.pnl_updated.connect(self._on_pnl_updated)
         s.candidates_updated.connect(self._on_candidates_updated)
+        s.daily_history_updated.connect(self._on_daily_history)
 
     def _on_stop(self):
         if self._worker:
@@ -377,6 +379,78 @@ class MainWindow(QMainWindow):
         self.backtest_tab.set_progress(0)
         QMessageBox.critical(self, "백테스트 오류", error)
 
+    def _on_run_compare(self, params: dict):
+        """6전략 비교 백테스트 실행."""
+        import asyncio
+        from threading import Thread
+
+        self.backtest_tab.set_progress(50)
+
+        def _run():
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                result = loop.run_until_complete(self._run_compare_async(params))
+                loop.close()
+                QTimer.singleShot(0, lambda: self._show_compare_result(result))
+            except Exception as e:
+                QTimer.singleShot(0, lambda: self._show_backtest_error(str(e)))
+
+        Thread(target=_run, daemon=True).start()
+
+    async def _run_compare_async(self, params: dict) -> list[dict]:
+        from config.settings import TradingConfig, BacktestConfig
+        from data.db_manager import DbManager
+        from backtest.backtester import Backtester
+        from strategy.momentum_strategy import MomentumStrategy
+        from strategy.pullback_strategy import PullbackStrategy
+        from strategy.flow_strategy import FlowStrategy
+        from strategy.gap_strategy import GapStrategy
+        from strategy.open_break_strategy import OpenBreakStrategy
+        from strategy.big_candle_strategy import BigCandleStrategy
+
+        cfg_path = Path("config.yaml")
+        raw = yaml.safe_load(open(cfg_path, encoding="utf-8")) or {}
+        bt_cfg = raw.get("backtest", {})
+        backtest_config = BacktestConfig(
+            commission=bt_cfg.get("commission", 0.00015),
+            tax=bt_cfg.get("tax", 0.0018),
+            slippage=bt_cfg.get("slippage", 0.0003),
+        )
+        tc = TradingConfig()
+        strategies = {
+            "Momentum": MomentumStrategy(tc),
+            "Pullback": PullbackStrategy(tc),
+            "Flow": FlowStrategy(tc),
+            "Gap": GapStrategy(tc),
+            "OpenBreak": OpenBreakStrategy(tc),
+            "BigCandle": BigCandleStrategy(tc),
+        }
+        db = DbManager("daytrader.db")
+        await db.init()
+        bt = Backtester(db=db, config=tc, backtest_config=backtest_config)
+        results = []
+        for name, strategy in strategies.items():
+            kpi = await bt.run_multi_day(
+                params["ticker"], params["start_date"], params["end_date"], strategy,
+            )
+            pf = kpi.get("profit_factor", 0)
+            results.append({
+                "strategy": name,
+                "total_trades": kpi.get("total_trades", 0),
+                "win_rate": kpi.get("win_rate", 0),
+                "profit_factor": pf,
+                "total_pnl": kpi.get("total_pnl", 0),
+                "verdict": "O" if pf >= 1.0 else "X",
+            })
+        await db.close()
+        results.sort(key=lambda x: x["profit_factor"], reverse=True)
+        return results
+
+    def _show_compare_result(self, results: list[dict]):
+        self.backtest_tab.set_progress(0)
+        self.backtest_tab.show_compare_results(results)
+
     def _load_config_to_ui(self):
         """config.yaml → 전략 탭 UI에 로드."""
         config_path = Path("config.yaml")
@@ -387,9 +461,9 @@ class MainWindow(QMainWindow):
             uni_path = Path("config/universe.yaml")
             if uni_path.exists():
                 uni = yaml.safe_load(open(uni_path, encoding="utf-8")) or {}
-                tickers = [s["ticker"] for s in uni.get("stocks", [])]
-                self.strategy_tab.load_universe(tickers)
-                self.backtest_tab.set_tickers(tickers)
+                stocks = uni.get("stocks", [])
+                self.strategy_tab.load_universe(stocks)
+                self.backtest_tab.set_tickers([s["ticker"] for s in stocks])
             # force_strategy → 사이드바 콤보 동기화
             force = cfg.get("strategy", {}).get("force", "")
             if force:
@@ -477,6 +551,9 @@ class MainWindow(QMainWindow):
     def _on_candidates_updated(self, candidates: list):
         self.screener_tab.update_candidates(candidates)
         self.dashboard_tab.update_watchlist(candidates[:5])
+
+    def _on_daily_history(self, data: list):
+        self.dashboard_tab.update_daily_history(data)
 
     # ── 트레이 ────────────────────────────────────────────────────────────────
 
