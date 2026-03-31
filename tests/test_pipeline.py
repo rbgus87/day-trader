@@ -30,26 +30,29 @@ async def test_pipeline_tick_to_candle():
 
 @pytest.mark.asyncio
 async def test_pipeline_candle_to_strategy():
-    """캔들 → 전략 엔진 신호 생성 확인."""
+    """캔들 → 전략 엔진 신호 생성 확인 (Momentum)."""
     import pandas as pd
-    from strategy.orb_strategy import OrbStrategy
+    from strategy.momentum_strategy import MomentumStrategy
     from config.settings import TradingConfig
     from unittest.mock import patch
+    from datetime import time
 
-    orb = OrbStrategy(TradingConfig())
-    orb._range_high = 70400
-    orb._range_low = 69600
+    strat = MomentumStrategy(TradingConfig())
+    strat.set_prev_day_data(high=70000, volume=100_000)
+    strat.configure_multi_trade(max_trades=5, cooldown_minutes=0)
+    strat.set_backtest_time(time(10, 0))
 
     candles = pd.DataFrame({
-        "time": ["09:16"], "close": [70500], "high": [70600],
-        "low": [70400], "volume": [5000],
+        "close": [70100, 70200, 70300],
+        "high": [70150, 70250, 70350],
+        "low": [70050, 70150, 70250],
+        "volume": [80_000, 70_000, 60_000],
     })
-    tick = {"ticker": "005930", "price": 70500, "time": "091600", "volume": 500}
+    tick = {"ticker": "005930", "price": 70300, "time": "100000", "volume": 500}
 
-    with patch.object(orb, "is_tradable_time", return_value=True):
-        signal = orb.generate_signal(candles, tick)
-        assert signal is not None
-        assert signal.strategy == "orb"
+    signal = strat.generate_signal(candles, tick)
+    assert signal is not None
+    assert signal.strategy == "momentum"
 
 
 # ---------------------------------------------------------------------------
