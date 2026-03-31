@@ -180,106 +180,115 @@ class DashboardTab(QWidget):
 
         return panel
 
+    def _make_chart_fallback(self, height: int, text: str = "") -> QFrame:
+        fallback = QFrame()
+        fallback.setFixedHeight(height)
+        fallback.setStyleSheet("background-color: #313244; border-radius: 6px;")
+        if text:
+            lbl = QLabel(text, fallback)
+            lbl.setStyleSheet("color: #6c7086; font-size: 10px; padding: 8px;")
+        return fallback
+
     def _build_daily_history(self) -> QWidget:
         """최근 5일 일일 PnL 바 차트."""
         if not _HAS_PYQTGRAPH:
-            fallback = QFrame()
-            fallback.setFixedHeight(60)
-            fallback.setStyleSheet("background-color: #313244; border-radius: 6px;")
             self._daily_bar_plot = None
             self._daily_bar_item = None
-            return fallback
+            return self._make_chart_fallback(60)
 
-        from PyQt6.QtGui import QFont
-        plot_widget = pg.PlotWidget()
-        plot_widget.setFixedHeight(60)
-        plot_widget.setBackground("#313244")
-        plot_widget.showGrid(x=False, y=True, alpha=0.15)
-        plot_widget.setMouseEnabled(x=False, y=False)
-        plot_widget.hideButtons()
-        plot_widget.getAxis("left").setPen(pg.mkPen("#6c7086"))
-        plot_widget.getAxis("left").setTextPen(pg.mkPen("#6c7086"))
-        plot_widget.getAxis("left").setTickFont(QFont("", 7))
-        plot_widget.getAxis("left").setWidth(35)
-        plot_widget.getAxis("bottom").setPen(pg.mkPen("#6c7086"))
-        plot_widget.getAxis("bottom").setTextPen(pg.mkPen("#6c7086"))
-        plot_widget.getAxis("bottom").setTickFont(QFont("", 7))
-
-        self._daily_bar_plot = plot_widget
-        self._daily_bar_item = None
-        return plot_widget
+        try:
+            from PyQt6.QtGui import QFont
+            plot_widget = pg.PlotWidget()
+            plot_widget.setFixedHeight(60)
+            plot_widget.setBackground("#313244")
+            plot_widget.showGrid(x=False, y=True, alpha=0.15)
+            plot_widget.setMouseEnabled(x=False, y=False)
+            plot_widget.hideButtons()
+            plot_widget.getAxis("left").setPen(pg.mkPen("#6c7086"))
+            plot_widget.getAxis("left").setTextPen(pg.mkPen("#6c7086"))
+            plot_widget.getAxis("left").setTickFont(QFont("", 7))
+            plot_widget.getAxis("left").setWidth(35)
+            plot_widget.getAxis("bottom").setPen(pg.mkPen("#6c7086"))
+            plot_widget.getAxis("bottom").setTextPen(pg.mkPen("#6c7086"))
+            plot_widget.getAxis("bottom").setTickFont(QFont("", 7))
+            self._daily_bar_plot = plot_widget
+            self._daily_bar_item = None
+            return plot_widget
+        except Exception:
+            self._daily_bar_plot = None
+            self._daily_bar_item = None
+            return self._make_chart_fallback(60)
 
     def _build_pnl_chart(self) -> QWidget:
         """PnL 미니 차트. pyqtgraph 없으면 빈 프레임."""
-        if not _HAS_PYQTGRAPH:
-            fallback = QFrame()
-            fallback.setFixedHeight(140)
-            fallback.setStyleSheet("background-color: #313244; border-radius: 6px;")
-            lbl = QLabel("PnL 차트 (pyqtgraph 미설치)", fallback)
-            lbl.setStyleSheet("color: #6c7086; font-size: 10px; padding: 8px;")
+        def _pnl_fallback():
             self._pnl_plot = None
             self._pnl_curve = None
             self._pnl_fill_pos = None
             self._pnl_fill_neg = None
             self._pnl_empty_label = None
-            return fallback
+            return self._make_chart_fallback(140, "PnL 차트 (pyqtgraph 미설치)")
 
-        from PyQt6.QtGui import QFont
+        if not _HAS_PYQTGRAPH:
+            return _pnl_fallback()
 
-        pg.setConfigOptions(antialias=True)
+        try:
+            from PyQt6.QtGui import QFont
 
-        # 커스텀 시간 축
-        class _TimeAxisItem(pg.AxisItem):
-            def tickStrings(self, values, scale, spacing):
-                from datetime import datetime
-                result = []
-                for v in values:
-                    try:
-                        result.append(datetime.fromtimestamp(v).strftime("%H:%M"))
-                    except (OSError, ValueError):
-                        result.append("")
-                return result
+            pg.setConfigOptions(antialias=True)
 
-        time_axis = _TimeAxisItem(orientation="bottom")
-        time_axis.setPen(pg.mkPen("#6c7086"))
-        time_axis.setTextPen(pg.mkPen("#6c7086"))
-        time_axis.setStyle(maxTickLevel=2)
+            class _TimeAxisItem(pg.AxisItem):
+                def tickStrings(self, values, scale, spacing):
+                    from datetime import datetime
+                    result = []
+                    for v in values:
+                        try:
+                            result.append(datetime.fromtimestamp(v).strftime("%H:%M"))
+                        except (OSError, ValueError):
+                            result.append("")
+                    return result
 
-        plot_widget = pg.PlotWidget(axisItems={"bottom": time_axis})
-        plot_widget.setFixedHeight(140)
-        plot_widget.setBackground("#313244")
-        plot_widget.showGrid(x=False, y=True, alpha=0.15)
-        plot_widget.setMouseEnabled(x=False, y=False)
-        plot_widget.hideButtons()
+            time_axis = _TimeAxisItem(orientation="bottom")
+            time_axis.setPen(pg.mkPen("#6c7086"))
+            time_axis.setTextPen(pg.mkPen("#6c7086"))
+            time_axis.setStyle(maxTickLevel=2)
 
-        tick_font = QFont()
-        tick_font.setPointSize(8)
+            plot_widget = pg.PlotWidget(axisItems={"bottom": time_axis})
+            plot_widget.setFixedHeight(140)
+            plot_widget.setBackground("#313244")
+            plot_widget.showGrid(x=False, y=True, alpha=0.15)
+            plot_widget.setMouseEnabled(x=False, y=False)
+            plot_widget.hideButtons()
 
-        left_axis = plot_widget.getAxis("left")
-        left_axis.setPen(pg.mkPen("#6c7086"))
-        left_axis.setTextPen(pg.mkPen("#6c7086"))
-        left_axis.enableAutoSIPrefix(False)
-        left_axis.setTickFont(tick_font)
-        left_axis.setWidth(40)
+            tick_font = QFont()
+            tick_font.setPointSize(8)
 
-        time_axis.setTickFont(tick_font)
+            left_axis = plot_widget.getAxis("left")
+            left_axis.setPen(pg.mkPen("#6c7086"))
+            left_axis.setTextPen(pg.mkPen("#6c7086"))
+            left_axis.enableAutoSIPrefix(False)
+            left_axis.setTickFont(tick_font)
+            left_axis.setWidth(40)
 
-        zero_line = pg.InfiniteLine(
-            pos=0, angle=0,
-            pen=pg.mkPen("#585b70", width=1, style=Qt.PenStyle.DashLine),
-        )
-        plot_widget.addItem(zero_line)
+            time_axis.setTickFont(tick_font)
 
-        # 빈 데이터 텍스트
-        self._pnl_empty_label = pg.TextItem("데이터 없음", color="#6c7086", anchor=(0.5, 0.5))
-        plot_widget.addItem(self._pnl_empty_label)
-        self._pnl_empty_label.setPos(0, 0)
+            zero_line = pg.InfiniteLine(
+                pos=0, angle=0,
+                pen=pg.mkPen("#585b70", width=1, style=Qt.PenStyle.DashLine),
+            )
+            plot_widget.addItem(zero_line)
 
-        self._pnl_curve = plot_widget.plot(pen=pg.mkPen("#cdd6f4", width=1.5))
-        self._pnl_fill_pos = None
-        self._pnl_fill_neg = None
-        self._pnl_plot = plot_widget
-        return plot_widget
+            self._pnl_empty_label = pg.TextItem("데이터 없음", color="#6c7086", anchor=(0.5, 0.5))
+            plot_widget.addItem(self._pnl_empty_label)
+            self._pnl_empty_label.setPos(0, 0)
+
+            self._pnl_curve = plot_widget.plot(pen=pg.mkPen("#cdd6f4", width=1.5))
+            self._pnl_fill_pos = None
+            self._pnl_fill_neg = None
+            self._pnl_plot = plot_widget
+            return plot_widget
+        except Exception:
+            return _pnl_fallback()
 
     def _build_watchlist_panel(self) -> QWidget:
         panel = QWidget()
