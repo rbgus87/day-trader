@@ -246,7 +246,7 @@ class EngineWorker(QThread):
             "cron", hour=15, minute=30, misfire_grace_time=300,
         )
         self._scheduler.start()
-        logger.info(f"[SCHED] BackgroundScheduler 시작됨, running={self._scheduler.running}")
+        logger.debug(f"BackgroundScheduler 시작됨, running={self._scheduler.running}")
 
         # Late screening (장중 실행 시 즉시 스크리닝)
         now = datetime.now().time()

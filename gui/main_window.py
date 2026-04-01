@@ -266,17 +266,17 @@ class MainWindow(QMainWindow):
             pass
 
     def _on_halt(self):
+        logger.info("Halt 긴급 클릭")
         if self._worker:
             self._worker.signals.request_halt.emit()
 
     def _on_screening(self):
-        logger.info(f"[BTN] 스크리닝 클릭, worker={self._worker is not None}")
+        logger.info("수동 스크리닝 클릭")
         if self._worker:
             self._worker.signals.request_screening.emit()
-        else:
-            logger.warning("[BTN] worker가 None!")
 
     def _on_force_close(self):
+        logger.info("강제청산 클릭")
         if self._worker:
             reply = QMessageBox.warning(
                 self, "강제 청산",
@@ -288,10 +288,12 @@ class MainWindow(QMainWindow):
                 self._worker.signals.request_force_close.emit()
 
     def _on_report(self):
+        logger.info("리포트 수동 발송 클릭")
         if self._worker:
             self._worker.signals.request_report.emit()
 
     def _on_reconnect(self):
+        logger.info("WS 재연결 클릭")
         if self._worker:
             self._worker.signals.request_reconnect.emit()
 

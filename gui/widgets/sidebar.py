@@ -200,9 +200,9 @@ class Sidebar(QFrame):
             btn.setFixedHeight(32)
             parent_layout.addWidget(btn)
 
-        self._start_btn.clicked.connect(self.start_clicked)
-        self._stop_btn.clicked.connect(self.stop_clicked)
-        self._halt_btn.clicked.connect(self.halt_clicked)
+        self._start_btn.clicked.connect(lambda: self.start_clicked.emit())
+        self._stop_btn.clicked.connect(lambda: self.stop_clicked.emit())
+        self._halt_btn.clicked.connect(lambda: self.halt_clicked.emit())
 
     def _build_manual_actions(self, parent_layout: QVBoxLayout) -> None:
         """수동 실행 2×2 그리드 섹션."""
@@ -225,7 +225,7 @@ class Sidebar(QFrame):
             btn.setToolTip(tooltip)
             btn.setEnabled(False)
             btn.setFixedHeight(28)
-            btn.clicked.connect(signal)
+            btn.clicked.connect(lambda checked=False, s=signal: s.emit())
             self._manual_btns.append(btn)
             row, col = divmod(idx, 2)
             grid.addWidget(btn, row, col)
