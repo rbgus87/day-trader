@@ -230,7 +230,7 @@ class MainWindow(QMainWindow):
         if not self._worker or not self._worker.isRunning():
             return
 
-        logger.warning("엔진 2초 내 미종료 — terminate")
+        logger.info("엔진 정지 완료 (terminate)")
         self._worker.terminate()
         self._worker.wait(1000)  # 최대 1초만 대기
 
