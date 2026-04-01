@@ -14,7 +14,7 @@
 | 항목 | 내용 |
 |------|------|
 | 레포 | `rbgus87/day-trader` |
-| Python | 3.14 (venv), 백테스트는 3.12 별도 venv |
+| Python | 3.14 (시스템), 백테스트는 3.12 |
 | DB | SQLite `daytrader.db` (quant.db/swing.db와 완전 분리) |
 | 브로커 | 키움 OpenAPI+ REST + WebSocket |
 | 알림 | Telegram |
@@ -216,4 +216,4 @@ pytest tests/ --cov=. --cov-report=term-missing
 
 - **quant-system** (`rbgus87/quant-system`): 멀티팩터 퀀트 (분기 리밸런싱)
 - **swing-trader** (`rbgus87/swing-trader`): 스윙 매매 자동화
-- 세 시스템은 독립 DB, 독립 venv, 공통 모듈(retry.py, auth.py) 공유 구조
+- 세 시스템은 독립 DB, 공통 모듈(retry.py, auth.py) 공유 구조

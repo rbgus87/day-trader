@@ -2,7 +2,7 @@
 
 > **PRD v1.0** · 2026년 3월  
 > 키움증권 REST API 기반 단타 자동매매 시스템  
-> Python 3.12 · Windows 로컬 · venv 격리
+> Python 3.14 · Windows 로컬
 
 ---
 
@@ -13,7 +13,7 @@
 | 문서 버전 | v1.0 |
 | 작성일 | 2026년 3월 |
 | 대상 시스템 | kiwoom_daytrader |
-| Python 버전 | 3.12 (venv 격리) |
+| Python 버전 | 3.14 (시스템) |
 | 운영 환경 | Windows 로컬 |
 | 브로커 | 키움증권 REST API + WebSocket |
 | 우선순위 기준 | P0: 필수(블로커) / P1: 높음 / P2: 중간 / P3: 낮음 |
@@ -38,7 +38,7 @@
 ### 1.1 제품 목표
 
 키움증권 REST API와 WebSocket을 활용하여 하루 1개 종목을 선별하고 당일 매매를 완전 자동화한다.  
-기존 퀀트/스윙 시스템의 인프라를 재사용하고, 단타 전용 독립 DB와 venv 환경으로 격리된 구조를 유지하는 것이 핵심 목표다.
+기존 퀀트/스윙 시스템의 인프라를 재사용하고, 단타 전용 독립 DB로 격리된 구조를 유지하는 것이 핵심 목표다.
 
 ### 1.2 Scope In / Out
 
@@ -443,7 +443,7 @@ class BaseStrategy(ABC):
 
 | 항목 | 내용 | 비고 |
 |------|------|------|
-| Python | 3.12 (venv) | 3.14는 라이브러리 호환 리스크로 미채택 |
+| Python | 3.14 (시스템) | 시스템 Python 직접 사용 |
 | 운영 환경 | Windows 로컬 | `asyncio.WindowsSelectorEventLoopPolicy` 필수 설정 |
 | 이벤트 루프 | SelectorEventLoop | ProactorEventLoop → websockets 충돌 가능 |
 | 기술적 지표 | pandas-ta | ta-lib Windows 설치 복잡 → pandas-ta 대체 |
@@ -605,7 +605,7 @@ CREATE TABLE system_log (
 
 - [ ] `py -3.12 --version` → `3.12.x` 출력
 - [ ] `py -3.14 --version` → `3.14.x` 출력 (기존 환경 유지)
-- [ ] `.venv\Scripts\activate` 후 `python --version` → `3.12.x`
+- [ ] `python --version` → `3.14.x`
 - [ ] `pip list`에 `pandas-ta`, `aiohttp`, `websockets` 포함
 - [ ] `main.py`에 `WindowsSelectorEventLoopPolicy` 설정 확인
 - [ ] `.env` 파일 존재, `.gitignore`에 `.env` 포함

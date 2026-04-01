@@ -1,6 +1,6 @@
 # 단타 매매 시스템 — 개발 환경 세팅 가이드
 
-> Python 3.14 · Windows 로컬 · venv 격리
+> Python 3.14 · Windows 로컬 · 시스템 Python
 > 최종 수정: 2026년 3월
 
 ---
@@ -13,24 +13,13 @@ python --version     # 3.14.x
 
 ---
 
-## 1. venv 생성 (완료됨)
-
-```bash
-cd D:\project\day-trader
-py -3.14 -m venv .venv
-.venv\Scripts\activate
-```
-
----
-
-## 2. 의존성 설치 (완료됨)
+## 1. 의존성 설치 (완료됨)
 
 ```bash
 pip install -r requirements.txt
 ```
 
 > **참고**: vectorbt와 pandas-ta는 Python 3.14 미지원 (numba 의존성).
-> 백테스트 시 Python 3.12 venv 별도 생성 권장.
 
 ---
 
@@ -140,9 +129,6 @@ asyncio.run(test())
 ## 6. 시스템 실행
 
 ```bash
-# 가상환경 활성화
-.venv\Scripts\activate
-
 # 시스템 시작 (장 전에 실행)
 python main.py
 ```
@@ -174,7 +160,7 @@ pytest tests/ --cov=. --cov-report=term-missing
 
 ```
 [ ] python --version → 3.14.x
-[ ] .venv\Scripts\activate 후 pip list에 aiohttp, websockets 포함
+[ ] pip list에 aiohttp, websockets 포함
 [ ] .env 파일 존재, .gitignore에 .env 포함
 [ ] main.py에 WindowsSelectorEventLoopPolicy 설정
 [ ] daytrader.db 생성 확인 (DB 초기화 후)
@@ -188,11 +174,9 @@ pytest tests/ --cov=. --cov-report=term-missing
 ## 자주 발생하는 문제
 
 ### vectorbt/pandas-ta 설치 실패
-Python 3.14에서 numba 미지원. 백테스트용으로 Python 3.12 venv 별도 생성:
+Python 3.14에서 numba 미지원. 백테스트용으로 Python 3.12 사용:
 ```bash
-py -3.12 -m venv .venv312
-.venv312\Scripts\activate
-pip install vectorbt pandas-ta
+py -3.12 -m pip install vectorbt pandas-ta
 ```
 
 ### asyncio RuntimeError (Windows)
