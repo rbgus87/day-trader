@@ -651,9 +651,27 @@ class EngineWorker(QThread):
         """파이프라인 중지 + running 플래그 해제."""
         logger.info("엔진 종료 요청 수신")
         self._running = False
+
+        # 스케줄러 즉시 정지
+        try:
+            if self._scheduler and self._scheduler.running:
+                self._scheduler.shutdown(wait=False)
+        except Exception:
+            pass
+
+        # 파이프라인 태스크 취소
         for t in self._pipeline_tasks:
             if not t.done():
                 t.cancel()
+
+        # 진행 중인 모든 태스크 취소 (API 호출 포함)
+        try:
+            all_tasks = [t for t in asyncio.all_tasks(self._loop)
+                         if t is not asyncio.current_task() and not t.done()]
+            for t in all_tasks:
+                t.cancel()
+        except Exception:
+            pass
 
     def _on_request_halt(self):
         """매매 긴급 정지 (포지션 유지, 신규 매매만 중단)."""
@@ -932,27 +950,30 @@ class EngineWorker(QThread):
         if not self._loop:
             return
 
-        # Cancel pipeline tasks
-        for t in self._pipeline_tasks:
-            if not t.done():
-                t.cancel()
-        if self._pipeline_tasks:
-            self._run_with_timeout(
-                asyncio.gather(*self._pipeline_tasks, return_exceptions=True),
-                timeout=3.0, label="pipeline",
-            )
+        # Cancel ALL tasks first (pipeline + API 호출 등)
+        try:
+            all_tasks = asyncio.all_tasks(self._loop)
+            for task in all_tasks:
+                task.cancel()
+            if all_tasks:
+                self._run_with_timeout(
+                    asyncio.gather(*all_tasks, return_exceptions=True),
+                    timeout=3.0, label="all_tasks",
+                )
+        except Exception:
+            pass
 
         try:
             if self._scheduler and self._scheduler.running:
                 self._scheduler.shutdown(wait=False)
-        except Exception as e:
-            logger.error(f"Scheduler cleanup error: {e}")
+        except Exception:
+            pass
 
         if self._ws_client:
-            self._run_with_timeout(self._ws_client.disconnect(), label="ws")
+            self._run_with_timeout(self._ws_client.disconnect(), timeout=2.0, label="ws")
 
         if self._rest_client:
-            self._run_with_timeout(self._rest_client.aclose(), label="rest")
+            self._run_with_timeout(self._rest_client.aclose(), timeout=2.0, label="rest")
 
         if self._notifier:
             mode_tag = "[PAPER] " if self._mode == "paper" else ""
@@ -960,23 +981,10 @@ class EngineWorker(QThread):
                 self._notifier.send(f"{mode_tag}시스템 종료 (GUI)"),
                 timeout=2.0, label="notify",
             )
-            self._run_with_timeout(self._notifier.aclose(), label="notifier_close")
+            self._run_with_timeout(self._notifier.aclose(), timeout=2.0, label="notifier_close")
 
         if self._db:
-            self._run_with_timeout(self._db.close(), label="db")
-
-        # Cancel remaining tasks
-        try:
-            pending = asyncio.all_tasks(self._loop)
-            for task in pending:
-                task.cancel()
-            if pending:
-                self._run_with_timeout(
-                    asyncio.gather(*pending, return_exceptions=True),
-                    timeout=2.0, label="pending",
-                )
-        except Exception:
-            pass
+            self._run_with_timeout(self._db.close(), timeout=2.0, label="db")
 
     @property
     def engine_running(self) -> bool:

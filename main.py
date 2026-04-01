@@ -62,10 +62,13 @@ async def main():
         filter=_log_filter,
     )
     logger.add(
-        "logs/{time:YYYY-MM-DD}.log",
-        rotation="1 day", retention="30 days",
-        level="DEBUG", encoding="utf-8",
+        "logs/day.log",
+        rotation="10 MB",
+        retention=5,
+        level="DEBUG",
+        encoding="utf-8",
         filter=_log_filter,
+        compression="zip",
     )
 
     # 모드 표시

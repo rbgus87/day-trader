@@ -130,14 +130,15 @@ class MainWindow(QMainWindow):
     def _setup_loguru_sink(self):
         self._log_signal.connect(self._dispatch_log)
 
-        # 파일 로깅 추가 (main.py와 동일)
+        # 파일 로깅 (main.py와 동일 정책)
         try:
             logger.add(
-                "logs/{time:YYYY-MM-DD}.log",
-                rotation="1 day",
-                retention="30 days",
+                "logs/day.log",
+                rotation="10 MB",
+                retention=5,
                 level="DEBUG",
                 encoding="utf-8",
+                compression="zip",
             )
         except Exception:
             pass
@@ -217,7 +218,7 @@ class MainWindow(QMainWindow):
             )
             self._worker.signals.request_stop.emit()
             # 안전장치: 7초 후에도 stopped 시그널 미수신 시 강제 복구
-            QTimer.singleShot(7000, self._check_stop_timeout)
+            QTimer.singleShot(10000, self._check_stop_timeout)
 
     def _check_stop_timeout(self):
         """Stop 요청 후 7초 경과 시 강제 UI 복구."""
