@@ -217,13 +217,13 @@ class MainWindow(QMainWindow):
                 f"Mode: {self.sidebar.get_mode().upper()} | Engine: Stopping..."
             )
             self._worker.signals.request_stop.emit()
-            QTimer.singleShot(5000, self._check_stop_timeout)
+            QTimer.singleShot(7000, self._check_stop_timeout)
 
     def _check_stop_timeout(self):
-        """Stop 요청 후 5초 경과 시 강제 복구."""
+        """Stop 요청 후 7초 경과 시 강제 복구."""
         if self._stop_btn_pressed and self._worker:
             if self._worker.isRunning():
-                logger.warning("엔진 5초 내 미종료 — 강제 terminate")
+                logger.warning("엔진 7초 내 미종료 — 강제 terminate")
                 self._worker.terminate()
                 self._worker.wait(2000)
             self._stop_btn_pressed = False

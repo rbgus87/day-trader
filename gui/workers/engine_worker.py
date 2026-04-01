@@ -87,6 +87,16 @@ class EngineWorker(QThread):
 
         try:
             self._loop.run_until_complete(self._run_engine())
+        except RuntimeError as e:
+            # loop.stop()에 의한 정상 종료
+            if "stopped" in str(e).lower() or "closed" in str(e).lower():
+                logger.info(f"이벤트 루프 정상 중단: {e}")
+            else:
+                logger.error(f"EngineWorker RuntimeError: {e}")
+                try:
+                    self.signals.error.emit(str(e))
+                except Exception:
+                    pass
         except Exception as e:
             logger.error(f"EngineWorker 오류: {e}")
             try:
@@ -96,16 +106,18 @@ class EngineWorker(QThread):
         finally:
             logger.info("EngineWorker finally — 클린업 시작")
             self._running = False
+
+            if self._loop.is_closed():
+                self._loop = asyncio.new_event_loop()
+
             try:
                 self._cleanup_sync()
             except Exception as e:
                 logger.error(f"클린업 예외: {e}")
+
             try:
-                self._loop.run_until_complete(asyncio.sleep(0))
-            except Exception:
-                pass
-            try:
-                self._loop.close()
+                if not self._loop.is_closed():
+                    self._loop.close()
             except Exception:
                 pass
             self._loop = None
@@ -781,51 +793,21 @@ class EngineWorker(QThread):
     def _on_request_stop(self):
         """엔진 정상 종료."""
         logger.info("엔진 종료 요청 수신 (UI thread)")
-        self._running = False  # 즉시 해제 — polling loop가 0.2초 내 감지
-
-        # 스케줄러 즉시 정지 (스레드 무관)
-        try:
-            if self._scheduler and self._scheduler.running:
-                self._scheduler.shutdown(wait=False)
-        except Exception:
-            pass
-
-        # 이벤트 루프가 살아있으면 클린 셧다운 시도
-        if self._loop and self._loop.is_running():
-            try:
-                asyncio.run_coroutine_threadsafe(self._async_stop(), self._loop)
-            except Exception:
-                pass
-
-    async def _async_stop(self):
-        """파이프라인 중지 + 이벤트 루프 정지."""
-        logger.info("엔진 비동기 종료 시작")
         self._running = False
 
-        # 스케줄러 정지
+        # 스케줄러 즉시 정지
         try:
             if self._scheduler and self._scheduler.running:
                 self._scheduler.shutdown(wait=False)
         except Exception:
             pass
 
-        # 파이프라인 태스크 취소
-        for t in self._pipeline_tasks:
-            if not t.done():
-                t.cancel()
-
-        # 이벤트 루프의 모든 태스크 취소
-        try:
-            current = asyncio.current_task()
-            all_tasks = [t for t in asyncio.all_tasks(self._loop)
-                         if t is not current and not t.done()]
-            for t in all_tasks:
-                t.cancel()
-        except Exception:
-            pass
-
-        # 이벤트 루프 정지 (run_until_complete에서 빠져나옴)
-        self._loop.call_soon(self._loop.stop)
+        # 이벤트 루프 강제 정지 — run_until_complete()에서 즉시 빠져나옴
+        if self._loop and self._loop.is_running():
+            try:
+                self._loop.call_soon_threadsafe(self._loop.stop)
+            except Exception:
+                pass
 
     def _on_request_halt(self):
         """매매 긴급 정지 (포지션 유지, 신규 매매만 중단)."""
