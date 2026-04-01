@@ -575,6 +575,17 @@ class EngineWorker(QThread):
             ).get("strategy")  # 대표 전략 (상태 표시용)
 
             # WS는 유니버스 전체 구독 완료, 전략 인스턴스만 설정
+            # 감시 종목 현재가 초기화 (REST 1회 조회)
+            for s in selected:
+                tk = s["ticker"]
+                try:
+                    price_data = await self._rest_client.get_current_price(tk)
+                    cur_price = abs(int(price_data.get("cur_prc", 0)))
+                    if cur_price > 0:
+                        self._latest_prices[tk] = cur_price
+                except Exception:
+                    pass
+
             logger.info(f"멀티 종목 감시: {len(selected)}종목 전략={strategy_name}")
             await self._notifier.send(
                 f"스크리닝 완료 — {strategy_name}\n"

@@ -437,9 +437,19 @@ class DashboardTab(QWidget):
             ticker = row_data.get("ticker", "")
             ticker_text = f"{name}\n{ticker}" if name else ticker
 
+            current_price = row_data.get("current_price", 0)
             change_pct = row_data.get("change_pct", 0)
-            change_color = QColor("#a6e3a1") if change_pct >= 0 else QColor("#f38ba8")
             score = row_data.get("score", 0)
+
+            price_text = f"{current_price:,.0f}" if current_price > 0 else "—"
+
+            if current_price > 0:
+                change_text = f"{change_pct:+.2f}%"
+                change_color = QColor("#a6e3a1") if change_pct >= 0 else QColor("#f38ba8")
+            else:
+                change_text = "—"
+                change_color = QColor("#6c7086")
+
             score_color = (
                 QColor("#a6e3a1") if score >= 7
                 else QColor("#f9e2af") if score >= 5
@@ -448,8 +458,8 @@ class DashboardTab(QWidget):
 
             cells = [
                 (ticker_text, QColor("#89b4fa")),
-                (f"{row_data.get('current_price', 0):,.0f}", None),
-                (f"{change_pct:+.2f}%", change_color),
+                (price_text, None),
+                (change_text, change_color),
                 (f"{score:.1f}", score_color),
             ]
 

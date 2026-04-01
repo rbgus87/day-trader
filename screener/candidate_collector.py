@@ -168,6 +168,8 @@ class CandidateCollector:
         if avg_volume_amount > 0:
             score += min(avg_volume_amount / 5_000_000_000, 3.0)
 
+        prev_close = float(df.iloc[-1]["close"]) if len(df) >= 1 else 0
+
         return {
             "ticker": ticker,
             "name": name,
@@ -181,6 +183,7 @@ class CandidateCollector:
             "foreign_buy": 0,        # 향후 수급 API 연동
             "has_event": False,      # 향후 공시 API 연동
             "score": score,
+            "prev_close": prev_close,
         }
 
     # ------------------------------------------------------------------
