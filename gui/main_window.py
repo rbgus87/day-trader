@@ -208,31 +208,73 @@ class MainWindow(QMainWindow):
         s.daily_history_updated.connect(self._on_daily_history)
 
     def _on_stop(self):
-        if self._worker:
-            # 즉각적 UI 피드백: 버튼 비활성 + 상태 표시
-            self._stop_btn_pressed = True
-            self.sidebar._stop_btn.setEnabled(False)
-            self.sidebar._start_btn.setEnabled(False)
-            self._lbl_status_left.setText(
-                f"Mode: {self.sidebar.get_mode().upper()} | Engine: Stopping..."
-            )
-            self._worker.signals.request_stop.emit()
-            QTimer.singleShot(7000, self._check_stop_timeout)
+        if not self._worker:
+            return
 
-    def _check_stop_timeout(self):
-        """Stop 요청 후 7초 경과 시 강제 복구."""
-        if self._stop_btn_pressed and self._worker:
-            if self._worker.isRunning():
-                logger.warning("엔진 7초 내 미종료 — 강제 terminate")
-                self._worker.terminate()
-                self._worker.wait(2000)
-            self._stop_btn_pressed = False
-            self.sidebar.set_engine_running(False)
-            self.sidebar.update_connection(False, False)
-            self._lbl_status_left.setText(
-                f"Mode: {self.sidebar.get_mode().upper()} | Engine: Stopped"
-            )
-            self._worker = None
+        self._stop_btn_pressed = True
+        self.sidebar._stop_btn.setEnabled(False)
+        self.sidebar._start_btn.setEnabled(False)
+        self._lbl_status_left.setText(
+            f"Mode: {self.sidebar.get_mode().upper()} | Engine: Stopping..."
+        )
+
+        # 1단계: _running 플래그 해제 (worker가 감지하면 자연 종료)
+        if self._worker:
+            self._worker._running = False
+
+        # 2단계: 2초 대기 — 자연 종료되면 stopped 시그널이 옴
+        QTimer.singleShot(2000, self._stop_phase2)
+
+    def _stop_phase2(self):
+        """2초 후 — 자연 종료 안 됐으면 terminate."""
+        if not self._worker or not self._worker.isRunning():
+            # 이미 종료됨
+            return
+
+        logger.warning("엔진 2초 내 미종료 — terminate 실행")
+        self._worker.terminate()
+        self._worker.wait(2000)
+
+        # 3단계: UI 스레드에서 클린업 (별도 이벤트 루프)
+        self._cleanup_after_terminate()
+
+        # UI 상태 복구
+        self._stop_btn_pressed = False
+        self.sidebar.set_engine_running(False)
+        self.sidebar.update_connection(False, False)
+        self._lbl_status_left.setText(
+            f"Mode: {self.sidebar.get_mode().upper()} | Engine: Stopped"
+        )
+        self._worker = None
+
+    def _cleanup_after_terminate(self):
+        """terminate 후 UI 스레드에서 리소스 정리."""
+        import asyncio
+
+        loop = asyncio.new_event_loop()
+        try:
+            async def _send_stop_message():
+                try:
+                    from config.settings import AppConfig
+                    from notification.telegram_bot import TelegramNotifier
+                    config = AppConfig.from_yaml()
+                    notifier = TelegramNotifier(config.telegram)
+                    mode_tag = "[PAPER] " if self.sidebar.get_mode() == "paper" else ""
+                    await asyncio.wait_for(
+                        notifier.send(f"{mode_tag}시스템 종료 (GUI)"),
+                        timeout=3.0,
+                    )
+                    await notifier.aclose()
+                except Exception as e:
+                    logger.warning(f"종료 메시지 발송 실패: {e}")
+
+            loop.run_until_complete(_send_stop_message())
+        except Exception as e:
+            logger.warning(f"종료 클린업 오류: {e}")
+        finally:
+            loop.close()
+
+        logger.info("엔진 종료 완료 (terminate + cleanup)")
 
     def _on_halt(self):
         if self._worker:
@@ -507,10 +549,14 @@ class MainWindow(QMainWindow):
             self._worker.signals.request_strategy_change.emit(strategy)
 
     def _on_engine_stopped(self):
-        self._stop_btn_pressed = False
+        if self._stop_btn_pressed:
+            # _stop_phase2에서 이미 처리 중이면 무시
+            return
         self.sidebar.set_engine_running(False)
         self.sidebar.update_connection(False, False)
-        self._lbl_status_left.setText(f"Mode: {self.sidebar.get_mode().upper()} | Engine: Stopped")
+        self._lbl_status_left.setText(
+            f"Mode: {self.sidebar.get_mode().upper()} | Engine: Stopped"
+        )
         self._worker = None
 
     def _on_engine_error(self, error: str):
@@ -620,11 +666,11 @@ class MainWindow(QMainWindow):
                 pass
 
         if self._worker and self._worker.isRunning():
-            self._worker.signals.request_stop.emit()
-            if not self._worker.wait(5000):
-                logger.warning("EngineWorker 5초 내 미종료 — 강제 terminate")
+            self._worker._running = False
+            if not self._worker.wait(2000):
+                logger.warning("종료 시 EngineWorker 2초 내 미종료 — terminate")
                 self._worker.terminate()
-                self._worker.wait(2000)
+                self._worker.wait(1000)
         self._worker = None
 
         self._tray.tray.hide()
