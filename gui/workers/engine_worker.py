@@ -586,8 +586,12 @@ class EngineWorker(QThread):
             )
 
         except Exception as exc:
-            logger.error(f"스크리닝 실패: {exc}")
-            await self._notifier.send_urgent(f"스크리닝 오류: {exc}")
+            import traceback
+            logger.error(f"스크리닝 실패: {exc}\n{traceback.format_exc()}")
+            try:
+                await self._notifier.send_urgent(f"스크리닝 오류: {exc}")
+            except Exception:
+                pass
 
     async def _force_close(self):
         """15:10 강제 청산."""

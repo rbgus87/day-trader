@@ -130,6 +130,18 @@ class MainWindow(QMainWindow):
     def _setup_loguru_sink(self):
         self._log_signal.connect(self._dispatch_log)
 
+        # 파일 로깅 추가 (main.py와 동일)
+        try:
+            logger.add(
+                "logs/{time:YYYY-MM-DD}.log",
+                rotation="1 day",
+                retention="30 days",
+                level="DEBUG",
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+
         def gui_sink(message):
             record = message.record
             level = record["level"].name

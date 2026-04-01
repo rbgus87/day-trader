@@ -51,13 +51,12 @@ class StrategySelector:
 
         force = getattr(self._config, "force_strategy", "")
         if force:
-            logger.info("전략 강제 설정: %s", force)
+            logger.info(f"전략 강제 설정: {force}")
             return force, candidate
 
         if self._check_momentum(market_data):
             logger.info(
-                "전략 선택: 모멘텀 (섹터 ETF %.2f%%)",
-                market_data.get("sector_etf_change_pct", 0),
+                f"전략 선택: 모멘텀 (섹터 ETF {market_data.get('sector_etf_change_pct', 0):.2f}%)",
             )
             return "momentum", candidate
 
@@ -66,7 +65,7 @@ class StrategySelector:
             return "flow", candidate
 
         if self._check_pullback(market_data):
-            logger.info("전략 선택: 눌림목 (후보 종목: %s)", candidate)
+            logger.info(f"전략 선택: 눌림목 (후보 종목: {candidate})")
             return "pullback", candidate
 
         logger.info("전략 선택 없음 — 당일 매매 없음")
