@@ -272,20 +272,57 @@ class EngineWorker(QThread):
 
         await self._risk_manager.check_consecutive_losses()
 
-        # WS connect + 유니버스 전체 구독
+        # WS connect + 유니버스 전체 구독 + 전략 등록
         try:
             await self._ws_client.connect()
             import yaml
             from pathlib import Path
+            from strategy.momentum_strategy import MomentumStrategy
+            from strategy.pullback_strategy import PullbackStrategy
+            from strategy.flow_strategy import FlowStrategy
+            from strategy.gap_strategy import GapStrategy
+            from strategy.open_break_strategy import OpenBreakStrategy
+            from strategy.big_candle_strategy import BigCandleStrategy
+
             uni_path = Path("config/universe.yaml")
+            all_stocks = []
             if uni_path.exists():
                 uni = yaml.safe_load(open(uni_path, encoding="utf-8")) or {}
-                all_tickers = [s["ticker"] for s in uni.get("stocks", [])]
+                all_stocks = uni.get("stocks", [])
+                all_tickers = [s["ticker"] for s in all_stocks]
                 if all_tickers:
                     await self._ws_client.subscribe(all_tickers)
                     logger.info(f"유니버스 전체 WS 구독: {len(all_tickers)}종목")
+
+            # 유니버스 전체에 전략 인스턴스 생성
+            force = getattr(self._config, 'force_strategy', '') or 'momentum'
+            strategy_classes = {
+                "momentum": MomentumStrategy,
+                "pullback": PullbackStrategy,
+                "flow": FlowStrategy,
+                "gap": GapStrategy,
+                "open_break": OpenBreakStrategy,
+                "big_candle": BigCandleStrategy,
+            }
+            StratClass = strategy_classes.get(force, MomentumStrategy)
+
+            self._active_strategies = {}
+            for s in all_stocks:
+                ticker = s["ticker"]
+                strat = StratClass(self._config.trading)
+                strat.configure_multi_trade(
+                    max_trades=self._config.trading.max_trades_per_day,
+                    cooldown_minutes=self._config.trading.cooldown_minutes,
+                )
+                self._active_strategies[ticker] = {
+                    "strategy": strat,
+                    "name": s.get("name", ticker),
+                    "score": 0,
+                }
+            self._active_strategy = list(self._active_strategies.values())[0]["strategy"] if self._active_strategies else None
+            logger.info(f"유니버스 전체 전략 등록: {len(self._active_strategies)}종목 ({force})")
         except Exception as e:
-            logger.error(f"WS 연결 실패: {e}")
+            logger.error(f"WS 연결/전략 등록 실패: {e}")
 
         # Start pipeline
         self._running = True
@@ -586,30 +623,23 @@ class EngineWorker(QThread):
                 await self._notifier.send_urgent(f"토큰 갱신 실패: {e}")
 
     async def _run_screening(self):
-        """08:30 장 전 스크리닝 -- candidates 수집 -> 필터 -> 전략 선택."""
-        from strategy.momentum_strategy import MomentumStrategy
-        from strategy.pullback_strategy import PullbackStrategy
-        from strategy.flow_strategy import FlowStrategy
-        from strategy.gap_strategy import GapStrategy
-        from strategy.open_break_strategy import OpenBreakStrategy
-        from strategy.big_candle_strategy import BigCandleStrategy
-
+        """08:30 장 전 스크리닝 — score 업데이트 + UI 정보 제공 (전략 등록은 _run_engine에서 완료)."""
         today = datetime.now().strftime("%Y-%m-%d")
-        logger.info(f"08:30 스크리닝 시작 ({today})")
+        logger.info(f"스크리닝 시작 ({today})")
 
         try:
             # 1. Candidates 수집
             candidates = await self._candidate_collector.collect()
             if not candidates:
-                logger.warning("candidates 없음 -- 당일 매매 없음")
-                await self._notifier.send("스크리닝 결과: candidates 없음 -- 당일 매매 없음")
+                logger.warning("candidates 없음")
+                await self._notifier.send("스크리닝: candidates 없음")
                 return
 
             # 2. 4단계 필터 적용
             screened = await self._pre_market_screener.screen(candidates)
             if not screened:
-                logger.warning("스크리닝 통과 종목 없음 -- 당일 매매 없음")
-                await self._notifier.send("스크리닝 결과: 통과 종목 없음 -- 당일 매매 없음")
+                logger.warning("스크리닝 통과 종목 없음")
+                await self._notifier.send("스크리닝: 통과 종목 없음")
                 return
 
             # Cache for UI
@@ -618,52 +648,15 @@ class EngineWorker(QThread):
             # 3. 스크리닝 결과 DB 저장
             await self._pre_market_screener.save_results(today, screened)
 
-            # 4. 전략 선택 (상위 1종목 + 시장 데이터 자동 수집)
-            top = screened[0]
-            strategy_name, ticker = await self._strategy_selector.select(
-                candidate_ticker=top["ticker"],
-            )
+            # 4. score 업데이트 (active_strategies는 유지)
+            for s in screened:
+                ticker = s["ticker"]
+                if ticker in self._active_strategies:
+                    self._active_strategies[ticker]["score"] = s.get("score", 0)
 
-            if not strategy_name:
-                await self._notifier.send("전략 선택 없음 — 당일 매매 없음")
-                return
-
-            # 5. 상위 N종목 멀티 전략 설정
+            # 5. 상위 N종목 현재가 초기화 (REST 1회 조회)
             top_n = self._config.trading.screening_top_n
             selected = screened[:top_n]
-            tickers = [s["ticker"] for s in selected]
-
-            strategy_classes = {
-                "momentum": MomentumStrategy,
-                "pullback": PullbackStrategy,
-                "flow": FlowStrategy,
-                "gap": GapStrategy,
-                "open_break": OpenBreakStrategy,
-                "big_candle": BigCandleStrategy,
-            }
-            StratClass = strategy_classes.get(strategy_name)
-            if not StratClass:
-                logger.error(f"알 수 없는 전략: {strategy_name}")
-                return
-
-            self._active_strategies = {}
-            for s in selected:
-                strat = StratClass(self._config.trading)
-                strat.configure_multi_trade(
-                    max_trades=self._config.trading.max_trades_per_day,
-                    cooldown_minutes=self._config.trading.cooldown_minutes,
-                )
-                self._active_strategies[s["ticker"]] = {
-                    "strategy": strat,
-                    "name": s.get("name", s["ticker"]),
-                    "score": s.get("score", 0),
-                }
-            self._active_strategy = self._active_strategies.get(
-                tickers[0], {}
-            ).get("strategy")  # 대표 전략 (상태 표시용)
-
-            # WS는 유니버스 전체 구독 완료, 전략 인스턴스만 설정
-            # 감시 종목 현재가 초기화 (REST 1회 조회)
             for s in selected:
                 tk = s["ticker"]
                 try:
@@ -675,11 +668,13 @@ class EngineWorker(QThread):
                 except Exception:
                     pass
 
-            initialized = len([t for t in selected if self._latest_prices.get(t["ticker"], 0) > 0])
-            logger.info(f"멀티 종목 감시: {len(selected)}종목 전략={strategy_name}, 현재가 초기화: {initialized}종목")
+            force = getattr(self._config, 'force_strategy', '') or 'auto'
+            logger.info(f"스크리닝 완료: {len(screened)}종목 통과, 감시: {len(self._active_strategies)}종목 유지")
             await self._notifier.send(
-                f"스크리닝 완료 — {strategy_name}\n"
-                f"감시: {len(selected)}종목\n"
+                f"스크리닝 완료 — {force}\n"
+                f"필터 통과: {len(screened)}종목\n"
+                f"전체 감시: {len(self._active_strategies)}종목\n"
+                f"상위:\n"
                 + "\n".join(
                     f"  {s.get('name','')} ({s['ticker']}) 점수:{s.get('score',0):.1f}"
                     for s in selected

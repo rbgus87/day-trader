@@ -298,73 +298,43 @@ async def main():
     # --- 스케줄 등록 ---
 
     async def run_screening():
-        """08:30 장 전 스크리닝 — candidates 수집 → 필터 → 멀티 종목 전략 설정."""
+        """08:30 장 전 스크리닝 — score 업데이트 + 텔레그램 알림 (전략 등록은 초기화에서 완료)."""
         nonlocal active_strategies
         from datetime import datetime
-        from strategy.momentum_strategy import MomentumStrategy
-        from strategy.pullback_strategy import PullbackStrategy
-        from strategy.flow_strategy import FlowStrategy
 
         today = datetime.now().strftime("%Y-%m-%d")
-        logger.info(f"08:30 스크리닝 시작 ({today})")
+        logger.info(f"스크리닝 시작 ({today})")
 
         try:
             candidates = await candidate_collector.collect()
             if not candidates:
-                logger.warning("candidates 없음 — 당일 매매 없음")
-                await notifier.send("스크리닝: candidates 없음 — 당일 매매 없음")
+                logger.warning("candidates 없음")
+                await notifier.send("스크리닝: candidates 없음")
                 return
 
             screened = await pre_market_screener.screen(candidates)
             if not screened:
-                logger.warning("스크리닝 통과 종목 없음 — 당일 매매 없음")
-                await notifier.send("스크리닝: 통과 종목 없음 — 당일 매매 없음")
+                logger.warning("스크리닝 통과 종목 없음")
+                await notifier.send("스크리닝: 통과 종목 없음")
                 return
 
             await pre_market_screener.save_results(today, screened)
 
-            # 전략 선택
-            top = screened[0]
-            strategy_name, _ = await strategy_selector.select(
-                candidate_ticker=top["ticker"],
-            )
-            if not strategy_name:
-                await notifier.send("전략 선택 없음 — 당일 매매 없음")
-                return
+            # score 업데이트 (active_strategies는 유지)
+            for s in screened:
+                ticker = s["ticker"]
+                if ticker in active_strategies:
+                    active_strategies[ticker]["score"] = s.get("score", 0)
 
-            # 상위 N종목 선택
+            _force = getattr(config, 'force_strategy', '') or 'auto'
             top_n = config.trading.screening_top_n
             selected = screened[:top_n]
-            tickers = [s["ticker"] for s in selected]
-
-            strategy_classes = {
-                "momentum": MomentumStrategy,
-                "pullback": PullbackStrategy,
-                "flow": FlowStrategy,
-            }
-            StratClass = strategy_classes.get(strategy_name)
-            if not StratClass:
-                logger.error(f"알 수 없는 전략: {strategy_name}")
-                return
-
-            active_strategies = {}
-            for s in selected:
-                strat = StratClass(config.trading)
-                strat.configure_multi_trade(
-                    max_trades=config.trading.max_trades_per_day,
-                    cooldown_minutes=config.trading.cooldown_minutes,
-                )
-                active_strategies[s["ticker"]] = {
-                    "strategy": strat,
-                    "name": s.get("name", s["ticker"]),
-                    "score": s.get("score", 0),
-                }
-
-            await ws_client.subscribe(tickers)
-            logger.info(f"멀티 종목 감시: {len(selected)}종목 전략={strategy_name}")
+            logger.info(f"스크리닝 완료: {len(screened)}종목 통과, 감시: {len(active_strategies)}종목 유지")
             await notifier.send(
-                f"스크리닝 완료 — {strategy_name}\n"
-                f"감시: {len(selected)}종목\n"
+                f"스크리닝 완료 — {_force}\n"
+                f"필터 통과: {len(screened)}종목\n"
+                f"전체 감시: {len(active_strategies)}종목\n"
+                f"상위:\n"
                 + "\n".join(
                     f"  {s.get('name','')} ({s['ticker']}) 점수:{s.get('score',0):.1f}"
                     for s in selected
@@ -529,11 +499,56 @@ async def main():
 
     await risk_manager.check_consecutive_losses()
 
-    # WS 연결
+    # WS 연결 + 유니버스 전체 구독 + 전략 등록
     try:
         await ws_client.connect()
+        import yaml as _yaml
+        from pathlib import Path as _Path
+        from strategy.momentum_strategy import MomentumStrategy
+        from strategy.pullback_strategy import PullbackStrategy
+        from strategy.flow_strategy import FlowStrategy
+        from strategy.gap_strategy import GapStrategy
+        from strategy.open_break_strategy import OpenBreakStrategy
+        from strategy.big_candle_strategy import BigCandleStrategy
+
+        _uni_path = _Path("config/universe.yaml")
+        _all_stocks = []
+        if _uni_path.exists():
+            _uni = _yaml.safe_load(open(_uni_path, encoding="utf-8")) or {}
+            _all_stocks = _uni.get("stocks", [])
+            _all_tickers = [s["ticker"] for s in _all_stocks]
+            if _all_tickers:
+                await ws_client.subscribe(_all_tickers)
+                logger.info(f"유니버스 전체 WS 구독: {len(_all_tickers)}종목")
+
+        # 유니버스 전체에 전략 인스턴스 생성
+        _force = getattr(config, 'force_strategy', '') or 'momentum'
+        _strategy_classes = {
+            "momentum": MomentumStrategy,
+            "pullback": PullbackStrategy,
+            "flow": FlowStrategy,
+            "gap": GapStrategy,
+            "open_break": OpenBreakStrategy,
+            "big_candle": BigCandleStrategy,
+        }
+        _StratClass = _strategy_classes.get(_force, MomentumStrategy)
+
+        active_strategies = {}
+        for s in _all_stocks:
+            _ticker = s["ticker"]
+            _strat = _StratClass(config.trading)
+            _strat.configure_multi_trade(
+                max_trades=config.trading.max_trades_per_day,
+                cooldown_minutes=config.trading.cooldown_minutes,
+            )
+            active_strategies[_ticker] = {
+                "strategy": _strat,
+                "name": s.get("name", _ticker),
+                "score": 0,
+            }
+        logger.info(f"유니버스 전체 전략 등록: {len(active_strategies)}종목 ({_force})")
     except Exception as e:
-        logger.error(f"WS 연결 실패: {e}")
+        logger.error(f"WS 연결/전략 등록 실패: {e}")
         await notifier.send_urgent(f"WS 연결 실패: {e}")
 
     # 파이프라인 태스크 실행
