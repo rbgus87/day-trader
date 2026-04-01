@@ -228,17 +228,17 @@ class MainWindow(QMainWindow):
     def _stop_phase2(self):
         """2초 후 — 자연 종료 안 됐으면 terminate."""
         if not self._worker or not self._worker.isRunning():
-            # 이미 종료됨
             return
 
-        logger.warning("엔진 2초 내 미종료 — terminate 실행")
+        logger.warning("엔진 2초 내 미종료 — terminate")
         self._worker.terminate()
-        self._worker.wait(2000)
+        self._worker.wait(1000)  # 최대 1초만 대기
 
-        # 3단계: UI 스레드에서 클린업 (별도 이벤트 루프)
-        self._cleanup_after_terminate()
+        # 텔레그램은 별도 스레드에서 (UI 블로킹 없음)
+        import threading
+        threading.Thread(target=self._send_stop_telegram, daemon=True).start()
 
-        # UI 상태 복구
+        # UI 즉시 복구
         self._stop_btn_pressed = False
         self.sidebar.set_engine_running(False)
         self.sidebar.update_connection(False, False)
@@ -247,34 +247,23 @@ class MainWindow(QMainWindow):
         )
         self._worker = None
 
-    def _cleanup_after_terminate(self):
-        """terminate 후 UI 스레드에서 리소스 정리."""
+    def _send_stop_telegram(self):
+        """별도 스레드에서 텔레그램 발송 (UI 블로킹 없음)."""
         import asyncio
-
-        loop = asyncio.new_event_loop()
         try:
-            async def _send_stop_message():
-                try:
-                    from config.settings import AppConfig
-                    from notification.telegram_bot import TelegramNotifier
-                    config = AppConfig.from_yaml()
-                    notifier = TelegramNotifier(config.telegram)
-                    mode_tag = "[PAPER] " if self.sidebar.get_mode() == "paper" else ""
-                    await asyncio.wait_for(
-                        notifier.send(f"{mode_tag}시스템 종료 (GUI)"),
-                        timeout=3.0,
-                    )
-                    await notifier.aclose()
-                except Exception as e:
-                    logger.warning(f"종료 메시지 발송 실패: {e}")
-
-            loop.run_until_complete(_send_stop_message())
-        except Exception as e:
-            logger.warning(f"종료 클린업 오류: {e}")
-        finally:
+            loop = asyncio.new_event_loop()
+            async def _send():
+                from config.settings import AppConfig
+                from notification.telegram_bot import TelegramNotifier
+                config = AppConfig.from_yaml()
+                notifier = TelegramNotifier(config.telegram)
+                mode_tag = "[PAPER] " if self.sidebar.get_mode() == "paper" else ""
+                await notifier.send(f"{mode_tag}시스템 종료 (GUI)")
+                await notifier.aclose()
+            loop.run_until_complete(asyncio.wait_for(_send(), timeout=5.0))
             loop.close()
-
-        logger.info("엔진 종료 완료 (terminate + cleanup)")
+        except Exception:
+            pass
 
     def _on_halt(self):
         if self._worker:
@@ -549,9 +538,7 @@ class MainWindow(QMainWindow):
             self._worker.signals.request_strategy_change.emit(strategy)
 
     def _on_engine_stopped(self):
-        if self._stop_btn_pressed:
-            # _stop_phase2에서 이미 처리 중이면 무시
-            return
+        self._stop_btn_pressed = False
         self.sidebar.set_engine_running(False)
         self.sidebar.update_connection(False, False)
         self._lbl_status_left.setText(
