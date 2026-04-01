@@ -87,16 +87,6 @@ class EngineWorker(QThread):
 
         try:
             self._loop.run_until_complete(self._run_engine())
-        except RuntimeError as e:
-            # loop.stop()에 의한 정상 종료
-            if "stopped" in str(e).lower() or "closed" in str(e).lower():
-                logger.info(f"이벤트 루프 정상 중단: {e}")
-            else:
-                logger.error(f"EngineWorker RuntimeError: {e}")
-                try:
-                    self.signals.error.emit(str(e))
-                except Exception:
-                    pass
         except Exception as e:
             logger.error(f"EngineWorker 오류: {e}")
             try:
@@ -106,15 +96,10 @@ class EngineWorker(QThread):
         finally:
             logger.info("EngineWorker finally — 클린업 시작")
             self._running = False
-
-            if self._loop.is_closed():
-                self._loop = asyncio.new_event_loop()
-
             try:
                 self._cleanup_sync()
             except Exception as e:
                 logger.error(f"클린업 예외: {e}")
-
             try:
                 if not self._loop.is_closed():
                     self._loop.close()
@@ -336,10 +321,10 @@ class EngineWorker(QThread):
         try:
             await asyncio.wait_for(
                 asyncio.gather(*self._pipeline_tasks, return_exceptions=True),
-                timeout=2.0,
+                timeout=1.0,
             )
         except asyncio.TimeoutError:
-            logger.warning("파이프라인 태스크 2초 내 미종료")
+            logger.warning("파이프라인 태스크 1초 내 미종료")
         logger.info("_run_engine 종료")
 
     # ── Pipeline consumers (ported from main.py) ──
@@ -348,7 +333,7 @@ class EngineWorker(QThread):
         """틱 -> 캔들 빌더 + 포지션 모니터링."""
         while self._running:
             try:
-                tick = await asyncio.wait_for(self._tick_queue.get(), timeout=5.0)
+                tick = await asyncio.wait_for(self._tick_queue.get(), timeout=0.5)
                 # 1. 캔들 빌더에 전달 (기존)
                 await self._candle_builder.on_tick(tick)
                 # 2. 최신 가격 기록 + 포지션 모니터링
@@ -437,7 +422,7 @@ class EngineWorker(QThread):
 
         while self._running:
             try:
-                candle = await asyncio.wait_for(self._candle_queue.get(), timeout=5.0)
+                candle = await asyncio.wait_for(self._candle_queue.get(), timeout=0.5)
             except asyncio.TimeoutError:
                 continue
             except asyncio.CancelledError:
@@ -484,7 +469,7 @@ class EngineWorker(QThread):
         """신호 -> 주문 실행."""
         while self._running:
             try:
-                signal = await asyncio.wait_for(self._signal_queue.get(), timeout=5.0)
+                signal = await asyncio.wait_for(self._signal_queue.get(), timeout=0.5)
             except asyncio.TimeoutError:
                 continue
             except asyncio.CancelledError:
@@ -546,7 +531,7 @@ class EngineWorker(QThread):
         """WS 체결통보 처리."""
         while self._running:
             try:
-                exec_data = await asyncio.wait_for(self._order_queue.get(), timeout=5.0)
+                exec_data = await asyncio.wait_for(self._order_queue.get(), timeout=0.5)
                 logger.info(f"체결통보: {exec_data}")
             except asyncio.TimeoutError:
                 continue
@@ -793,7 +778,7 @@ class EngineWorker(QThread):
     def _on_request_stop(self):
         """엔진 정상 종료."""
         logger.info("엔진 종료 요청 수신 (UI thread)")
-        self._running = False
+        self._running = False  # polling loop가 0.2초 내 감지 → 자연 종료
 
         # 스케줄러 즉시 정지
         try:
@@ -801,13 +786,6 @@ class EngineWorker(QThread):
                 self._scheduler.shutdown(wait=False)
         except Exception:
             pass
-
-        # 이벤트 루프 강제 정지 — run_until_complete()에서 즉시 빠져나옴
-        if self._loop and self._loop.is_running():
-            try:
-                self._loop.call_soon_threadsafe(self._loop.stop)
-            except Exception:
-                pass
 
     def _on_request_halt(self):
         """매매 긴급 정지 (포지션 유지, 신규 매매만 중단)."""
@@ -1084,10 +1062,6 @@ class EngineWorker(QThread):
         if not self._loop:
             return
 
-        # 이벤트 루프가 닫혀있으면 새로 만들어서 클린업
-        if self._loop.is_closed():
-            self._loop = asyncio.new_event_loop()
-
         import time as _time
         deadline = _time.time() + 3.0
 
@@ -1104,27 +1078,26 @@ class EngineWorker(QThread):
             except Exception as e:
                 logger.warning(f"클린업 오류 ({label}): {e}")
 
-        # 1. 모든 태스크 즉시 취소 (대기 없음)
+        # 1. 잔여 태스크 취소 + 취소 처리
         try:
-            for t in self._pipeline_tasks:
-                t.cancel()
             for t in asyncio.all_tasks(self._loop):
                 t.cancel()
+            self._loop.run_until_complete(asyncio.sleep(0.1))
         except Exception:
             pass
 
-        # 2. 스케줄러 즉시 정지
+        # 2. 스케줄러
         try:
             if self._scheduler and self._scheduler.running:
                 self._scheduler.shutdown(wait=False)
         except Exception:
             pass
 
-        # 3. WS 종료
+        # 3. WS
         if self._ws_client:
             _safe_run(self._ws_client.disconnect(), "ws")
 
-        # 4. 텔레그램 종료 메시지
+        # 4. 텔레그램
         if self._notifier:
             mode_tag = "[PAPER] " if self._mode == "paper" else ""
             _safe_run(self._notifier.send(f"{mode_tag}시스템 종료 (GUI)"), "notify")
@@ -1135,6 +1108,8 @@ class EngineWorker(QThread):
             _safe_run(self._rest_client.aclose(), "rest")
         if self._db:
             _safe_run(self._db.close(), "db")
+
+        logger.info("클린업 완료")
 
     @property
     def engine_running(self) -> bool:
