@@ -6,7 +6,7 @@ import sys
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv
 from loguru import logger
 
@@ -146,8 +146,8 @@ async def main():
     # 멀티 종목 활성 전략 (스크리닝 후 설정)
     active_strategies: dict = {}  # {ticker: {"strategy": ..., "name": ..., "score": ...}}
 
-    # 스케줄러
-    scheduler = AsyncIOScheduler()
+    # 스케줄러 (BackgroundScheduler — 이벤트 루프와 독립 실행)
+    scheduler = BackgroundScheduler()
 
     # --- 파이프라인 태스크 ---
 
@@ -470,24 +470,36 @@ async def main():
             import traceback
             logger.error(traceback.format_exc())
 
+    def _schedule_async(coro_func, name):
+        """BackgroundScheduler에서 async 함수를 안전하게 호출하는 래퍼."""
+        def wrapper():
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                future = asyncio.run_coroutine_threadsafe(coro_func(), loop)
+                try:
+                    future.result(timeout=120)
+                except Exception as e:
+                    logger.error(f"[SCHED] {name} 실행 오류: {e}")
+        return wrapper
+
     scheduler.add_job(
-        lambda: asyncio.ensure_future(_safe(refresh_token, "토큰 갱신")),
+        _schedule_async(lambda: _safe(refresh_token, "토큰 갱신"), "token_refresh"),
         "cron", hour=8, minute=0, misfire_grace_time=300,
     )
     scheduler.add_job(
-        lambda: asyncio.ensure_future(_safe(run_screening, "스크리닝")),
+        _schedule_async(lambda: _safe(run_screening, "스크리닝"), "screening"),
         "cron", hour=8, minute=30, misfire_grace_time=300,
     )
     scheduler.add_job(
-        lambda: asyncio.ensure_future(_safe(force_close, "강제 청산")),
+        _schedule_async(lambda: _safe(force_close, "강제 청산"), "force_close"),
         "cron", hour=15, minute=10, misfire_grace_time=60,
     )
     scheduler.add_job(
-        lambda: asyncio.ensure_future(_safe(run_daily_report, "일일 보고서")),
+        _schedule_async(lambda: _safe(run_daily_report, "일일 보고서"), "daily_report"),
         "cron", hour=15, minute=30, misfire_grace_time=300,
     )
     scheduler.add_job(
-        lambda: asyncio.ensure_future(_safe(backup_db, "DB 백업")),
+        _schedule_async(lambda: _safe(backup_db, "DB 백업"), "backup"),
         "cron", hour=15, minute=35, misfire_grace_time=300,
     )
     scheduler.start()

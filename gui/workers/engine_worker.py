@@ -132,7 +132,7 @@ class EngineWorker(QThread):
         from screener.candidate_collector import CandidateCollector
         from screener.pre_market import PreMarketScreener
         from screener.strategy_selector import StrategySelector
-        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from apscheduler.schedulers.background import BackgroundScheduler
 
         # 1. Config
         self._config = AppConfig.from_yaml()
@@ -213,23 +213,37 @@ class EngineWorker(QThread):
         )
         self._strategy_selector = StrategySelector(self._config, self._rest_client)
 
-        # 3. Scheduler
-        self._scheduler = AsyncIOScheduler()
+        # 3. Scheduler (BackgroundScheduler — 이벤트 루프와 독립 실행)
+        self._scheduler = BackgroundScheduler()
+
+        def _schedule_async(coro_func, name):
+            """BackgroundScheduler에서 async 함수를 안전하게 호출하는 래퍼."""
+            def wrapper():
+                if self._loop and self._loop.is_running():
+                    future = asyncio.run_coroutine_threadsafe(coro_func(), self._loop)
+                    try:
+                        future.result(timeout=120)
+                    except Exception as e:
+                        logger.error(f"[SCHED] {name} 실행 오류: {e}")
+                else:
+                    logger.warning(f"[SCHED] {name} 스킵 — 이벤트 루프 미실행")
+            return wrapper
+
         self._scheduler.add_job(
-            self._safe_refresh_token, "cron", hour=8, minute=0,
-            misfire_grace_time=300,
+            _schedule_async(self._safe_refresh_token, "token_refresh"),
+            "cron", hour=8, minute=0, misfire_grace_time=300,
         )
         self._scheduler.add_job(
-            self._safe_run_screening, "cron", hour=8, minute=30,
-            misfire_grace_time=300,
+            _schedule_async(self._safe_run_screening, "screening"),
+            "cron", hour=8, minute=30, misfire_grace_time=300,
         )
         self._scheduler.add_job(
-            self._safe_force_close, "cron", hour=15, minute=10,
-            misfire_grace_time=60,
+            _schedule_async(self._safe_force_close, "force_close"),
+            "cron", hour=15, minute=10, misfire_grace_time=60,
         )
         self._scheduler.add_job(
-            self._safe_run_daily_report, "cron", hour=15, minute=30,
-            misfire_grace_time=300,
+            _schedule_async(self._safe_run_daily_report, "daily_report"),
+            "cron", hour=15, minute=30, misfire_grace_time=300,
         )
         self._scheduler.start()
 
@@ -291,10 +305,22 @@ class EngineWorker(QThread):
         # 4. Polling loop (2-second interval, 0.2s check for fast stop)
         import time as _time
         _last_health_check = _time.time()
+        _last_heartbeat = _time.time()
 
         while self._running:
-            # 헬스 체크 (30초마다)
             now_ts = _time.time()
+
+            # 하트비트 (5분마다)
+            if now_ts - _last_heartbeat >= 300:
+                _last_heartbeat = now_ts
+                sched_ok = self._scheduler.running if self._scheduler else False
+                alive_tasks = len([t for t in self._pipeline_tasks if not t.done()])
+                pos_count = len(self._risk_manager.get_open_positions()) if self._risk_manager else 0
+                logger.info(
+                    f"[HEARTBEAT] 스케줄러={sched_ok}, 파이프라인={alive_tasks}/4, 포지션={pos_count}"
+                )
+
+            # 헬스 체크 (30초마다)
             if now_ts - _last_health_check >= 30:
                 _last_health_check = now_ts
                 self._health_check()
@@ -641,13 +667,15 @@ class EngineWorker(QThread):
                 tk = s["ticker"]
                 try:
                     price_data = await self._rest_client.get_current_price(tk)
-                    cur_price = abs(int(price_data.get("cur_prc", 0)))
+                    output = price_data.get("output", {})
+                    cur_price = abs(int(output.get("stck_prpr", 0)))
                     if cur_price > 0:
                         self._latest_prices[tk] = cur_price
                 except Exception:
                     pass
 
-            logger.info(f"멀티 종목 감시: {len(selected)}종목 전략={strategy_name}")
+            initialized = len([t for t in selected if self._latest_prices.get(t["ticker"], 0) > 0])
+            logger.info(f"멀티 종목 감시: {len(selected)}종목 전략={strategy_name}, 현재가 초기화: {initialized}종목")
             await self._notifier.send(
                 f"스크리닝 완료 — {strategy_name}\n"
                 f"감시: {len(selected)}종목\n"
@@ -748,7 +776,7 @@ class EngineWorker(QThread):
     }
 
     def _health_check(self):
-        """스케줄러 + 파이프라인 태스크 생존 확인 (polling loop에서 30초마다 호출)."""
+        """스케줄러 + WS + 파이프라인 태스크 생존 확인 (polling loop에서 30초마다 호출)."""
         try:
             # 스케줄러 생존 확인
             if self._scheduler and not self._scheduler.running:
@@ -758,6 +786,10 @@ class EngineWorker(QThread):
                     logger.info("스케줄러 재시작 완료")
                 except Exception as e:
                     logger.error(f"스케줄러 재시작 실패: {e}")
+
+            # WS 연결 확인
+            if self._ws_client and not self._ws_client.connected:
+                logger.warning("WS 연결 끊김 감지")
 
             # 파이프라인 태스크 생존 확인
             dead_tasks = [t for t in self._pipeline_tasks if t.done()]
@@ -1003,7 +1035,9 @@ class EngineWorker(QThread):
             return  # 이전 조회가 아직 진행 중
         try:
             self._trades_fetch_running = True
-            asyncio.ensure_future(self._fetch_and_emit_trades(), loop=self._loop)
+            asyncio.run_coroutine_threadsafe(
+                self._fetch_and_emit_trades(), self._loop,
+            )
         except Exception:
             self._trades_fetch_running = False
 
@@ -1044,11 +1078,14 @@ class EngineWorker(QThread):
                 ticker = c.get("ticker", "")
                 current_price = self._latest_prices.get(ticker, 0)
                 prev_close = c.get("prev_close", 0)
-                change_pct = ((current_price - prev_close) / prev_close * 100) if prev_close > 0 else 0
+                if prev_close > 0 and current_price > 0:
+                    change_pct = ((current_price - prev_close) / prev_close * 100)
+                else:
+                    change_pct = 0
                 enriched.append({
                     **c,
                     "current_price": current_price,
-                    "change_pct": change_pct,
+                    "change_pct": round(change_pct, 2),
                 })
             self.signals.candidates_updated.emit(enriched)
         except Exception:
