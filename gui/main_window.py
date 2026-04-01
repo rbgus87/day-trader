@@ -270,8 +270,11 @@ class MainWindow(QMainWindow):
             self._worker.signals.request_halt.emit()
 
     def _on_screening(self):
+        logger.info(f"[BTN] 스크리닝 클릭, worker={self._worker is not None}")
         if self._worker:
             self._worker.signals.request_screening.emit()
+        else:
+            logger.warning("[BTN] worker가 None!")
 
     def _on_force_close(self):
         if self._worker:
