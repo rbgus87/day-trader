@@ -89,16 +89,27 @@ class EngineWorker(QThread):
             self._loop.run_until_complete(self._run_engine())
         except Exception as e:
             logger.error(f"EngineWorker 오류: {e}")
-            self.signals.error.emit(str(e))
+            try:
+                self.signals.error.emit(str(e))
+            except Exception:
+                pass
         finally:
-            logger.info("EngineWorker finally 블록 진입")
+            logger.info("EngineWorker finally — 클린업 시작")
             self._running = False
-            self._cleanup_sync()
+            try:
+                self._cleanup_sync()
+            except Exception as e:
+                logger.error(f"클린업 예외: {e}")
+            try:
+                self._loop.run_until_complete(asyncio.sleep(0))
+            except Exception:
+                pass
             try:
                 self._loop.close()
             except Exception:
                 pass
             self._loop = None
+            logger.info("EngineWorker 종료 완료")
             self.signals.stopped.emit()
 
     # ── Core async engine ──
@@ -304,6 +315,20 @@ class EngineWorker(QThread):
                 if not self._running:
                     break
                 await asyncio.sleep(0.2)
+
+        # 루프 탈출 후 파이프라인 태스크 취소
+        logger.info("polling loop 종료 — 파이프라인 취소")
+        for t in self._pipeline_tasks:
+            if not t.done():
+                t.cancel()
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*self._pipeline_tasks, return_exceptions=True),
+                timeout=2.0,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("파이프라인 태스크 2초 내 미종료")
+        logger.info("_run_engine 종료")
 
     # ── Pipeline consumers (ported from main.py) ──
 
@@ -1072,17 +1097,8 @@ class EngineWorker(QThread):
 
     # ── Cleanup ──
 
-    def _run_with_timeout(self, coro, timeout: float = 3.0, label: str = "") -> None:
-        """run_until_complete + timeout 래퍼. hang 방지."""
-        try:
-            self._loop.run_until_complete(asyncio.wait_for(coro, timeout=timeout))
-        except asyncio.TimeoutError:
-            logger.warning(f"Cleanup timeout ({label})")
-        except Exception as e:
-            logger.error(f"Cleanup error ({label}): {e}")
-
     def _cleanup_sync(self):
-        """Synchronous cleanup in finally block."""
+        """최대 3초 내 클린업 완료."""
         if not self._loop:
             return
 
@@ -1090,41 +1106,53 @@ class EngineWorker(QThread):
         if self._loop.is_closed():
             self._loop = asyncio.new_event_loop()
 
-        # Cancel ALL tasks first (pipeline + API 호출 등)
+        import time as _time
+        deadline = _time.time() + 3.0
+
+        def _safe_run(coro, label: str):
+            remaining = deadline - _time.time()
+            if remaining <= 0:
+                logger.warning(f"클린업 시간 초과, {label} 스킵")
+                return
+            timeout = min(remaining, 1.0)
+            try:
+                self._loop.run_until_complete(asyncio.wait_for(coro, timeout=timeout))
+            except asyncio.TimeoutError:
+                logger.warning(f"클린업 타임아웃 ({label})")
+            except Exception as e:
+                logger.warning(f"클린업 오류 ({label}): {e}")
+
+        # 1. 모든 태스크 즉시 취소 (대기 없음)
         try:
-            all_tasks = asyncio.all_tasks(self._loop)
-            for task in all_tasks:
-                task.cancel()
-            if all_tasks:
-                self._run_with_timeout(
-                    asyncio.gather(*all_tasks, return_exceptions=True),
-                    timeout=3.0, label="all_tasks",
-                )
+            for t in self._pipeline_tasks:
+                t.cancel()
+            for t in asyncio.all_tasks(self._loop):
+                t.cancel()
         except Exception:
             pass
 
+        # 2. 스케줄러 즉시 정지
         try:
             if self._scheduler and self._scheduler.running:
                 self._scheduler.shutdown(wait=False)
         except Exception:
             pass
 
+        # 3. WS 종료
         if self._ws_client:
-            self._run_with_timeout(self._ws_client.disconnect(), timeout=2.0, label="ws")
+            _safe_run(self._ws_client.disconnect(), "ws")
 
-        if self._rest_client:
-            self._run_with_timeout(self._rest_client.aclose(), timeout=2.0, label="rest")
-
+        # 4. 텔레그램 종료 메시지
         if self._notifier:
             mode_tag = "[PAPER] " if self._mode == "paper" else ""
-            self._run_with_timeout(
-                self._notifier.send(f"{mode_tag}시스템 종료 (GUI)"),
-                timeout=2.0, label="notify",
-            )
-            self._run_with_timeout(self._notifier.aclose(), timeout=2.0, label="notifier_close")
+            _safe_run(self._notifier.send(f"{mode_tag}시스템 종료 (GUI)"), "notify")
+            _safe_run(self._notifier.aclose(), "notifier_close")
 
+        # 5. REST / DB
+        if self._rest_client:
+            _safe_run(self._rest_client.aclose(), "rest")
         if self._db:
-            self._run_with_timeout(self._db.close(), timeout=2.0, label="db")
+            _safe_run(self._db.close(), "db")
 
     @property
     def engine_running(self) -> bool:
