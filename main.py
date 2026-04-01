@@ -461,11 +461,35 @@ async def main():
             except (ValueError, OSError):
                 continue
 
-    scheduler.add_job(refresh_token, "cron", hour=8, minute=0)
-    scheduler.add_job(run_screening, "cron", hour=8, minute=30)
-    scheduler.add_job(force_close, "cron", hour=15, minute=10)
-    scheduler.add_job(run_daily_report, "cron", hour=15, minute=30)
-    scheduler.add_job(backup_db, "cron", hour=15, minute=35)
+    async def _safe(coro_func, name: str):
+        """스케줄러 job 예외 안전 래퍼."""
+        try:
+            await coro_func()
+        except Exception as e:
+            logger.error(f"[SCHED] {name} 실패: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+
+    scheduler.add_job(
+        lambda: asyncio.ensure_future(_safe(refresh_token, "토큰 갱신")),
+        "cron", hour=8, minute=0, misfire_grace_time=300,
+    )
+    scheduler.add_job(
+        lambda: asyncio.ensure_future(_safe(run_screening, "스크리닝")),
+        "cron", hour=8, minute=30, misfire_grace_time=300,
+    )
+    scheduler.add_job(
+        lambda: asyncio.ensure_future(_safe(force_close, "강제 청산")),
+        "cron", hour=15, minute=10, misfire_grace_time=60,
+    )
+    scheduler.add_job(
+        lambda: asyncio.ensure_future(_safe(run_daily_report, "일일 보고서")),
+        "cron", hour=15, minute=30, misfire_grace_time=300,
+    )
+    scheduler.add_job(
+        lambda: asyncio.ensure_future(_safe(backup_db, "DB 백업")),
+        "cron", hour=15, minute=35, misfire_grace_time=300,
+    )
     scheduler.start()
 
     # 08:30 이후 실행 시 즉시 스크리닝 (이미 지나간 스케줄 보상)

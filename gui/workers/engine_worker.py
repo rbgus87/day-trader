@@ -198,10 +198,22 @@ class EngineWorker(QThread):
 
         # 3. Scheduler
         self._scheduler = AsyncIOScheduler()
-        self._scheduler.add_job(self._refresh_token, "cron", hour=8, minute=0)
-        self._scheduler.add_job(self._run_screening, "cron", hour=8, minute=30)
-        self._scheduler.add_job(self._force_close, "cron", hour=15, minute=10)
-        self._scheduler.add_job(self._run_daily_report, "cron", hour=15, minute=30)
+        self._scheduler.add_job(
+            self._safe_refresh_token, "cron", hour=8, minute=0,
+            misfire_grace_time=300,
+        )
+        self._scheduler.add_job(
+            self._safe_run_screening, "cron", hour=8, minute=30,
+            misfire_grace_time=300,
+        )
+        self._scheduler.add_job(
+            self._safe_force_close, "cron", hour=15, minute=10,
+            misfire_grace_time=60,
+        )
+        self._scheduler.add_job(
+            self._safe_run_daily_report, "cron", hour=15, minute=30,
+            misfire_grace_time=300,
+        )
         self._scheduler.start()
 
         # Late screening (장중 실행 시 즉시 스크리닝)
@@ -248,10 +260,10 @@ class EngineWorker(QThread):
         self.signals.started.emit()
 
         self._pipeline_tasks = [
-            asyncio.create_task(self._tick_consumer()),
-            asyncio.create_task(self._candle_consumer()),
-            asyncio.create_task(self._signal_consumer()),
-            asyncio.create_task(self._order_confirmation_consumer()),
+            asyncio.create_task(self._tick_consumer(), name="tick_consumer"),
+            asyncio.create_task(self._candle_consumer(), name="candle_consumer"),
+            asyncio.create_task(self._signal_consumer(), name="signal_consumer"),
+            asyncio.create_task(self._order_confirmation_consumer(), name="order_consumer"),
         ]
 
         logger.info("파이프라인 시작 -- 매매 대기 중 (GUI)")
@@ -260,12 +272,28 @@ class EngineWorker(QThread):
         await self._emit_daily_history()
 
         # 4. Polling loop (2-second interval, 0.2s check for fast stop)
+        import time as _time
+        _last_health_check = _time.time()
+
         while self._running:
-            self._emit_status()
-            self._emit_positions()
-            self._emit_trades()
-            self._emit_pnl()
-            self._emit_candidates()
+            # 헬스 체크 (30초마다)
+            now_ts = _time.time()
+            if now_ts - _last_health_check >= 30:
+                _last_health_check = now_ts
+                self._health_check()
+
+            for fn, label in [
+                (self._emit_status, "status"),
+                (self._emit_positions, "positions"),
+                (self._emit_trades, "trades"),
+                (self._emit_pnl, "pnl"),
+                (self._emit_candidates, "candidates"),
+            ]:
+                try:
+                    fn()
+                except Exception as e:
+                    logger.error(f"emit_{label} 오류: {e}")
+
             # 0.2초 간격으로 _running 체크 → 정지 요청 시 최대 0.2초 내 반응
             for _ in range(10):
                 if not self._running:
@@ -651,6 +679,73 @@ class EngineWorker(QThread):
             await self._notifier.send_no_trade("당일 매매 기록 없음")
             logger.info("당일 매매 없음 -- 무거래 알림 발송")
 
+    # ── Scheduler safe wrappers ──
+
+    async def _safe_refresh_token(self):
+        try:
+            await self._refresh_token()
+        except Exception as e:
+            logger.error(f"[SCHED] 토큰 갱신 실패: {e}")
+
+    async def _safe_run_screening(self):
+        try:
+            await self._run_screening()
+        except Exception as e:
+            logger.error(f"[SCHED] 스크리닝 실패: {e}")
+
+    async def _safe_force_close(self):
+        try:
+            await self._force_close()
+        except Exception as e:
+            logger.error(f"[SCHED] 강제 청산 실패: {e}")
+
+    async def _safe_run_daily_report(self):
+        try:
+            await self._run_daily_report()
+        except Exception as e:
+            logger.error(f"[SCHED] 일일 보고서 실패: {e}")
+
+    # ── Health check ──
+
+    _TASK_FACTORIES = {
+        "tick_consumer": "_tick_consumer",
+        "candle_consumer": "_candle_consumer",
+        "signal_consumer": "_signal_consumer",
+        "order_consumer": "_order_confirmation_consumer",
+    }
+
+    def _health_check(self):
+        """스케줄러 + 파이프라인 태스크 생존 확인 (polling loop에서 30초마다 호출)."""
+        try:
+            # 스케줄러 생존 확인
+            if self._scheduler and not self._scheduler.running:
+                logger.warning("스케줄러 죽음 감지 — 재시작 시도")
+                try:
+                    self._scheduler.start()
+                    logger.info("스케줄러 재시작 완료")
+                except Exception as e:
+                    logger.error(f"스케줄러 재시작 실패: {e}")
+
+            # 파이프라인 태스크 생존 확인
+            dead_tasks = [t for t in self._pipeline_tasks if t.done()]
+            if dead_tasks:
+                for t in dead_tasks:
+                    exc = t.exception() if not t.cancelled() else None
+                    logger.warning(f"파이프라인 태스크 죽음: {t.get_name()} exc={exc}")
+
+                alive_names = {t.get_name() for t in self._pipeline_tasks if not t.done()}
+                self._pipeline_tasks = [t for t in self._pipeline_tasks if not t.done()]
+
+                for name, method_name in self._TASK_FACTORIES.items():
+                    if name not in alive_names:
+                        method = getattr(self, method_name)
+                        self._pipeline_tasks.append(
+                            asyncio.create_task(method(), name=name)
+                        )
+                logger.info(f"파이프라인 태스크 재시작 완료: {len(self._pipeline_tasks)}개")
+        except Exception as e:
+            logger.error(f"헬스 체크 오류: {e}")
+
     # ── UI -> Worker command handlers (thread-safe) ──
 
     def _on_request_stop(self):
@@ -883,18 +978,25 @@ class EngineWorker(QThread):
         """당일 체결 내역을 시그널로 전송."""
         if not self._db or not self._loop:
             return
+        if getattr(self, "_trades_fetch_running", False):
+            return  # 이전 조회가 아직 진행 중
         try:
+            self._trades_fetch_running = True
             asyncio.ensure_future(self._fetch_and_emit_trades(), loop=self._loop)
         except Exception:
-            pass
+            self._trades_fetch_running = False
 
     async def _fetch_and_emit_trades(self):
         """DB에서 당일 체결 내역 조회 후 시그널 전송."""
         try:
-            trades = await self._fetch_today_trades()
+            trades = await asyncio.wait_for(self._fetch_today_trades(), timeout=5.0)
             self.signals.trades_updated.emit(trades)
-        except Exception:
-            pass
+        except asyncio.TimeoutError:
+            logger.warning("당일 체결 조회 타임아웃")
+        except Exception as e:
+            logger.error(f"당일 체결 조회 오류: {e}")
+        finally:
+            self._trades_fetch_running = False
 
     async def _fetch_today_trades(self) -> list[dict]:
         """DB에서 당일 체결 내역 조회."""
