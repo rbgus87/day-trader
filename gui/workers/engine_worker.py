@@ -22,6 +22,7 @@ class EngineWorker(QThread):
         self._mode = mode
         self._loop: asyncio.AbstractEventLoop | None = None
         self._running = False
+        self._stop_event: asyncio.Event | None = None
 
         # Components (initialized in _run_engine)
         self._config = None
@@ -106,6 +107,7 @@ class EngineWorker(QThread):
             except Exception:
                 pass
             self._loop = None
+            self._stop_event = None
             logger.info("EngineWorker 종료 완료")
             self.signals.stopped.emit()
 
@@ -113,6 +115,8 @@ class EngineWorker(QThread):
 
     async def _run_engine(self):
         """Initialize components and start pipeline (ported from main.py)."""
+        self._stop_event = asyncio.Event()
+
         # Lazy imports to avoid circular deps when GUI loads without full env
         from config.settings import AppConfig
         from core.auth import TokenManager
@@ -307,11 +311,13 @@ class EngineWorker(QThread):
                 except Exception as e:
                     logger.error(f"emit_{label} 오류: {e}")
 
-            # 0.2초 간격으로 _running 체크 → 정지 요청 시 최대 0.2초 내 반응
-            for _ in range(10):
-                if not self._running:
-                    break
-                await asyncio.sleep(0.2)
+            # stop_event 대기 (최대 2초, set되면 즉시 깨어남)
+            try:
+                await asyncio.wait_for(self._stop_event.wait(), timeout=2.0)
+                logger.info("stop_event 감지 — polling loop 탈출")
+                break
+            except asyncio.TimeoutError:
+                pass
 
         # 루프 탈출 후 파이프라인 태스크 취소
         logger.info("polling loop 종료 — 파이프라인 취소")
@@ -331,7 +337,7 @@ class EngineWorker(QThread):
 
     async def _tick_consumer(self):
         """틱 -> 캔들 빌더 + 포지션 모니터링."""
-        while self._running:
+        while self._running and not self._stop_event.is_set():
             try:
                 tick = await asyncio.wait_for(self._tick_queue.get(), timeout=0.5)
                 # 1. 캔들 빌더에 전달 (기존)
@@ -420,7 +426,7 @@ class EngineWorker(QThread):
         """캔들 -> 전략 엔진. 롤링 DataFrame 유지."""
         import pandas as pd
 
-        while self._running:
+        while self._running and not self._stop_event.is_set():
             try:
                 candle = await asyncio.wait_for(self._candle_queue.get(), timeout=0.5)
             except asyncio.TimeoutError:
@@ -467,7 +473,7 @@ class EngineWorker(QThread):
 
     async def _signal_consumer(self):
         """신호 -> 주문 실행."""
-        while self._running:
+        while self._running and not self._stop_event.is_set():
             try:
                 signal = await asyncio.wait_for(self._signal_queue.get(), timeout=0.5)
             except asyncio.TimeoutError:
@@ -529,7 +535,7 @@ class EngineWorker(QThread):
 
     async def _order_confirmation_consumer(self):
         """WS 체결통보 처리."""
-        while self._running:
+        while self._running and not self._stop_event.is_set():
             try:
                 exec_data = await asyncio.wait_for(self._order_queue.get(), timeout=0.5)
                 logger.info(f"체결통보: {exec_data}")
@@ -778,7 +784,7 @@ class EngineWorker(QThread):
     def _on_request_stop(self):
         """엔진 정상 종료."""
         logger.info("엔진 종료 요청 수신 (UI thread)")
-        self._running = False  # polling loop가 0.2초 내 감지 → 자연 종료
+        self._running = False
 
         # 스케줄러 즉시 정지
         try:
@@ -786,6 +792,13 @@ class EngineWorker(QThread):
                 self._scheduler.shutdown(wait=False)
         except Exception:
             pass
+
+        # asyncio.Event를 이벤트 루프 스레드에서 set — 즉시 깨어남
+        if self._loop and self._loop.is_running() and self._stop_event:
+            try:
+                self._loop.call_soon_threadsafe(self._stop_event.set)
+            except Exception:
+                pass
 
     def _on_request_halt(self):
         """매매 긴급 정지 (포지션 유지, 신규 매매만 중단)."""
@@ -1059,7 +1072,7 @@ class EngineWorker(QThread):
 
     def _cleanup_sync(self):
         """최대 3초 내 클린업 완료."""
-        if not self._loop:
+        if not self._loop or self._loop.is_closed():
             return
 
         import time as _time
