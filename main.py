@@ -447,9 +447,15 @@ async def main():
             if loop.is_running():
                 future = asyncio.run_coroutine_threadsafe(coro_func(), loop)
                 try:
-                    future.result(timeout=120)
+                    future.result(timeout=60)
+                except TimeoutError:
+                    logger.error(f"[SCHED] {name} 타임아웃 (60초) — 이벤트 루프 응답 없음")
                 except Exception as e:
-                    logger.error(f"[SCHED] {name} 실행 오류: {e}")
+                    logger.error(f"[SCHED] {name} 실행 오류: {type(e).__name__}: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+            else:
+                logger.warning(f"[SCHED] {name} 스킵 — 이벤트 루프 미실행")
         return wrapper
 
     scheduler.add_job(
@@ -477,7 +483,7 @@ async def main():
     # 08:30 이후 실행 시 즉시 스크리닝 (이미 지나간 스케줄 보상)
     from datetime import datetime, time as dt_time
     now = datetime.now().time()
-    if dt_time(8, 30) < now < dt_time(15, 10) and not active_strategies:
+    if dt_time(8, 30) < now < dt_time(15, 10):
         logger.info("장중 실행 감지 — 즉시 스크리닝 시작")
         await run_screening()
 

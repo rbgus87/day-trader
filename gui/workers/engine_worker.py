@@ -222,11 +222,15 @@ class EngineWorker(QThread):
                 if self._loop and self._loop.is_running():
                     future = asyncio.run_coroutine_threadsafe(coro_func(), self._loop)
                     try:
-                        future.result(timeout=120)
+                        future.result(timeout=60)
+                    except TimeoutError:
+                        logger.error(f"[SCHED] {name} 타임아웃 (60초) — 이벤트 루프 응답 없음")
                     except Exception as e:
-                        logger.error(f"[SCHED] {name} 실행 오류: {e}")
+                        logger.error(f"[SCHED] {name} 실행 오류: {type(e).__name__}: {e}")
+                        import traceback
+                        logger.error(traceback.format_exc())
                 else:
-                    logger.warning(f"[SCHED] {name} 스킵 — 이벤트 루프 미실행")
+                    logger.warning(f"[SCHED] {name} 스킵 — 이벤트 루프 미실행 (loop={self._loop is not None})")
             return wrapper
 
         self._scheduler.add_job(
@@ -248,10 +252,10 @@ class EngineWorker(QThread):
         self._scheduler.start()
         logger.debug(f"BackgroundScheduler 시작됨, running={self._scheduler.running}")
 
-        # Late screening (장중 실행 시 즉시 스크리닝)
+        # Late screening (장중 실행 시 즉시 스크리닝 — 점수 업데이트 + 현재가 초기화)
         now = datetime.now().time()
-        if dt_time(8, 30) < now < dt_time(15, 10) and not self._active_strategies:
-            logger.info("장중 실행 감지 -- 즉시 스크리닝 시작")
+        if dt_time(8, 30) < now < dt_time(15, 10):
+            logger.info("장중 실행 감지 — 즉시 스크리닝 시작")
             await self._run_screening()
 
         # Position reconciliation (장애 복구)
