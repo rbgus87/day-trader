@@ -1,9 +1,11 @@
 """core/kiwoom_ws.py — 키움 OpenAPI+ WebSocket 클라이언트 (asyncio Queue 통합).
 
-키움 WS 메시지 형식 (플랫 구조):
-    구독: {"trnm": "REG", "grp_no": "1", "refresh": "1", "authorization": "Bearer ...", "data": [...]}
-    응답: {"trnm": "REG", "return_code": "0", "return_msg": "..."}
-    체결: {"type": "0B", "item": "005930", "values": {"10": "-70000", "15": "100", ...}}
+키움 WS 프로토콜:
+    로그인: {"trnm": "LOGIN", "token": "ACCESS_TOKEN"}  ← Bearer 없이 토큰만
+    구독:   {"trnm": "REG", "grp_no": "1", "refresh": "1", "data": [...]}
+    응답:   {"trnm": "REG", "return_code": "0", "return_msg": "..."}
+    체결:   {"type": "0B", "item": "005930", "values": {"10": "-70000", ...}}
+    PING:   서버가 보내면 그대로 에코백 필수
 """
 
 import asyncio
@@ -56,41 +58,43 @@ class KiwoomWebSocketClient:
         await self._establish_connection()
         self._running = True
         self._reconnect_failures = 0
+        self._dispatch_count = 0
         self._listen_task = asyncio.create_task(self._listen_loop())
         logger.info("WebSocket 연결 완료")
 
     async def _establish_connection(self) -> None:
-        """WS 연결 수립 + 인증 + 구독 복원."""
+        """WS 연결 수립 + LOGIN + 구독 복원."""
         token = await self._token_manager.get_token()
         self._ws = await ws_connect(
             self._ws_url,
-            additional_headers={"authorization": f"Bearer {token}"},
             ping_interval=self.HEARTBEAT_INTERVAL,
             ping_timeout=10,
         )
 
-        # 접속허용요청 — REG 전에 토큰 인증 필수
-        auth_msg = json.dumps({
-            "trnm": "AUTH",
-            "authorization": f"Bearer {token}",
+        # LOGIN 패킷 전송 (Bearer 없이 토큰만)
+        login_msg = json.dumps({
+            "trnm": "LOGIN",
+            "token": token,
         })
-        await self._ws.send(auth_msg)
-        logger.info("[WS] 접속허용요청 전송")
+        await self._ws.send(login_msg)
+        logger.info("[WS] LOGIN 패킷 전송")
 
-        # 인증 응답 대기
+        # LOGIN 응답 대기
         try:
             raw = await asyncio.wait_for(self._ws.recv(), timeout=5.0)
-            auth_resp = json.loads(raw)
-            logger.info(f"[WS] 접속허용 응답: {auth_resp}")
-            rc = auth_resp.get("return_code", -1)
+            login_resp = json.loads(raw)
+            logger.info(f"[WS] LOGIN 응답: {login_resp}")
+            rc = login_resp.get("return_code", -1)
             if isinstance(rc, str):
                 rc = int(rc)
             if rc != 0:
-                logger.error(f"[WS] 접속허용 실패 (code={rc}): {auth_resp.get('return_msg', '')}")
+                logger.error(f"[WS] LOGIN 실패 (code={rc}): {login_resp.get('return_msg', '')}")
+                raise ConnectionError(f"WS LOGIN 실패: {login_resp.get('return_msg', '')}")
+            else:
+                logger.info("[WS] LOGIN 성공")
         except asyncio.TimeoutError:
-            logger.warning("[WS] 접속허용 응답 타임아웃 (5초) — 구독 시도 계속")
-        except Exception as e:
-            logger.warning(f"[WS] 접속허용 응답 처리 오류: {e}")
+            logger.error("[WS] LOGIN 응답 타임아웃 (5초)")
+            raise ConnectionError("WS LOGIN 응답 없음")
 
         await self._restore_subscriptions()
 
@@ -104,12 +108,10 @@ class KiwoomWebSocketClient:
         logger.info("WebSocket 연결 종료")
 
     async def subscribe(self, tickers: list[str], real_type: str = WS_TYPE_TICK) -> None:
-        token = await self._token_manager.get_token()
         msg = json.dumps({
             "trnm": "REG",
             "grp_no": "1",
             "refresh": "1",
-            "authorization": f"Bearer {token}",
             "data": [{"item": tickers, "type": [real_type]}],
         })
         if self._ws:
@@ -120,11 +122,9 @@ class KiwoomWebSocketClient:
         logger.info(f"구독 요청: {len(tickers)}종목 (type={real_type})")
 
     async def unsubscribe(self, tickers: list[str], real_type: str = WS_TYPE_TICK) -> None:
-        token = await self._token_manager.get_token()
         msg = json.dumps({
             "trnm": "REMOVE",
             "grp_no": "1",
-            "authorization": f"Bearer {token}",
             "data": [{"item": tickers, "type": [real_type]}],
         })
         if self._ws:
@@ -206,14 +206,20 @@ class KiwoomWebSocketClient:
             self._dispatch_count = 0
         self._dispatch_count += 1
         if self._dispatch_count <= 5:
-            data_summary = str(data)[:200]
-            logger.info(f"[WS-DIAG] msg #{self._dispatch_count} type='{data.get('type', '')}' trnm='{data.get('trnm', '')}' keys={list(data.keys())} data={data_summary}")
+            logger.info(f"[WS-DIAG] msg #{self._dispatch_count} trnm='{data.get('trnm', '')}' type='{data.get('type', '')}' keys={list(data.keys())}")
+
+        trnm = data.get("trnm", "")
+
+        # PING → 그대로 에코백 (연결 유지 필수)
+        if trnm == "PING":
+            if self._ws:
+                await self._ws.send(json.dumps(data))
+            return
 
         # 등록/해지 응답 (return_code 존재)
         return_code = data.get("return_code")
         if return_code is not None:
             rc = int(return_code)
-            trnm = data.get("trnm", "")
             if rc == 0:
                 logger.info(f"[WS] {trnm} 성공")
             else:
@@ -266,14 +272,12 @@ class KiwoomWebSocketClient:
 
     async def _restore_subscriptions(self) -> None:
         """재연결 후 구독 복원."""
-        token = await self._token_manager.get_token()
         for real_type, codes in self._subscriptions.items():
             if codes:
                 msg = json.dumps({
                     "trnm": "REG",
                     "grp_no": "1",
                     "refresh": "1",
-                    "authorization": f"Bearer {token}",
                     "data": [{"item": codes, "type": [real_type]}],
                 })
                 if self._ws:

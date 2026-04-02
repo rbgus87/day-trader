@@ -20,7 +20,7 @@ async def test_subscribe_builds_message():
     ws._ws.send.assert_called_once()
     sent = json.loads(ws._ws.send.call_args[0][0])
     assert sent["trnm"] == "REG"
-    assert "Bearer tok" in sent["authorization"]
+    assert "authorization" not in sent  # LOGIN으로 이미 인증
     assert "005930" in sent["data"][0]["item"]
     assert WS_TYPE_TICK in sent["data"][0]["type"]
 
@@ -68,5 +68,5 @@ async def test_reconnect_restores_subscriptions():
     assert ws._ws.send.call_count == 1  # 키움은 종목 리스트를 한번에 전송
     sent = json.loads(ws._ws.send.call_args[0][0])
     assert sent["trnm"] == "REG"
-    assert "Bearer tok" in sent["authorization"]
+    assert "authorization" not in sent
     assert set(sent["data"][0]["item"]) == {"005930", "035720"}
