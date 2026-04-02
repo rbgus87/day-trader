@@ -60,7 +60,7 @@ class KiwoomWebSocketClient:
         logger.info("WebSocket 연결 완료")
 
     async def _establish_connection(self) -> None:
-        """WS 연결 수립 + 구독 복원."""
+        """WS 연결 수립 + 인증 + 구독 복원."""
         token = await self._token_manager.get_token()
         self._ws = await ws_connect(
             self._ws_url,
@@ -68,6 +68,29 @@ class KiwoomWebSocketClient:
             ping_interval=self.HEARTBEAT_INTERVAL,
             ping_timeout=10,
         )
+
+        # 접속허용요청 — REG 전에 토큰 인증 필수
+        auth_msg = json.dumps({
+            "authorization": f"Bearer {token}",
+        })
+        await self._ws.send(auth_msg)
+        logger.info("[WS] 접속허용요청 전송")
+
+        # 인증 응답 대기
+        try:
+            raw = await asyncio.wait_for(self._ws.recv(), timeout=5.0)
+            auth_resp = json.loads(raw)
+            logger.info(f"[WS] 접속허용 응답: {auth_resp}")
+            rc = auth_resp.get("return_code", -1)
+            if isinstance(rc, str):
+                rc = int(rc)
+            if rc != 0:
+                logger.error(f"[WS] 접속허용 실패 (code={rc}): {auth_resp.get('return_msg', '')}")
+        except asyncio.TimeoutError:
+            logger.warning("[WS] 접속허용 응답 타임아웃 (5초) — 구독 시도 계속")
+        except Exception as e:
+            logger.warning(f"[WS] 접속허용 응답 처리 오류: {e}")
+
         await self._restore_subscriptions()
 
     async def disconnect(self) -> None:
