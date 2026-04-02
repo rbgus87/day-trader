@@ -665,12 +665,12 @@ class EngineWorker(QThread):
                 tk = s["ticker"]
                 try:
                     price_data = await self._rest_client.get_current_price(tk)
-                    output = price_data.get("output", {})
-                    cur_price = abs(int(output.get("stck_prpr", 0)))
+                    output = price_data.get("output1", {})
+                    cur_price = abs(int(output.get("cur_pric", 0)))
                     if cur_price > 0:
                         self._latest_prices[tk] = cur_price
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning(f"현재가 초기화 실패 ({tk}): {e}")
 
             force = getattr(self._config, 'force_strategy', '') or 'auto'
             logger.info(f"스크리닝 완료: {len(screened)}종목 통과, 감시: {len(self._active_strategies)}종목 유지")
@@ -718,7 +718,8 @@ class EngineWorker(QThread):
             summary = await self._db.fetch_one(
                 "SELECT * FROM daily_pnl WHERE date = ?", (today,),
             )
-        except Exception:
+        except Exception as e:
+            logger.warning(f"daily_pnl 조회 실패: {e}")
             summary = None
 
         if summary is None:
@@ -1024,8 +1025,8 @@ class EngineWorker(QThread):
                     "status": status,
                 })
             self.signals.positions_updated.emit(positions)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"포지션 emit 실패: {e}")
 
     def _emit_trades(self):
         """당일 체결 내역을 시그널로 전송."""
@@ -1038,7 +1039,8 @@ class EngineWorker(QThread):
             asyncio.run_coroutine_threadsafe(
                 self._fetch_and_emit_trades(), self._loop,
             )
-        except Exception:
+        except Exception as e:
+            logger.debug(f"체결 내역 조회 스케줄 실패: {e}")
             self._trades_fetch_running = False
 
     async def _fetch_and_emit_trades(self):
@@ -1067,8 +1069,8 @@ class EngineWorker(QThread):
             return
         try:
             self.signals.pnl_updated.emit(self._risk_manager._daily_pnl)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"PnL emit 실패: {e}")
 
     def _emit_candidates(self):
         """스크리너 후보 목록 + 실시간 가격을 시그널로 전송."""
@@ -1088,8 +1090,8 @@ class EngineWorker(QThread):
                     "change_pct": round(change_pct, 2),
                 })
             self.signals.candidates_updated.emit(enriched)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"후보 종목 emit 실패: {e}")
 
     async def _emit_daily_history(self):
         """최근 5일 일일 PnL을 DB에서 조회하여 전송."""
@@ -1102,8 +1104,8 @@ class EngineWorker(QThread):
             if rows:
                 data = [{"date": r["date"][-5:], "pnl": r["total_pnl"]} for r in reversed(rows)]
                 self.signals.daily_history_updated.emit(data)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"일일 히스토리 emit 실패: {e}")
 
     # ── Cleanup ──
 
