@@ -71,6 +71,7 @@ class KiwoomWebSocketClient:
 
         # 접속허용요청 — REG 전에 토큰 인증 필수
         auth_msg = json.dumps({
+            "trnm": "AUTH",
             "authorization": f"Bearer {token}",
         })
         await self._ws.send(auth_msg)
