@@ -1,9 +1,9 @@
 """core/kiwoom_ws.py — 키움 OpenAPI+ WebSocket 클라이언트 (asyncio Queue 통합).
 
 키움 WS 메시지 형식:
-    구독: {"trnm": "REG", "grp_no": "1", "refresh": "1", "data": [{"item": ["005930"], "type": ["0B"]}]}
-    체결: {"type": "0B", "item": "005930", "values": {"10": "-70000", "15": "100", ...}}
-    주문: {"type": "00", ...}
+    구독: {"header": {"api-id": "0B", "authorization": "Bearer ..."}, "body": {"trnm": "REG", ...}}
+    응답: {"header": {...}, "body": {"trnm": "REG", "return_code": "0", ...}}
+    실시간: {"header": {...}, "body": {"trnm": "REAL", "data": [{"type": "0B", "item": "005930", "values": {...}}]}}
 """
 
 import asyncio
@@ -80,24 +80,38 @@ class KiwoomWebSocketClient:
         logger.info("WebSocket 연결 종료")
 
     async def subscribe(self, tickers: list[str], real_type: str = WS_TYPE_TICK) -> None:
+        token = await self._token_manager.get_token()
         msg = json.dumps({
-            "trnm": "REG",
-            "grp_no": "1",
-            "refresh": "1",
-            "data": [{"item": tickers, "type": [real_type]}],
+            "header": {
+                "api-id": real_type,
+                "authorization": f"Bearer {token}",
+            },
+            "body": {
+                "trnm": "REG",
+                "grp_no": "1",
+                "refresh": "1",
+                "data": [{"item": tickers, "type": [real_type]}],
+            },
         })
         if self._ws:
             await self._ws.send(msg)
         existing = set(self._subscriptions.get(real_type, []))
         existing.update(tickers)
         self._subscriptions[real_type] = list(existing)
-        logger.debug(f"구독: {len(tickers)}종목 (type={real_type})")
+        logger.info(f"구독 요청: {len(tickers)}종목 (type={real_type})")
 
     async def unsubscribe(self, tickers: list[str], real_type: str = WS_TYPE_TICK) -> None:
+        token = await self._token_manager.get_token()
         msg = json.dumps({
-            "trnm": "REMOVE",
-            "grp_no": "1",
-            "data": [{"item": tickers, "type": [real_type]}],
+            "header": {
+                "api-id": real_type,
+                "authorization": f"Bearer {token}",
+            },
+            "body": {
+                "trnm": "REMOVE",
+                "grp_no": "1",
+                "data": [{"item": tickers, "type": [real_type]}],
+            },
         })
         if self._ws:
             await self._ws.send(msg)
@@ -173,16 +187,44 @@ class KiwoomWebSocketClient:
 
     async def _dispatch(self, data: dict) -> None:
         """수신 데이터 타입별 라우팅."""
-        msg_type = data.get("type", "")
-
         # 진단: 처음 5건 메시지 구조 로깅
         if not hasattr(self, '_dispatch_count'):
             self._dispatch_count = 0
         self._dispatch_count += 1
         if self._dispatch_count <= 5:
             data_summary = str(data)[:200]
-            logger.info(f"[WS-DIAG] msg #{self._dispatch_count} type='{msg_type}' keys={list(data.keys())} data={data_summary}")
+            logger.info(f"[WS-DIAG] msg #{self._dispatch_count} keys={list(data.keys())} data={data_summary}")
 
+        # 서버 응답이 header/body 구조일 수 있음
+        body = data.get("body", data)
+        trnm = body.get("trnm", "")
+
+        # 등록/해지 응답 처리 (return_code 존재)
+        return_code = body.get("return_code")
+        if return_code is not None:
+            rc = int(return_code)
+            if rc == 0:
+                logger.info(f"[WS] {trnm} 성공: {body.get('return_msg', '')}")
+            else:
+                logger.error(f"[WS] {trnm} 실패 (code={rc}): {body.get('return_msg', '')}")
+            return
+
+        # 실시간 데이터 (trnm == "REAL") — data[] 안에 항목들
+        if trnm == "REAL":
+            data_list = body.get("data", [])
+            for item_data in data_list:
+                msg_type = item_data.get("type", "")
+                if msg_type == WS_TYPE_TICK:
+                    tick = self._parse_tick(item_data)
+                    if tick:
+                        await self._dispatch_tick(tick)
+                elif msg_type == WS_TYPE_ORDER:
+                    if self._order_queue:
+                        await self._order_queue.put(item_data)
+            return
+
+        # 기존 형식 호환 (직접 type 필드가 있는 경우)
+        msg_type = data.get("type", "")
         if msg_type == WS_TYPE_TICK:
             tick = self._parse_tick(data)
             if tick:
@@ -191,7 +233,7 @@ class KiwoomWebSocketClient:
                 logger.warning(f"[WS-DIAG] 틱 파싱 실패: {str(data)[:200]}")
         elif msg_type == WS_TYPE_ORDER:
             if self._order_queue:
-                await self._order_queue.put(data)  # 체결통보는 블로킹 허용 (유실 불가)
+                await self._order_queue.put(data)
 
     def _parse_tick(self, data: dict) -> dict | None:
         """키움 체결 데이터 → 표준 tick dict."""
@@ -229,16 +271,24 @@ class KiwoomWebSocketClient:
 
     async def _restore_subscriptions(self) -> None:
         """재연결 후 구독 복원."""
+        token = await self._token_manager.get_token()
         for real_type, codes in self._subscriptions.items():
             if codes:
                 msg = json.dumps({
-                    "trnm": "REG",
-                    "grp_no": "1",
-                    "refresh": "1",
-                    "data": [{"item": codes, "type": [real_type]}],
+                    "header": {
+                        "api-id": real_type,
+                        "authorization": f"Bearer {token}",
+                    },
+                    "body": {
+                        "trnm": "REG",
+                        "grp_no": "1",
+                        "refresh": "1",
+                        "data": [{"item": codes, "type": [real_type]}],
+                    },
                 })
                 if self._ws:
                     await self._ws.send(msg)
+                logger.info(f"구독 복원: {len(codes)}종목 (type={real_type})")
 
     @property
     def connected(self) -> bool:

@@ -19,9 +19,11 @@ async def test_subscribe_builds_message():
     await ws.subscribe(["005930"], WS_TYPE_TICK)
     ws._ws.send.assert_called_once()
     sent = json.loads(ws._ws.send.call_args[0][0])
-    assert sent["trnm"] == "REG"
-    assert "005930" in sent["data"][0]["item"]
-    assert WS_TYPE_TICK in sent["data"][0]["type"]
+    assert sent["header"]["api-id"] == WS_TYPE_TICK
+    assert "Bearer tok" in sent["header"]["authorization"]
+    assert sent["body"]["trnm"] == "REG"
+    assert "005930" in sent["body"]["data"][0]["item"]
+    assert WS_TYPE_TICK in sent["body"]["data"][0]["type"]
 
 
 @pytest.mark.asyncio
@@ -66,4 +68,6 @@ async def test_reconnect_restores_subscriptions():
     await ws._restore_subscriptions()
     assert ws._ws.send.call_count == 1  # 키움은 종목 리스트를 한번에 전송
     sent = json.loads(ws._ws.send.call_args[0][0])
-    assert set(sent["data"][0]["item"]) == {"005930", "035720"}
+    assert sent["header"]["api-id"] == "0B"
+    assert "Bearer tok" in sent["header"]["authorization"]
+    assert set(sent["body"]["data"][0]["item"]) == {"005930", "035720"}
