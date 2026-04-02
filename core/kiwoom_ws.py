@@ -115,12 +115,14 @@ class KiwoomWebSocketClient:
         while self._running:
             try:
                 async for message in self._ws:
+                    ws_msg_count += 1
+                    if ws_msg_count <= 3:
+                        logger.info(f"[WS-DIAG] raw msg #{ws_msg_count} len={len(message)} preview={message[:100]}")
                     try:
                         data = json.loads(message)
                         await self._dispatch(data)
                     except Exception as e:
                         logger.error(f"메시지 처리 오류: {e}")
-                    ws_msg_count += 1
                     if ws_msg_count == 1:
                         logger.info("[WS] 첫 메시지 수신")
                     now_ws = _time.time()
@@ -130,6 +132,8 @@ class KiwoomWebSocketClient:
                         last_ws_log = now_ws
                     reconnect_delay = self.RECONNECT_BASE_DELAY
                     self._reconnect_failures = 0
+                # async for 종료 = 연결 끊김
+                logger.warning(f"[WS-DIAG] async for 종료 — 수신 {ws_msg_count}건 후 연결 끊김")
             except Exception as e:
                 if not self._running:
                     break
@@ -171,10 +175,20 @@ class KiwoomWebSocketClient:
         """수신 데이터 타입별 라우팅."""
         msg_type = data.get("type", "")
 
+        # 진단: 처음 5건 메시지 구조 로깅
+        if not hasattr(self, '_dispatch_count'):
+            self._dispatch_count = 0
+        self._dispatch_count += 1
+        if self._dispatch_count <= 5:
+            data_summary = str(data)[:200]
+            logger.info(f"[WS-DIAG] msg #{self._dispatch_count} type='{msg_type}' keys={list(data.keys())} data={data_summary}")
+
         if msg_type == WS_TYPE_TICK:
             tick = self._parse_tick(data)
             if tick:
                 await self._dispatch_tick(tick)
+            elif self._dispatch_count <= 10:
+                logger.warning(f"[WS-DIAG] 틱 파싱 실패: {str(data)[:200]}")
         elif msg_type == WS_TYPE_ORDER:
             if self._order_queue:
                 await self._order_queue.put(data)  # 체결통보는 블로킹 허용 (유실 불가)
