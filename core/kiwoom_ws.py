@@ -108,7 +108,10 @@ class KiwoomWebSocketClient:
 
     async def _listen_loop(self) -> None:
         """수신 루프 — 재연결 포함 (장 시간에만)."""
+        import time as _time
         reconnect_delay = self.RECONNECT_BASE_DELAY
+        ws_msg_count = 0
+        last_ws_log = _time.time()
         while self._running:
             try:
                 async for message in self._ws:
@@ -117,6 +120,14 @@ class KiwoomWebSocketClient:
                         await self._dispatch(data)
                     except Exception as e:
                         logger.error(f"메시지 처리 오류: {e}")
+                    ws_msg_count += 1
+                    if ws_msg_count == 1:
+                        logger.info("[WS] 첫 메시지 수신")
+                    now_ws = _time.time()
+                    if now_ws - last_ws_log >= 300:
+                        logger.info(f"[WS] {ws_msg_count}건 수신 (최근 5분)")
+                        ws_msg_count = 0
+                        last_ws_log = now_ws
                     reconnect_delay = self.RECONNECT_BASE_DELAY
                     self._reconnect_failures = 0
             except Exception as e:

@@ -342,7 +342,14 @@ class EngineWorker(QThread):
         logger.info("파이프라인 시작 -- 매매 대기 중 (GUI)")
 
         # 일일 성과 히스토리 전송 (1회)
-        await self._emit_daily_history()
+        try:
+            await asyncio.wait_for(self._emit_daily_history(), timeout=5.0)
+        except asyncio.TimeoutError:
+            logger.warning("일일 성과 히스토리 조회 타임아웃 — 스킵")
+        except Exception as e:
+            logger.warning(f"일일 성과 히스토리 조회 실패: {e}")
+
+        logger.info("=== polling loop 진입 ===")
 
         # 4. Polling loop (2-second interval, 0.2s check for fast stop)
         import time as _time
@@ -405,9 +412,31 @@ class EngineWorker(QThread):
 
     async def _tick_consumer(self):
         """틱 -> 캔들 빌더 + 포지션 모니터링."""
+        import time as _time
+        tick_count = 0
+        last_tick_log = _time.time()
+
         while self._running and not self._stop_event.is_set():
             try:
                 tick = await asyncio.wait_for(self._tick_queue.get(), timeout=0.5)
+            except asyncio.TimeoutError:
+                if _time.time() - last_tick_log >= 300 and tick_count == 0:
+                    logger.warning("[TICK] 5분간 틱 수신 0건 — WS 연결 확인 필요")
+                    last_tick_log = _time.time()
+                continue
+            except asyncio.CancelledError:
+                break
+
+            tick_count += 1
+            now_ts = _time.time()
+            if tick_count == 1 and now_ts - last_tick_log < 60:
+                logger.info(f"[TICK] 첫 틱 수신: {tick.get('ticker', '?')} @ {tick.get('price', 0):,}")
+            if now_ts - last_tick_log >= 60:
+                logger.info(f"[TICK] {tick_count}건 수신 (최근 60초)")
+                tick_count = 0
+                last_tick_log = now_ts
+
+            try:
                 # 1. 캔들 빌더에 전달 (기존)
                 await self._candle_builder.on_tick(tick)
                 # 2. 최신 가격 기록 + 포지션 모니터링
@@ -493,6 +522,9 @@ class EngineWorker(QThread):
     async def _candle_consumer(self):
         """캔들 -> 전략 엔진. 롤링 DataFrame 유지."""
         import pandas as pd
+        import time as _time
+        candle_count = 0
+        last_candle_log = _time.time()
 
         while self._running and not self._stop_event.is_set():
             try:
@@ -501,6 +533,13 @@ class EngineWorker(QThread):
                 continue
             except asyncio.CancelledError:
                 break
+
+            candle_count += 1
+            now_ts = _time.time()
+            if now_ts - last_candle_log >= 300:
+                logger.info(f"[CANDLE] {candle_count}건 생성 (최근 5분)")
+                candle_count = 0
+                last_candle_log = now_ts
 
             try:
                 ticker = candle["ticker"]
