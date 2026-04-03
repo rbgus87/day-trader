@@ -216,6 +216,17 @@ class KiwoomWebSocketClient:
                 await self._ws.send(json.dumps(data))
             return
 
+        # LOGIN 응답
+        if trnm == "LOGIN":
+            rc = data.get("return_code", -1)
+            if isinstance(rc, str):
+                rc = int(rc)
+            if rc == 0:
+                logger.info("[WS] LOGIN 성공 (재연결)")
+            else:
+                logger.error(f"[WS] LOGIN 실패: {data.get('return_msg', '')}")
+            return
+
         # 등록/해지 응답 (return_code 존재)
         return_code = data.get("return_code")
         if return_code is not None:
@@ -226,7 +237,21 @@ class KiwoomWebSocketClient:
                 logger.error(f"[WS] {trnm} 실패 (code={rc}): {data.get('return_msg', '')}")
             return
 
-        # 실시간 데이터
+        # 실시간 데이터 — data[] 배열 순회
+        data_list = data.get("data", [])
+        if data_list:
+            for item_data in data_list:
+                msg_type = item_data.get("type", "")
+                if msg_type == WS_TYPE_TICK:
+                    tick = self._parse_tick_from_item(item_data)
+                    if tick:
+                        await self._dispatch_tick(tick)
+                elif msg_type == WS_TYPE_ORDER:
+                    if self._order_queue:
+                        await self._order_queue.put(item_data)
+            return
+
+        # 기존 형식도 호환 (top-level type)
         msg_type = data.get("type", "")
         if msg_type == WS_TYPE_TICK:
             tick = self._parse_tick(data)
@@ -236,19 +261,50 @@ class KiwoomWebSocketClient:
             if self._order_queue:
                 await self._order_queue.put(data)
 
+    def _parse_tick_from_item(self, item_data: dict) -> dict | None:
+        """data[] 배열 안의 항목 → 표준 tick dict."""
+        try:
+            values = item_data.get("values", {})
+            if isinstance(values, str):
+                values = json.loads(values)
+            ticker = item_data.get("item", "")
+            price_str = str(values.get("10", "0"))
+            price = abs(int(price_str.replace("+", "").replace(",", "")))
+            volume_str = str(values.get("15", "0"))
+            volume = int(volume_str.replace("+", "").replace("-", "").replace(",", ""))
+            cum_volume_str = str(values.get("13", "0"))
+            cum_volume = int(cum_volume_str.replace("+", "").replace("-", "").replace(",", ""))
+            return {
+                "ticker": ticker,
+                "time": values.get("20", ""),
+                "price": price,
+                "volume": volume,
+                "cum_volume": cum_volume,
+                "change": values.get("12", "0"),
+            }
+        except (ValueError, KeyError) as e:
+            logger.warning(f"틱 파싱 실패 (item): {e}")
+            return None
+
     def _parse_tick(self, data: dict) -> dict | None:
-        """키움 체결 데이터 → 표준 tick dict."""
+        """키움 체결 데이터 → 표준 tick dict (top-level 호환)."""
         try:
             values = data.get("values", {})
             if isinstance(values, str):
                 values = json.loads(values)
+            price_str = str(values.get("10", "0"))
+            price = abs(int(price_str.replace("+", "").replace(",", "")))
+            volume_str = str(values.get("15", "0"))
+            volume = int(volume_str.replace("+", "").replace("-", "").replace(",", ""))
+            cum_volume_str = str(values.get("13", "0"))
+            cum_volume = int(cum_volume_str.replace("+", "").replace("-", "").replace(",", ""))
             return {
                 "ticker": data.get("item", ""),
                 "time": values.get("20", ""),
-                "price": abs(int(values.get("10", 0))),
-                "volume": int(values.get("15", 0)),
-                "cum_volume": int(values.get("13", 0)),
-                "change": int(values.get("12", 0)),
+                "price": price,
+                "volume": volume,
+                "cum_volume": cum_volume,
+                "change": values.get("12", "0"),
             }
         except (ValueError, KeyError) as e:
             logger.warning(f"틱 파싱 실패: {e}")
