@@ -325,6 +325,30 @@ class EngineWorker(QThread):
                 }
             self._active_strategy = list(self._active_strategies.values())[0]["strategy"] if self._active_strategies else None
             logger.info(f"유니버스 전체 전략 등록: {len(self._active_strategies)}종목 ({force})")
+
+            # 전일 고가/거래량 초기화 (모멘텀 전략 등에 필요)
+            logger.info("전일 고가 초기화 시작...")
+            init_count = 0
+            for s in all_stocks:
+                ticker = s["ticker"]
+                try:
+                    daily = await self._rest_client.get_daily_ohlcv(ticker)
+                    items = daily.get("output", [])
+                    if not items:
+                        items = daily.get("output1", [])
+                    if items and len(items) >= 2:
+                        prev = items[1]
+                        prev_high = abs(int(prev.get("high_pric", prev.get("stck_hgpr", 0))))
+                        prev_vol = abs(int(prev.get("acml_vol", prev.get("acml_vlmn", 0))))
+                        if ticker in self._active_strategies:
+                            strat = self._active_strategies[ticker]["strategy"]
+                            if hasattr(strat, "set_prev_day_data"):
+                                strat.set_prev_day_data(prev_high, prev_vol)
+                                init_count += 1
+                except Exception as e:
+                    logger.debug(f"전일 고가 조회 실패 ({ticker}): {e}")
+                await asyncio.sleep(0.1)
+            logger.info(f"전일 고가 초기화 완료: {init_count}/{len(self._active_strategies)}종목")
         except Exception as e:
             logger.error(f"WS 연결/전략 등록 실패: {e}")
 

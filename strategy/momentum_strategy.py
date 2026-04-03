@@ -43,6 +43,10 @@ class MomentumStrategy(BaseStrategy):
 
         current_price: float = tick["price"]
 
+        # 전일 고가가 설정되지 않았으면 스킵
+        if self._prev_day_high <= 0:
+            return None
+
         # 1) 가격 돌파 확인
         if current_price <= self._prev_day_high:
             return None

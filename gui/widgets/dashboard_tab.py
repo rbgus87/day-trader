@@ -534,7 +534,7 @@ class DashboardTab(QWidget):
 
             side = row_data.get("side", "")
             side_color = QColor("#89b4fa") if side.upper() == "BUY" else QColor("#f38ba8")
-            pnl = row_data.get("pnl", 0.0)
+            pnl = row_data.get("pnl") or 0
             pnl_color = QColor("#a6e3a1") if pnl >= 0 else QColor("#f38ba8")
             pnl_sign = "+" if pnl >= 0 else ""
 
@@ -542,9 +542,9 @@ class DashboardTab(QWidget):
                 (row_data.get("time", ""), None),
                 (row_data.get("ticker", ""), None),
                 (side, side_color),
-                (f"{row_data.get('price', 0):,.0f}", None),
-                (str(row_data.get("qty", 0)), None),
-                (f"{pnl_sign}{pnl:,.0f}", pnl_color),
+                (f"{int(row_data.get('price', 0) or 0):,}", None),
+                (str(row_data.get("qty", 0) or 0), None),
+                (f"{pnl_sign}{pnl:,.0f}" if pnl else "—", pnl_color),
                 (row_data.get("reason", ""), None),
             ]
 
