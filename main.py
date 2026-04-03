@@ -236,6 +236,7 @@ async def main():
             if len(candle_history[ticker]) > MAX_HISTORY:
                 candle_history[ticker] = candle_history[ticker][-MAX_HISTORY:]
 
+            candle["price"] = candle.get("close", 0)
             df = pd.DataFrame(candle_history[ticker])
             signal = strategy.generate_signal(df, candle)
             if signal:

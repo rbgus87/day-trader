@@ -571,6 +571,7 @@ class EngineWorker(QThread):
                 if candle.get("tf") == "5m" and hasattr(strategy, "on_candle_5m"):
                     strategy.on_candle_5m(candle)
 
+                candle["price"] = candle.get("close", 0)
                 df = pd.DataFrame(self._candle_history[ticker])
                 signal = strategy.generate_signal(df, candle)
                 if signal:
