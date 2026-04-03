@@ -660,6 +660,7 @@ class EngineWorker(QThread):
                         qty=result["qty"],
                         stop_loss=sl,
                         tp1_price=tp1,
+                        strategy=signal.strategy or "",
                     )
                     self.signals.trade_executed.emit({
                         "time": datetime.now().strftime("%H:%M:%S"),

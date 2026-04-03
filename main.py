@@ -288,6 +288,7 @@ async def main():
                     qty=result["qty"],
                     stop_loss=sl,
                     tp1_price=tp1,
+                    strategy=signal.strategy or "",
                 )
 
     async def order_confirmation_consumer():

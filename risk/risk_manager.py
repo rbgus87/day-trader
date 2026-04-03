@@ -29,6 +29,7 @@ class RiskManager:
     def register_position(
         self, ticker: str, entry_price: float, qty: int, stop_loss: float,
         tp1_price: float | None = None, trailing_pct: float | None = None,
+        strategy: str = "",
     ) -> None:
         self._positions[ticker] = {
             "entry_price": entry_price,
@@ -40,6 +41,7 @@ class RiskManager:
             "highest_price": entry_price,
             "tp1_hit": False,
             "entry_time": datetime.now(),
+            "strategy": strategy,
         }
 
     def remove_position(self, ticker: str) -> None:

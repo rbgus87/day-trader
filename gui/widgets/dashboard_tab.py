@@ -232,7 +232,7 @@ class DashboardTab(QWidget):
         vbox.addLayout(header)
 
         self._positions_table = QTableWidget()
-        columns = ["종목", "전략", "수익률", "경과", "손절가", "TP1", "상태"]
+        columns = ["종목", "전략", "진입가", "현재가", "수익률", "경과", "손절가", "TP1", "상태"]
         self._positions_table.setColumnCount(len(columns))
         self._positions_table.setHorizontalHeaderLabels(columns)
         self._positions_table.setAlternatingRowColors(True)
@@ -509,10 +509,12 @@ class DashboardTab(QWidget):
             cells = [
                 (ticker_text, QColor("#89b4fa")),
                 (row_data.get("strategy", ""), None),
+                (f"{row_data.get('entry_price', 0):,.0f}", None),
+                (f"{row_data.get('current_price', 0):,.0f}", None),
                 (f"{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%", pnl_color),
                 (elapsed_text, elapsed_color),
                 (f"{row_data.get('stop_loss', 0):,.0f}", None),
-                (f"{row_data.get('tp1_price', 0):,.0f}", None),
+                (f"{row_data.get('tp1_price', 0) or 0:,.0f}", None),
                 (row_data.get("status", ""), None),
             ]
 
