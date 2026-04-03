@@ -1065,8 +1065,11 @@ class EngineWorker(QThread):
         if not self._risk_manager:
             return
         try:
+            open_pos = self._risk_manager.get_open_positions()
+            if open_pos:
+                logger.info(f"[POS] 보유 포지션: {len(open_pos)}건 — {list(open_pos.keys())}")
             positions = []
-            for ticker, pos in self._risk_manager._positions.items():
+            for ticker, pos in open_pos.items():
                 entry = pos["entry_price"]
                 current = self._latest_prices.get(ticker, entry)
                 pnl_pct = ((current - entry) / entry * 100) if entry > 0 else 0
@@ -1090,7 +1093,7 @@ class EngineWorker(QThread):
                 })
             self.signals.positions_updated.emit(positions)
         except Exception as e:
-            logger.debug(f"포지션 emit 실패: {e}")
+            logger.error(f"포지션 emit 실패: {e}")
 
     def _emit_trades(self):
         """당일 체결 내역을 시그널로 전송."""

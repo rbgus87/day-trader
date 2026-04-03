@@ -539,7 +539,7 @@ class DashboardTab(QWidget):
             pnl_sign = "+" if pnl >= 0 else ""
 
             cells = [
-                (row_data.get("time", ""), None),
+                (str(row_data.get("time", "") or row_data.get("traded_at", "") or ""), None),
                 (row_data.get("ticker", ""), None),
                 (side, side_color),
                 (f"{int(row_data.get('price', 0) or 0):,}", None),

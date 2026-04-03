@@ -67,7 +67,7 @@ class CandleBuilder:
 
         out = {k: v for k, v in candle.items() if not k.startswith("_")}
         await self._candle_queue.put(out)
-        logger.debug(f"1분봉 완성: {ticker} {candle['ts']} C={candle['close']}")
+        logger.trace(f"1분봉 완성: {ticker} {candle['ts']} C={candle['close']}")
 
         if "5m" in self._timeframes:
             self._min1_buffer[ticker].append(out)
