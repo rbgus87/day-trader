@@ -57,6 +57,8 @@ class EngineWorker(QThread):
         # 런타임 승/패 카운터
         self._rt_wins: int = 0
         self._rt_losses: int = 0
+        # 포지션 변경 감지용
+        self._last_pos_tickers: list[str] = []
 
         # Screener results cache (for UI emission)
         self._screener_results: list[dict] = []
@@ -1071,8 +1073,13 @@ class EngineWorker(QThread):
             return
         try:
             open_pos = self._risk_manager.get_open_positions()
-            if open_pos:
-                logger.info(f"[POS] 보유 포지션: {len(open_pos)}건 — {list(open_pos.keys())}")
+            current_tickers = sorted(open_pos.keys())
+            if current_tickers != self._last_pos_tickers:
+                if current_tickers:
+                    logger.info(f"[POS] 보유 포지션: {len(current_tickers)}건 — {current_tickers}")
+                else:
+                    logger.info("[POS] 보유 포지션: 0건")
+                self._last_pos_tickers = current_tickers
             positions = []
             for ticker, pos in open_pos.items():
                 entry = pos["entry_price"]
