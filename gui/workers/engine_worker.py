@@ -333,14 +333,17 @@ class EngineWorker(QThread):
                 ticker = s["ticker"]
                 try:
                     daily = await self._rest_client.get_daily_ohlcv(ticker)
-                    items = daily.get("output", [])
-                    if not items:
-                        items = daily.get("output1", [])
+                    items = (
+                        daily.get("stk_dt_pole_chart_qry")
+                        or daily.get("output2")
+                        or daily.get("output")
+                        or []
+                    )
                     if items and len(items) >= 2:
                         prev = items[1]
-                        prev_high = abs(int(prev.get("high_pric", prev.get("stck_hgpr", 0))))
+                        prev_high = abs(float(prev.get("high_pric", 0)))
                         prev_vol = abs(int(prev.get("acml_vol", prev.get("acml_vlmn", 0))))
-                        if ticker in self._active_strategies:
+                        if prev_high > 0 and ticker in self._active_strategies:
                             strat = self._active_strategies[ticker]["strategy"]
                             if hasattr(strat, "set_prev_day_data"):
                                 strat.set_prev_day_data(prev_high, prev_vol)
