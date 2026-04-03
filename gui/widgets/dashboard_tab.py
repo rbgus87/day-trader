@@ -532,20 +532,40 @@ class DashboardTab(QWidget):
             row = table.rowCount()
             table.insertRow(row)
 
-            side = row_data.get("side", "")
-            side_color = QColor("#89b4fa") if side.upper() == "BUY" else QColor("#f38ba8")
-            pnl = row_data.get("pnl") or 0
-            pnl_color = QColor("#a6e3a1") if pnl >= 0 else QColor("#f38ba8")
-            pnl_sign = "+" if pnl >= 0 else ""
+            # 시간 형식 정리 ("2026-04-03T15:19:01" → "15:19:01")
+            raw_time = str(row_data.get("time", "") or row_data.get("traded_at", "") or "")
+            if "T" in raw_time:
+                time_text = raw_time.split("T")[1][:8]
+            elif len(raw_time) > 8:
+                time_text = raw_time[-8:]
+            else:
+                time_text = raw_time
+
+            # 매매 구분 색상
+            side = str(row_data.get("side", ""))
+            side_color = QColor("#a6e3a1") if side.lower() == "buy" else QColor("#f38ba8")
+
+            # 손익: 매수는 "—", 매도는 금액
+            pnl = row_data.get("pnl")
+            if side.lower() == "buy" or pnl is None:
+                pnl_text = "—"
+                pnl_color = QColor("#6c7086")
+            else:
+                pnl = int(pnl)
+                pnl_text = f"{pnl:+,}"
+                pnl_color = QColor("#a6e3a1") if pnl >= 0 else QColor("#f38ba8")
+
+            # 사유: 전략명 또는 매도 사유
+            reason = str(row_data.get("reason", "") or row_data.get("strategy", "") or "")
 
             cells = [
-                (str(row_data.get("time", "") or row_data.get("traded_at", "") or ""), None),
-                (row_data.get("ticker", ""), None),
+                (time_text, None),
+                (str(row_data.get("ticker", "")), QColor("#89b4fa")),
                 (side, side_color),
                 (f"{int(row_data.get('price', 0) or 0):,}", None),
                 (str(row_data.get("qty", 0) or 0), None),
-                (f"{pnl_sign}{pnl:,.0f}" if pnl else "—", pnl_color),
-                (row_data.get("reason", ""), None),
+                (pnl_text, pnl_color),
+                (reason, None),
             ]
 
             for col, (text, color) in enumerate(cells):

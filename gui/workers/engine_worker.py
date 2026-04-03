@@ -667,7 +667,7 @@ class EngineWorker(QThread):
                         "ticker": signal.ticker,
                         "price": int(signal.price),
                         "qty": result["qty"],
-                        "pnl": 0, "reason": "entry",
+                        "pnl": None, "reason": signal.strategy or "entry",
                     })
             except Exception as e:
                 logger.error(f"signal_consumer 오류: {e}")
