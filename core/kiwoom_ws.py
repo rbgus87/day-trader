@@ -144,8 +144,6 @@ class KiwoomWebSocketClient:
             try:
                 async for message in self._ws:
                     ws_msg_count += 1
-                    if ws_msg_count <= 3:
-                        logger.info(f"[WS-DIAG] raw msg #{ws_msg_count} len={len(message)} preview={message[:100]}")
                     try:
                         data = json.loads(message)
                         await self._dispatch(data)
@@ -161,7 +159,7 @@ class KiwoomWebSocketClient:
                     reconnect_delay = self.RECONNECT_BASE_DELAY
                     self._reconnect_failures = 0
                 # async for 종료 = 연결 끊김
-                logger.warning(f"[WS-DIAG] async for 종료 — 수신 {ws_msg_count}건 후 연결 끊김")
+                logger.warning(f"[WS] 연결 끊김 — 수신 {ws_msg_count}건")
             except Exception as e:
                 if not self._running:
                     break
@@ -201,13 +199,6 @@ class KiwoomWebSocketClient:
 
     async def _dispatch(self, data: dict) -> None:
         """수신 데이터 타입별 라우팅."""
-        # 진단: 처음 5건 메시지 구조 로깅
-        if not hasattr(self, '_dispatch_count'):
-            self._dispatch_count = 0
-        self._dispatch_count += 1
-        if self._dispatch_count <= 5:
-            logger.info(f"[WS-DIAG] msg #{self._dispatch_count} trnm='{data.get('trnm', '')}' type='{data.get('type', '')}' keys={list(data.keys())}")
-
         trnm = data.get("trnm", "")
 
         # PING → 그대로 에코백 (연결 유지 필수)

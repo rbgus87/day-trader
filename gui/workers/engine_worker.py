@@ -332,7 +332,7 @@ class EngineWorker(QThread):
             for s in all_stocks:
                 ticker = s["ticker"]
                 try:
-                    daily = await self._rest_client.get_daily_ohlcv(ticker)
+                    daily = await self._rest_client.get_daily_ohlcv(ticker, base_dt=datetime.now().strftime('%Y%m%d'))
                     items = (
                         daily.get("stk_dt_pole_chart_qry")
                         or daily.get("output2")
@@ -442,6 +442,7 @@ class EngineWorker(QThread):
         import time as _time
         tick_count = 0
         last_tick_log = _time.time()
+        first_tick_logged = False
 
         while self._running and not self._stop_event.is_set():
             try:
@@ -456,8 +457,9 @@ class EngineWorker(QThread):
 
             tick_count += 1
             now_ts = _time.time()
-            if tick_count == 1 and now_ts - last_tick_log < 60:
+            if not first_tick_logged:
                 logger.info(f"[TICK] 첫 틱 수신: {tick.get('ticker', '?')} @ {tick.get('price', 0):,}")
+                first_tick_logged = True
             if now_ts - last_tick_log >= 60:
                 logger.info(f"[TICK] {tick_count}건 수신 (최근 60초)")
                 tick_count = 0
