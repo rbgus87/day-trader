@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, time, timedelta
 
 import pandas as pd
+from loguru import logger
 
 
 @dataclass
@@ -63,6 +64,9 @@ class BaseStrategy(ABC):
         if self._has_position:
             return False
         if self._trade_count >= self._max_trades:
+            if not hasattr(self, '_cantrade_diag'):
+                self._cantrade_diag = True
+                logger.info(f"[TRADE-LIMIT] max_trades={self._max_trades} 도달, trade_count={self._trade_count}")
             return False
         if not self._is_cooldown_elapsed():
             return False

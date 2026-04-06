@@ -42,8 +42,8 @@ class MomentumStrategy(BaseStrategy):
             return None
 
         current_price: float = tick["price"]
+        ticker = tick.get("ticker", "")
 
-        # 전일 고가가 설정되지 않았으면 스킵
         if self._prev_day_high <= 0:
             return None
 
@@ -51,21 +51,33 @@ class MomentumStrategy(BaseStrategy):
         if current_price <= self._prev_day_high:
             return None
 
+        # === 여기 도달 = 전일 고가 돌파! 진단 로그 ===
+        if not hasattr(self, '_breakout_diag_count'):
+            self._breakout_diag_count = 0
+        self._breakout_diag_count += 1
+
         # 2) 거래량 필터
         if candles is None or candles.empty:
+            if self._breakout_diag_count <= 5:
+                logger.info(f"[MOM-DIAG] {ticker} 돌파! price={current_price:,.0f} > prev_high={self._prev_day_high:,.0f} BUT candles empty")
             return None
 
         cum_volume: float = candles["volume"].sum()
         required_volume: float = self._prev_day_volume * self._config.momentum_volume_ratio
         if cum_volume < required_volume:
+            if self._breakout_diag_count <= 5:
+                logger.info(f"[MOM-DIAG] {ticker} 돌파! price={current_price:,.0f} BUT 거래량 미달 cum={cum_volume:,.0f} < req={required_volume:,.0f} (prev_vol={self._prev_day_volume:,.0f} × {self._config.momentum_volume_ratio})")
             return None
 
         # 3) 마지막 캔들 종가 > 전일 고점
-        if candles.iloc[-1]["close"] <= self._prev_day_high:
+        last_close = candles.iloc[-1]["close"]
+        if last_close <= self._prev_day_high:
+            if self._breakout_diag_count <= 5:
+                logger.info(f"[MOM-DIAG] {ticker} 돌파! price={current_price:,.0f} BUT 캔들종가={last_close:,.0f} <= prev_high={self._prev_day_high:,.0f}")
             return None
 
         logger.info(
-            f"모멘텀 매수 신호: {tick['ticker']} price={current_price} "
+            f"모멘텀 매수 신호: {ticker} price={current_price} "
             f"prev_high={self._prev_day_high} cum_vol={cum_volume:,.0f}"
         )
 

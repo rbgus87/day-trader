@@ -555,7 +555,9 @@ class EngineWorker(QThread):
         import pandas as pd
         import time as _time
         candle_count = 0
+        signal_eval_count = 0
         last_candle_log = _time.time()
+        _diag_logged = False
 
         while self._running and not self._stop_event.is_set():
             try:
@@ -568,8 +570,9 @@ class EngineWorker(QThread):
             candle_count += 1
             now_ts = _time.time()
             if now_ts - last_candle_log >= 300:
-                logger.info(f"[CANDLE] {candle_count}건 생성 (최근 5분)")
+                logger.info(f"[CANDLE] {candle_count}건 생성, {signal_eval_count}건 평가 (최근 5분)")
                 candle_count = 0
+                signal_eval_count = 0
                 last_candle_log = now_ts
 
             try:
@@ -580,6 +583,16 @@ class EngineWorker(QThread):
                 self._candle_history[ticker].append(candle)
                 if len(self._candle_history[ticker]) > self._MAX_HISTORY:
                     self._candle_history[ticker] = self._candle_history[ticker][-self._MAX_HISTORY:]
+
+                # 진단: 첫 캔들에서 각 조건 체크
+                if not _diag_logged:
+                    _diag_logged = True
+                    logger.info(f"[CANDLE-DIAG] ticker={ticker}")
+                    logger.info(f"[CANDLE-DIAG] active_strategies 수={len(self._active_strategies)}")
+                    logger.info(f"[CANDLE-DIAG] ticker in active={ticker in self._active_strategies}")
+                    logger.info(f"[CANDLE-DIAG] halted={self._risk_manager.is_trading_halted() if self._risk_manager else 'N/A'}")
+                    logger.info(f"[CANDLE-DIAG] active_keys 샘플={list(self._active_strategies.keys())[:5]}")
+                    logger.info(f"[CANDLE-DIAG] candle keys={list(candle.keys())}")
 
                 # 전략 판단은 active_strategies에 등록된 종목만
                 if not self._active_strategies:
@@ -604,6 +617,7 @@ class EngineWorker(QThread):
 
                 candle["price"] = candle.get("close", 0)
                 df = pd.DataFrame(self._candle_history[ticker])
+                signal_eval_count += 1
                 signal = strategy.generate_signal(df, candle)
                 if signal:
                     await self._signal_queue.put(signal)
