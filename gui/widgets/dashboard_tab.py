@@ -382,13 +382,15 @@ class DashboardTab(QWidget):
         """Update summary bar."""
         pnl = data.get("daily_pnl", 0.0)
         pnl_pct = data.get("daily_pnl_pct", 0.0)
+        capital = data.get("available_capital", 0)
+        initial = data.get("initial_capital", 0)
         pnl_color = "#a6e3a1" if pnl >= 0 else "#f38ba8"
         sign = "+" if pnl >= 0 else ""
         self._pnl_value.setText(f"{sign}{pnl:,.0f}")
         self._pnl_value.setStyleSheet(
             f"font-size: 18px; font-weight: bold; color: {pnl_color};"
         )
-        self._pnl_subtitle.setText(f"{sign}{pnl_pct:.2f}%")
+        self._pnl_subtitle.setText(f"자본: {int(capital):,}원 / {int(initial):,}원")
 
         bar_value = max(-100, min(100, int(pnl_pct * 50)))
         self._pnl_bar.setValue(bar_value)
@@ -414,6 +416,9 @@ class DashboardTab(QWidget):
 
         status = data.get("risk_status", "Normal")
         dd = data.get("dd_pct", 0.0)
+        capital = data.get("available_capital", 0)
+        initial = data.get("initial_capital", 0)
+        usage_pct = ((initial - capital) / initial * 100) if initial > 0 else 0
         status_color = {
             "Normal": "#a6e3a1", "Warning": "#f9e2af", "Halted": "#f38ba8",
         }.get(status, "#a6e3a1")
@@ -421,7 +426,7 @@ class DashboardTab(QWidget):
         self._risk_value.setStyleSheet(
             f"font-size: 18px; font-weight: bold; color: {status_color};"
         )
-        self._risk_subtitle.setText(f"DD: -{abs(dd):.2f}%")
+        self._risk_subtitle.setText(f"DD: -{abs(dd):.2f}% | 투자: {usage_pct:.0f}%")
 
     def update_watchlist(self, candidates: list[dict]) -> None:
         """감시 종목 테이블 업데이트."""

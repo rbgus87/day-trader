@@ -1060,6 +1060,9 @@ class EngineWorker(QThread):
         positions_count = len(rm.get_open_positions()) if rm else 0
         max_pos = self._config.trading.max_positions if self._config else 3
 
+        available_cap = rm.available_capital if rm else 0
+        initial_cap = self._config.trading.initial_capital if self._config else 0
+
         self.signals.status_updated.emit({
             "mode": self._mode,
             "running": self._running,
@@ -1080,6 +1083,8 @@ class EngineWorker(QThread):
             "wins": wins,
             "losses": losses,
             "win_rate": win_rate,
+            "available_capital": available_cap,
+            "initial_capital": initial_cap,
         })
 
     def _emit_positions(self):

@@ -581,6 +581,8 @@ class MainWindow(QMainWindow):
             "avg_win_rate": status.get("avg_win_rate", 0),
             "risk_status": "Halted" if status.get("halted") else "Normal",
             "dd_pct": status.get("dd_pct", 0),
+            "available_capital": status.get("available_capital", 0),
+            "initial_capital": status.get("initial_capital", 0),
         })
         # Update status bar
         strategy = status.get("strategy", "—")
@@ -590,9 +592,11 @@ class MainWindow(QMainWindow):
         mode = self.sidebar.get_mode().upper()
         combo_text = self.sidebar._strategy_combo.currentText()
         force_tag = f" [{combo_text}]" if combo_text != "Auto" else ""
+        capital = status.get("available_capital", 0)
         self._lbl_status_left.setText(
             f"Mode: {mode}{force_tag} | Engine: Running | "
-            f"Strategy: {strategy} | 감시: {active}종목 | 포지션: {pos_count}/{max_pos}"
+            f"Strategy: {strategy} | 감시: {active}종목 | 포지션: {pos_count}/{max_pos} | "
+            f"가용: {int(capital):,}원"
         )
 
     def _on_positions_updated(self, positions: list):
