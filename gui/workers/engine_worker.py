@@ -557,8 +557,6 @@ class EngineWorker(QThread):
         candle_count = 0
         signal_eval_count = 0
         last_candle_log = _time.time()
-        _diag_logged = False
-
         while self._running and not self._stop_event.is_set():
             try:
                 candle = await asyncio.wait_for(self._candle_queue.get(), timeout=0.5)
@@ -583,16 +581,6 @@ class EngineWorker(QThread):
                 self._candle_history[ticker].append(candle)
                 if len(self._candle_history[ticker]) > self._MAX_HISTORY:
                     self._candle_history[ticker] = self._candle_history[ticker][-self._MAX_HISTORY:]
-
-                # 진단: 첫 캔들에서 각 조건 체크
-                if not _diag_logged:
-                    _diag_logged = True
-                    logger.info(f"[CANDLE-DIAG] ticker={ticker}")
-                    logger.info(f"[CANDLE-DIAG] active_strategies 수={len(self._active_strategies)}")
-                    logger.info(f"[CANDLE-DIAG] ticker in active={ticker in self._active_strategies}")
-                    logger.info(f"[CANDLE-DIAG] halted={self._risk_manager.is_trading_halted() if self._risk_manager else 'N/A'}")
-                    logger.info(f"[CANDLE-DIAG] active_keys 샘플={list(self._active_strategies.keys())[:5]}")
-                    logger.info(f"[CANDLE-DIAG] candle keys={list(candle.keys())}")
 
                 # 전략 판단은 active_strategies에 등록된 종목만
                 if not self._active_strategies:
@@ -992,14 +980,21 @@ class EngineWorker(QThread):
 
         if strategy_name and strategy_name in strategies:
             self._active_strategy = strategies[strategy_name]
-            # 기존 멀티 종목 전략도 교체
+            # 기존 멀티 종목 전략도 교체 (prev_day_data 보존)
             for ticker, info in self._active_strategies.items():
+                old_strat = info["strategy"]
                 StratClass = type(strategies[strategy_name])
                 new_strat = StratClass(self._config.trading)
                 new_strat.configure_multi_trade(
                     max_trades=self._config.trading.max_trades_per_day,
                     cooldown_minutes=self._config.trading.cooldown_minutes,
                 )
+                # 전일 고가/거래량 복사 (Momentum 등에서 필요)
+                if hasattr(new_strat, "set_prev_day_data"):
+                    prev_high = getattr(old_strat, "_prev_day_high", 0.0)
+                    prev_vol = getattr(old_strat, "_prev_day_volume", 0)
+                    if prev_high > 0:
+                        new_strat.set_prev_day_data(prev_high, prev_vol)
                 info["strategy"] = new_strat
             logger.info(f"전략 수동 변경: {strategy_name}")
         elif not strategy_name:
