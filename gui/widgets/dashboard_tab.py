@@ -232,7 +232,7 @@ class DashboardTab(QWidget):
         vbox.addLayout(header)
 
         self._positions_table = QTableWidget()
-        columns = ["종목", "전략", "진입가", "현재가", "수익률", "경과", "손절가", "TP1", "상태"]
+        columns = ["종목", "진입가", "현재가", "수익률", "경과", "손절가", "TP1", "상태"]
         self._positions_table.setColumnCount(len(columns))
         self._positions_table.setHorizontalHeaderLabels(columns)
         self._positions_table.setAlternatingRowColors(True)
@@ -399,12 +399,12 @@ class DashboardTab(QWidget):
             f"QProgressBar::chunk {{ background-color: {pnl_color}; border-radius: 2px; }}"
         )
 
-        count = data.get("trades_count", 0)
-        max_t = data.get("max_trades", 0)
+        trades_count = data.get("trades_count", 0)
+        open_count = data.get("open_positions_count", 0)
         wins = data.get("wins", 0)
         losses = data.get("losses", 0)
-        self._trades_value.setText(f"{count} / {max_t}")
-        self._trades_subtitle.setText(f"Win {wins} / Loss {losses}")
+        self._trades_value.setText(f"{trades_count + open_count}")
+        self._trades_subtitle.setText(f"청산 {trades_count} / 보유 {open_count}")
 
         win_rate = data.get("win_rate", 0.0)
         avg = data.get("avg_win_rate", 0.0)
@@ -494,7 +494,10 @@ class DashboardTab(QWidget):
 
             ticker = row_data.get("ticker", "")
             name = row_data.get("name", "")
-            ticker_text = f"{name}\n{ticker}" if name else ticker
+            if name and name != ticker:
+                ticker_text = f"{name}\n({ticker})"
+            else:
+                ticker_text = ticker
 
             entry_time = row_data.get("entry_time")
             if entry_time:
@@ -517,7 +520,6 @@ class DashboardTab(QWidget):
 
             cells = [
                 (ticker_text, QColor("#89b4fa")),
-                (row_data.get("strategy", ""), None),
                 (f"{row_data.get('entry_price', 0):,.0f}", None),
                 (f"{row_data.get('current_price', 0):,.0f}", None),
                 (f"{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%", pnl_color),
@@ -569,9 +571,13 @@ class DashboardTab(QWidget):
             # 사유: 전략명 또는 매도 사유
             reason = str(row_data.get("reason", "") or row_data.get("strategy", "") or "")
 
+            ticker = str(row_data.get("ticker", ""))
+            name = str(row_data.get("name", ""))
+            ticker_text = f"{name} ({ticker})" if name else ticker
+
             cells = [
                 (time_text, None),
-                (str(row_data.get("ticker", "")), QColor("#89b4fa")),
+                (ticker_text, QColor("#89b4fa")),
                 (side, side_color),
                 (f"{int(row_data.get('price', 0) or 0):,}", None),
                 (str(row_data.get("qty", 0) or 0), None),
@@ -579,9 +585,13 @@ class DashboardTab(QWidget):
                 (reason, None),
             ]
 
+            align_right_cols = {3, 4, 5}  # 가격, 수량, 손익
             for col, (text, color) in enumerate(cells):
                 item = QTableWidgetItem(str(text))
-                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                if col in align_right_cols:
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                else:
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 if color is not None:
                     item.setForeground(color)
                 table.setItem(row, col, item)

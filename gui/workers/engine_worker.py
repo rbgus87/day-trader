@@ -1088,6 +1088,7 @@ class EngineWorker(QThread):
             "win_rate": win_rate,
             "available_capital": available_cap,
             "initial_capital": initial_cap,
+            "open_positions_count": positions_count,
         })
 
     def _emit_positions(self):
@@ -1158,12 +1159,18 @@ class EngineWorker(QThread):
             self._trades_fetch_running = False
 
     async def _fetch_today_trades(self) -> list[dict]:
-        """DB에서 당일 체결 내역 조회."""
+        """DB에서 당일 체결 내역 조회 + 종목명 매핑."""
         today = datetime.now().strftime("%Y-%m-%d")
-        return await self._db.fetch_all(
+        trades = await self._db.fetch_all(
             "SELECT * FROM trades WHERE traded_at LIKE ? || '%' ORDER BY traded_at DESC",
             (today,),
         )
+        # 유니버스에서 종목명 매핑
+        for trade in trades:
+            ticker = trade.get("ticker", "")
+            if ticker in self._active_strategies:
+                trade["name"] = self._active_strategies[ticker].get("name", "")
+        return trades
 
     def _emit_pnl(self):
         """일일 손익을 시그널로 전송."""
