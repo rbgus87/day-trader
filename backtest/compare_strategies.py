@@ -51,7 +51,8 @@ async def main() -> None:
         tax=bt_cfg.get("tax", 0.0018),
         slippage=bt_cfg.get("slippage", 0.0003),
     )
-    trading_config = TradingConfig()
+    from config.settings import AppConfig
+    trading_config = AppConfig.from_yaml().trading
 
     # universe 로드
     uni_path = Path("config/universe.yaml")

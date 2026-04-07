@@ -664,12 +664,18 @@ class EngineWorker(QThread):
                     strategy=signal.strategy,
                 )
                 if result:
+                    # 전략별 trailing_stop_pct 적용
+                    trailing = None
+                    from strategy.momentum_strategy import MomentumStrategy
+                    if isinstance(strategy, MomentumStrategy):
+                        trailing = self._config.trading.momentum_trailing_stop_pct
                     self._risk_manager.register_position(
                         ticker=signal.ticker,
                         entry_price=signal.price,
                         qty=result["qty"],
                         stop_loss=sl,
                         tp1_price=tp1,
+                        trailing_pct=trailing,
                         strategy=signal.strategy or "",
                     )
                     self.signals.trade_executed.emit({

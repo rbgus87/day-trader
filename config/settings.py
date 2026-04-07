@@ -89,6 +89,7 @@ class TradingConfig:
     # 모멘텀 전략
     momentum_volume_ratio: float = 2.0
     momentum_stop_loss_pct: float = -0.008
+    momentum_trailing_stop_pct: float = 0.015
     # DEPRECATED: 리테스트/VWAP 필터 — 4회 실험 결과 개선 효과 없음
     momentum_retest_band_pct: float = 0.008
     momentum_retest_timeout_min: int = 45
@@ -226,6 +227,7 @@ class AppConfig:
             vwap_stop_loss_pct=vwap.get("stop_loss_pct", -0.012),
             momentum_volume_ratio=mom.get("volume_ratio", 2.0),
             momentum_stop_loss_pct=mom.get("stop_loss_pct", -0.008),
+            momentum_trailing_stop_pct=mom.get("trailing_stop_pct", 0.015),
             momentum_retest_band_pct=mom.get("retest_band_pct", 0.008),
             momentum_retest_timeout_min=mom.get("retest_timeout_minutes", 45),
             momentum_vwap_filter=mom.get("vwap_filter", True),
