@@ -18,7 +18,7 @@ trading:
   reduced_position_pct: 0.5         # 연속 손실 시 포지션 50%로 축소
 
   # 익절
-  tp1_pct: 0.03                     # 1차 익절 +3% (최적화 결과: 2%→3%)
+  tp1_pct: 0.04                     # 1차 익절 +4% (노이즈 손절 방지 위해 3%→4%)
   tp1_sell_ratio: 0.5               # 1차 익절 시 50% 매도
   trailing_stop_pct: 0.01           # 고점 대비 -1% 트레일링 스톱
 
@@ -59,7 +59,8 @@ strategy:
   # 모멘텀 브레이크아웃 — 전일 고점 돌파 + 거래량 200%
   momentum:
     volume_ratio: 2.0               # 전일 대비 거래량 200%
-    stop_loss_pct: -0.008           # 손절 -0.8%
+    stop_loss_pct: -0.020           # 손절 -2.0% (-0.8%는 노이즈 손절 유발)
+    trailing_stop_pct: 0.015        # TP1 후 -1.5% 트레일링
     # vwap_filter: false            # 4회 실험 결과 개선 효과 없음
     # retest_band_pct: 0.008        # 향후 틱 백테스터에서 재검증용
     # retest_timeout_minutes: 45
