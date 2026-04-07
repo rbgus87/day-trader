@@ -62,6 +62,9 @@ class EngineWorker(QThread):
 
         # Screener results cache (for UI emission)
         self._screener_results: list[dict] = []
+        # 전일 종가/고가 맵 (watchlist 표시용)
+        self._prev_close: dict[str, float] = {}
+        self._prev_high_map: dict[str, float] = {}
 
         self.signals = EngineSignals()
 
@@ -345,11 +348,15 @@ class EngineWorker(QThread):
                         prev = items[1]
                         prev_high = abs(float(prev.get("high_pric", 0)))
                         prev_vol = abs(int(prev.get("acml_vol", prev.get("acml_vlmn", 0))))
+                        prev_close = abs(float(prev.get("cur_prc", prev.get("stck_clpr", 0))))
                         if prev_high > 0 and ticker in self._active_strategies:
                             strat = self._active_strategies[ticker]["strategy"]
                             if hasattr(strat, "set_prev_day_data"):
                                 strat.set_prev_day_data(prev_high, prev_vol)
                                 init_count += 1
+                            self._prev_high_map[ticker] = prev_high
+                        if prev_close > 0:
+                            self._prev_close[ticker] = prev_close
                 except Exception as e:
                     logger.debug(f"전일 고가 조회 실패 ({ticker}): {e}")
                 await asyncio.sleep(0.1)
@@ -409,6 +416,7 @@ class EngineWorker(QThread):
                 (self._emit_trades, "trades"),
                 (self._emit_pnl, "pnl"),
                 (self._emit_candidates, "candidates"),
+                (self._emit_watchlist, "watchlist"),
             ]:
                 try:
                     fn()
@@ -1165,6 +1173,40 @@ class EngineWorker(QThread):
             self.signals.pnl_updated.emit(self._risk_manager._daily_pnl)
         except Exception as e:
             logger.debug(f"PnL emit 실패: {e}")
+
+    def _emit_watchlist(self):
+        """유니버스 전체를 watchlist로 emit (현재가, 등락%, 돌파% 포함)."""
+        if not self._active_strategies:
+            return
+        try:
+            open_pos_tickers: set[str] = set()
+            if self._risk_manager:
+                open_pos_tickers = set(self._risk_manager.get_open_positions().keys())
+
+            items = []
+            for ticker, info in self._active_strategies.items():
+                current = self._latest_prices.get(ticker, 0)
+                prev_close = self._prev_close.get(ticker, 0)
+                prev_high = self._prev_high_map.get(ticker, 0)
+
+                change_pct = ((current / prev_close) - 1) * 100 if prev_close > 0 and current > 0 else 0
+                breakout_pct = ((current / prev_high) - 1) * 100 if prev_high > 0 and current > 0 else -999
+
+                items.append({
+                    "ticker": ticker,
+                    "name": info.get("name", ticker),
+                    "current_price": current,
+                    "change_pct": change_pct,
+                    "prev_high": prev_high,
+                    "breakout_pct": breakout_pct,
+                    "has_position": ticker in open_pos_tickers,
+                })
+
+            # 돌파% 내림차순 (신호 임박 순)
+            items.sort(key=lambda x: x["breakout_pct"], reverse=True)
+            self.signals.watchlist_updated.emit(items)
+        except Exception as e:
+            logger.debug(f"watchlist emit 실패: {e}")
 
     def _emit_candidates(self):
         """스크리너 후보 목록 + 실시간 가격을 시그널로 전송."""

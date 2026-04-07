@@ -261,7 +261,7 @@ class DashboardTab(QWidget):
         vbox.addLayout(header)
 
         self._watchlist_table = QTableWidget()
-        columns = ["종목", "현재가", "등락%", "점수"]
+        columns = ["종목", "현재가", "등락%", "전일고가", "돌파%"]
         self._watchlist_table.setColumnCount(len(columns))
         self._watchlist_table.setHorizontalHeaderLabels(columns)
         self._watchlist_table.setAlternatingRowColors(True)
@@ -428,52 +428,56 @@ class DashboardTab(QWidget):
         )
         self._risk_subtitle.setText(f"DD: -{abs(dd):.2f}% | 투자: {usage_pct:.0f}%")
 
-    def update_watchlist(self, candidates: list[dict]) -> None:
-        """감시 종목 테이블 업데이트."""
+    def update_watchlist(self, items: list[dict]) -> None:
+        """감시 종목 테이블 업데이트 (유니버스 전체, 돌파율 정렬)."""
         table = self._watchlist_table
         table.setRowCount(0)
-        self._watchlist_count_label.setText(f"{len(candidates)}종목")
+        self._watchlist_count_label.setText(f"{len(items)}종목")
 
-        for row_data in candidates[:10]:
+        for item in items:
             row = table.rowCount()
             table.insertRow(row)
 
-            name = row_data.get("name", "")
-            ticker = row_data.get("ticker", "")
-            ticker_text = f"{name}\n{ticker}" if name else ticker
+            ticker = item.get("ticker", "")
+            name = item.get("name", ticker)
+            current = item.get("current_price", 0)
+            change_pct = item.get("change_pct", 0)
+            prev_high = item.get("prev_high", 0)
+            breakout_pct = item.get("breakout_pct", -999)
+            has_pos = item.get("has_position", False)
 
-            current_price = row_data.get("current_price", 0)
-            change_pct = row_data.get("change_pct", 0)
-            score = row_data.get("score", 0)
+            # 등락% 색상
+            change_color = QColor("#a6e3a1") if change_pct >= 0 else QColor("#f38ba8")
 
-            price_text = f"{current_price:,.0f}" if current_price > 0 else "—"
-
-            if current_price > 0:
-                change_text = f"{change_pct:+.2f}%"
-                change_color = QColor("#a6e3a1") if change_pct >= 0 else QColor("#f38ba8")
+            # 돌파% 색상
+            if breakout_pct >= 0:
+                breakout_color = QColor("#a6e3a1")  # 돌파 완료
+                breakout_text = f"+{breakout_pct:.2f}%"
+            elif breakout_pct >= -1:
+                breakout_color = QColor("#f9e2af")  # 임박
+                breakout_text = f"{breakout_pct:.2f}%"
             else:
-                change_text = "—"
-                change_color = QColor("#6c7086")
+                breakout_color = QColor("#6c7086")
+                breakout_text = f"{breakout_pct:.2f}%" if breakout_pct > -100 else "—"
 
-            score_color = (
-                QColor("#a6e3a1") if score >= 7
-                else QColor("#f9e2af") if score >= 5
-                else QColor("#6c7086")
-            )
+            # 종목명 (포지션 보유 시 별표)
+            ticker_text = f"⭐ {name}" if has_pos else name
+            ticker_color = QColor("#f9e2af") if has_pos else QColor("#89b4fa")
 
             cells = [
-                (ticker_text, QColor("#89b4fa")),
-                (price_text, None),
-                (change_text, change_color),
-                (f"{score:.1f}", score_color),
+                (ticker_text, ticker_color),
+                (f"{int(current):,}" if current > 0 else "—", None),
+                (f"{'+' if change_pct >= 0 else ''}{change_pct:.2f}%", change_color),
+                (f"{int(prev_high):,}" if prev_high > 0 else "—", QColor("#6c7086")),
+                (breakout_text, breakout_color),
             ]
 
             for col, (text, color) in enumerate(cells):
-                item = QTableWidgetItem(str(text))
-                item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                if color is not None:
-                    item.setForeground(color)
-                table.setItem(row, col, item)
+                cell = QTableWidgetItem(str(text))
+                cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                if color:
+                    cell.setForeground(color)
+                table.setItem(row, col, cell)
 
     def update_positions(self, positions: list[dict]) -> None:
         """Rebuild the active positions table."""

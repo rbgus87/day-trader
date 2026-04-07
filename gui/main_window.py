@@ -205,6 +205,7 @@ class MainWindow(QMainWindow):
         s.trades_updated.connect(self._on_trades_updated)
         s.pnl_updated.connect(self._on_pnl_updated)
         s.candidates_updated.connect(self._on_candidates_updated)
+        s.watchlist_updated.connect(self._on_watchlist_updated)
         s.daily_history_updated.connect(self._on_daily_history)
 
     def _on_stop(self):
@@ -611,7 +612,9 @@ class MainWindow(QMainWindow):
 
     def _on_candidates_updated(self, candidates: list):
         self.screener_tab.update_candidates(candidates)
-        self.dashboard_tab.update_watchlist(candidates[:5])
+
+    def _on_watchlist_updated(self, items: list):
+        self.dashboard_tab.update_watchlist(items)
 
     def _on_daily_history(self, data: list):
         self.dashboard_tab.update_daily_history(data)

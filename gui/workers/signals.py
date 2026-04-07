@@ -40,6 +40,7 @@ class EngineSignals(QObject):
     trades_updated = pyqtSignal(list)
     pnl_updated = pyqtSignal(float)
     candidates_updated = pyqtSignal(list)
+    watchlist_updated = pyqtSignal(list)
     daily_history_updated = pyqtSignal(list)
     log_message = pyqtSignal(str, str)
 
