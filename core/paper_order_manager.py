@@ -42,6 +42,24 @@ class PaperOrderManager:
         self._order_queue: asyncio.Queue = order_queue or asyncio.Queue()
         self._order_seq = 0  # 가상 주문번호 시퀀스
 
+        # 종목명 매핑 로드
+        self._name_map: dict[str, str] = {}
+        from pathlib import Path
+        import yaml
+        uni_path = Path("config/universe.yaml")
+        if uni_path.exists():
+            try:
+                uni = yaml.safe_load(open(uni_path, encoding="utf-8")) or {}
+                for s in uni.get("stocks", []):
+                    self._name_map[s["ticker"]] = s.get("name", s["ticker"])
+            except Exception:
+                pass
+
+    def _format_ticker(self, ticker: str) -> str:
+        """종목명(코드) 형식으로 변환."""
+        name = self._name_map.get(ticker, "")
+        return f"{name}({ticker})" if name else ticker
+
     def _next_order_no(self) -> str:
         """가상 주문번호 생성."""
         self._order_seq += 1
@@ -56,7 +74,7 @@ class PaperOrderManager:
         async with self._lock:
             self._active_orders[ticker] = True
             try:
-                qty_1st = int(total_qty * self._config.entry_1st_ratio)
+                qty_1st = max(1, int(total_qty * self._config.entry_1st_ratio))
                 order_no = self._next_order_no()
 
                 logger.info(
@@ -77,8 +95,8 @@ class PaperOrderManager:
                 # 텔레그램 알림
                 if self._notifier:
                     await self._notifier.send(
-                        f"[PAPER] 1차 매수 체결\n"
-                        f"종목: {ticker}\n"
+                        f"🟢 [PAPER] 1차 매수 체결\n"
+                        f"종목: {self._format_ticker(ticker)}\n"
                         f"가격: {price:,}원 x {qty_1st}주\n"
                         f"금액: {price * qty_1st:,}원"
                     )
@@ -93,17 +111,20 @@ class PaperOrderManager:
 
     async def execute_sell_tp1(self, ticker: str, price: int, remaining_qty: int, strategy: str = "unknown") -> dict | None:
         """1차 익절 시뮬레이션."""
-        sell_qty = int(remaining_qty * self._config.tp1_sell_ratio)
+        if remaining_qty <= 1:
+            sell_qty = remaining_qty  # 1주 보유 시 전량 매도
+        else:
+            sell_qty = max(1, int(remaining_qty * self._config.tp1_sell_ratio))
         return await self._simulate_order(ticker, sell_qty, price, "sell", reason="tp1", strategy=strategy)
 
-    async def execute_sell_stop(self, ticker: str, qty: int, strategy: str = "unknown") -> dict | None:
+    async def execute_sell_stop(self, ticker: str, qty: int, price: int = 0, strategy: str = "unknown") -> dict | None:
         """손절 시뮬레이션."""
-        return await self._simulate_order(ticker, qty, 0, "sell", reason="stop_loss", strategy=strategy)
+        return await self._simulate_order(ticker, qty, price, "sell", reason="stop_loss", strategy=strategy)
 
-    async def execute_sell_force_close(self, ticker: str, qty: int, strategy: str = "unknown") -> dict | None:
+    async def execute_sell_force_close(self, ticker: str, qty: int, price: int = 0, strategy: str = "unknown") -> dict | None:
         """강제 청산 시뮬레이션."""
         logger.warning(f"[PAPER] 강제 청산: {ticker} {qty}주")
-        return await self._simulate_order(ticker, qty, 0, "sell", reason="force_close", strategy=strategy)
+        return await self._simulate_order(ticker, qty, price, "sell", reason="force_close", strategy=strategy)
 
     async def _simulate_order(
         self, ticker: str, qty: int, price: int, side: str, reason: str = "", strategy: str = "unknown",
@@ -127,12 +148,37 @@ class PaperOrderManager:
             )
 
         if self._notifier:
-            await self._notifier.send(
-                f"[PAPER] {label} 체결\n"
-                f"종목: {ticker}\n"
-                f"가격: {price:,}원 x {qty}주\n"
-                f"사유: {reason or 'market'}"
-            )
+            if side == "sell":
+                # 매도: 포지션에서 진입가 조회 → 손익 표시
+                entry_price = 0
+                if self._risk_manager:
+                    pos = self._risk_manager.get_position(ticker)
+                    if pos:
+                        entry_price = pos.get("entry_price", 0)
+                pnl = (price - entry_price) * qty if entry_price > 0 else 0
+                pnl_pct = ((price / entry_price) - 1) * 100 if entry_price > 0 else 0
+                emoji = "🔴" if pnl < 0 else "🔵"
+                reason_map = {
+                    "stop_loss": "손절",
+                    "tp1": "1차 익절",
+                    "time_stop": "시간 손절",
+                    "force_close": "강제 청산",
+                    "trailing": "트레일링 스톱",
+                }
+                reason_text = reason_map.get(reason, reason or "market")
+                await self._notifier.send(
+                    f"{emoji} [PAPER] 매도 체결 ({reason_text})\n"
+                    f"종목: {self._format_ticker(ticker)}\n"
+                    f"가격: {price:,}원 x {qty}주\n"
+                    f"손익: {pnl:+,}원 ({pnl_pct:+.2f}%)"
+                )
+            else:
+                await self._notifier.send(
+                    f"🟢 [PAPER] 매수 체결\n"
+                    f"종목: {self._format_ticker(ticker)}\n"
+                    f"가격: {price:,}원 x {qty}주\n"
+                    f"금액: {price * qty:,}원"
+                )
 
         return {"order_no": order_no, "qty": qty}
 

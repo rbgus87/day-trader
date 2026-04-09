@@ -29,6 +29,24 @@ class OrderManager:
         self._active_orders: dict[str, bool] = {}
         self._order_queue: asyncio.Queue = order_queue or asyncio.Queue()
 
+        # 종목명 매핑 로드
+        self._name_map: dict[str, str] = {}
+        from pathlib import Path
+        import yaml
+        uni_path = Path("config/universe.yaml")
+        if uni_path.exists():
+            try:
+                uni = yaml.safe_load(open(uni_path, encoding="utf-8")) or {}
+                for s in uni.get("stocks", []):
+                    self._name_map[s["ticker"]] = s.get("name", s["ticker"])
+            except Exception:
+                pass
+
+    def _format_ticker(self, ticker: str) -> str:
+        """종목명(코드) 형식으로 변환."""
+        name = self._name_map.get(ticker, "")
+        return f"{name}({ticker})" if name else ticker
+
     async def execute_buy(self, ticker: str, price: int, total_qty: int, strategy: str = "unknown") -> dict | None:
         if ticker in self._active_orders:
             logger.warning(f"중복 주문 차단: {ticker}")
@@ -37,7 +55,7 @@ class OrderManager:
         async with self._lock:
             self._active_orders[ticker] = True
             try:
-                qty_1st = int(total_qty * self._config.entry_1st_ratio)
+                qty_1st = max(1, int(total_qty * self._config.entry_1st_ratio))
                 result = await self._rest_client.send_order(
                     ticker=ticker, qty=qty_1st, price=price,
                     side="buy", order_type="01",
@@ -66,15 +84,18 @@ class OrderManager:
         return await self._send_order(ticker, remaining_qty, price, "buy", strategy=strategy)
 
     async def execute_sell_tp1(self, ticker: str, price: int, remaining_qty: int, strategy: str = "unknown") -> dict | None:
-        sell_qty = int(remaining_qty * self._config.tp1_sell_ratio)
+        if remaining_qty <= 1:
+            sell_qty = remaining_qty  # 1주 보유 시 전량 매도
+        else:
+            sell_qty = max(1, int(remaining_qty * self._config.tp1_sell_ratio))
         return await self._send_order(ticker, sell_qty, price, "sell", order_type="01", reason="tp1", strategy=strategy)
 
-    async def execute_sell_stop(self, ticker: str, qty: int, strategy: str = "unknown") -> dict | None:
-        return await self._send_order(ticker, qty, 0, "sell", order_type="00", reason="stop_loss", strategy=strategy)
+    async def execute_sell_stop(self, ticker: str, qty: int, price: int = 0, strategy: str = "unknown") -> dict | None:
+        return await self._send_order(ticker, qty, price, "sell", order_type="00", reason="stop_loss", strategy=strategy)
 
-    async def execute_sell_force_close(self, ticker: str, qty: int, strategy: str = "unknown") -> dict | None:
+    async def execute_sell_force_close(self, ticker: str, qty: int, price: int = 0, strategy: str = "unknown") -> dict | None:
         logger.warning(f"강제 청산: {ticker} {qty}주")
-        return await self._send_order(ticker, qty, 0, "sell", order_type="00", reason="force_close", strategy=strategy)
+        return await self._send_order(ticker, qty, price, "sell", order_type="00", reason="force_close", strategy=strategy)
 
     async def _send_order(self, ticker, qty, price, side, order_type="01", reason: str = "", strategy: str = "unknown") -> dict | None:
         try:
@@ -99,7 +120,7 @@ class OrderManager:
         except Exception as e:
             logger.error(f"주문 예외: {e}")
             if self._notifier:
-                await self._notifier.send_urgent(f"주문 실패: {ticker} {side} {qty}주 — {e}")
+                await self._notifier.send_urgent(f"주문 실패: {self._format_ticker(ticker)} {side} {qty}주 — {e}")
             return None
 
     async def wait_for_confirmation(self, order_no: str) -> dict | None:

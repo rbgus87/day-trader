@@ -83,7 +83,7 @@ class TestPaperSell:
         await paper_om.execute_sell_force_close("005930", 100)
         msg = mock_notifier.send.call_args[0][0]
         assert "[PAPER]" in msg
-        assert "force_close" in msg
+        assert "강제 청산" in msg
 
     @pytest.mark.asyncio
     async def test_execute_sell_tp1(self, paper_om):

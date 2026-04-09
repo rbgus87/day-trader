@@ -488,7 +488,7 @@ class EngineWorker(QThread):
                 # 손절 체크
                 if self._risk_manager.check_stop_loss(ticker, price):
                     qty = pos["remaining_qty"]
-                    await self._order_manager.execute_sell_stop(ticker=ticker, qty=qty)
+                    await self._order_manager.execute_sell_stop(ticker=ticker, qty=qty, price=int(price))
                     pnl = (price - pos["entry_price"]) * qty
                     self._risk_manager.record_pnl(pnl)
                     self._risk_manager.remove_position(ticker)
@@ -529,7 +529,7 @@ class EngineWorker(QThread):
                     self._config.trading.time_stop_min_profit,
                 ):
                     qty = pos["remaining_qty"]
-                    await self._order_manager.execute_sell_force_close(ticker=ticker, qty=qty)
+                    await self._order_manager.execute_sell_force_close(ticker=ticker, qty=qty, price=int(price))
                     pnl = (price - pos["entry_price"]) * qty
                     self._risk_manager.record_pnl(pnl)
                     self._risk_manager.remove_position(ticker)
@@ -538,10 +538,6 @@ class EngineWorker(QThread):
                     else:
                         self._rt_losses += 1
                     logger.info(f"시간 손절: {ticker} {qty}주 @ {price:,} PnL={pnl:+,.0f}")
-                    if self._notifier:
-                        await self._notifier.send(
-                            f"⏰ 시간 손절: {ticker} {self._config.trading.time_stop_minutes}분 경과"
-                        )
                     self.signals.trade_executed.emit({
                         "time": datetime.now().strftime("%H:%M:%S"),
                         "side": "sell", "ticker": ticker,
@@ -786,8 +782,9 @@ class EngineWorker(QThread):
         logger.warning("15:10 강제 청산 시작")
         for ticker, pos in list(self._risk_manager.get_open_positions().items()):
             if pos.get("remaining_qty", 0) > 0:
+                close_price = int(self._latest_prices.get(ticker, pos.get("entry_price", 0)))
                 await self._order_manager.execute_sell_force_close(
-                    ticker=ticker, qty=pos["remaining_qty"],
+                    ticker=ticker, qty=pos["remaining_qty"], price=close_price,
                 )
         await self._candle_builder.flush()
         self._candle_builder.reset()
