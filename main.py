@@ -51,6 +51,19 @@ def _log_filter(record):
     return True
 
 
+_TRADE_KEYWORDS = re.compile(
+    r"매수|매도|체결|주문|청산|손절|TP1|트레일링|신호|포지션|손익|PnL|"
+    r"승률|TRADE-LIMIT|일일 실적|일일 손실|PAPER",
+    re.IGNORECASE,
+)
+
+
+def _trade_log_filter(record):
+    """매매 관련 로그만 trade.log에 기록."""
+    record["message"] = _mask_secrets(record["message"])
+    return bool(_TRADE_KEYWORDS.search(record["message"]))
+
+
 async def main():
     config = AppConfig.from_yaml()
 
@@ -68,6 +81,15 @@ async def main():
         level="DEBUG",
         encoding="utf-8",
         filter=_log_filter,
+        compression="zip",
+    )
+    logger.add(
+        "logs/trade.log",
+        rotation="5 MB",
+        retention=10,
+        level="INFO",
+        encoding="utf-8",
+        filter=_trade_log_filter,
         compression="zip",
     )
 
@@ -164,7 +186,7 @@ async def main():
             # 손절 체크
             if risk_manager.check_stop_loss(ticker, price):
                 qty = pos["remaining_qty"]
-                await order_manager.execute_sell_stop(ticker=ticker, qty=qty)
+                await order_manager.execute_sell_stop(ticker=ticker, qty=qty, price=int(price))
                 pnl = (price - pos["entry_price"]) * qty
                 risk_manager.record_pnl(pnl)
                 risk_manager.remove_position(ticker)
@@ -186,13 +208,11 @@ async def main():
                 config.trading.time_stop_min_profit,
             ):
                 qty = pos["remaining_qty"]
-                await order_manager.execute_sell_force_close(ticker=ticker, qty=qty)
+                await order_manager.execute_sell_force_close(ticker=ticker, qty=qty, price=int(price))
                 pnl = (price - pos["entry_price"]) * qty
                 risk_manager.record_pnl(pnl)
                 risk_manager.remove_position(ticker)
                 logger.info(f"시간 손절: {ticker} {qty}주 @ {price:,} PnL={pnl:+,.0f} ({config.trading.time_stop_minutes}분)")
-                if notifier:
-                    await notifier.send(f"⏰ 시간 손절: {ticker} {config.trading.time_stop_minutes}분 경과")
                 continue
             # 트레일링 스톱 갱신
             risk_manager.update_trailing_stop(ticker, price)
@@ -355,6 +375,7 @@ async def main():
             if pos.get("remaining_qty", 0) > 0:
                 await order_manager.execute_sell_force_close(
                     ticker=ticker, qty=pos["remaining_qty"],
+                    price=int(pos.get("entry_price", 0)),
                 )
         await candle_builder.flush()
         candle_builder.reset()

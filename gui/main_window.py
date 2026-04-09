@@ -1,6 +1,7 @@
 """메인 윈도우 — 좌측 사이드바 + 우측 5탭 레이아웃."""
 
 import ctypes
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -138,6 +139,29 @@ class MainWindow(QMainWindow):
                 retention=5,
                 level="DEBUG",
                 encoding="utf-8",
+                compression="zip",
+            )
+        except Exception:
+            pass
+
+        # 매매 전용 로그 (WS 트래픽에 밀리지 않도록 분리)
+        try:
+            _trade_kw = re.compile(
+                r"매수|매도|체결|주문|청산|손절|TP1|트레일링|신호|포지션|손익|PnL|"
+                r"승률|TRADE-LIMIT|일일 실적|일일 손실|PAPER",
+                re.IGNORECASE,
+            )
+
+            def _trade_filter(record):
+                return bool(_trade_kw.search(record["message"]))
+
+            logger.add(
+                "logs/trade.log",
+                rotation="5 MB",
+                retention=10,
+                level="INFO",
+                encoding="utf-8",
+                filter=_trade_filter,
                 compression="zip",
             )
         except Exception:

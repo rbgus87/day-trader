@@ -158,15 +158,44 @@ class KiwoomWebSocketClient:
                         last_ws_log = now_ws
                     reconnect_delay = self.RECONNECT_BASE_DELAY
                     self._reconnect_failures = 0
-                # async for 종료 = 연결 끊김
+                # async for 종료 = 연결 끊김 (서버가 정상 close)
                 logger.warning(f"[WS] 연결 끊김 — 수신 {ws_msg_count}건")
-            except Exception as e:
+                ws_msg_count = 0
+
                 if not self._running:
                     break
 
                 if not is_ws_active_hours():
                     logger.info("WS 끊김 — 장외 시간이므로 재연결 생략, 60초 후 재확인")
-                    await asyncio.sleep(60)
+                    while self._running and not is_ws_active_hours():
+                        await asyncio.sleep(60)
+                    if not self._running:
+                        break
+                    logger.info("장 시간 진입 — WS 재연결 시도")
+
+                try:
+                    await self._establish_connection()
+                    reconnect_delay = self.RECONNECT_BASE_DELAY
+                    self._reconnect_failures = 0
+                except Exception as e2:
+                    logger.error(f"재연결 실패: {e2}")
+            except Exception as e:
+                if not self._running:
+                    break
+
+                if not is_ws_active_hours():
+                    logger.info(f"WS 끊김({e}) — 장외 시간이므로 재연결 생략, 장 시간까지 대기")
+                    while self._running and not is_ws_active_hours():
+                        await asyncio.sleep(60)
+                    if not self._running:
+                        break
+                    logger.info("장 시간 진입 — WS 재연결 시도")
+                    try:
+                        await self._establish_connection()
+                        reconnect_delay = self.RECONNECT_BASE_DELAY
+                        self._reconnect_failures = 0
+                    except Exception as e2:
+                        logger.error(f"재연결 실패: {e2}")
                     continue
 
                 logger.warning(f"WS 연결 끊김: {e}, {reconnect_delay}초 후 재연결")
