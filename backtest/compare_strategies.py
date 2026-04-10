@@ -29,8 +29,14 @@ from strategy.big_candle_strategy import BigCandleStrategy
 from strategy.flow_strategy import FlowStrategy
 
 
-STRATEGY_KEYS = ["Momentum", "Pullback", "Flow", "Gap", "OpenBreak", "BigCandle"]
-SHORT_KEYS = ["M", "P", "F", "G", "O", "B"]
+STRATEGY_NAME_MAP = {
+    "momentum": "Momentum",
+    "pullback": "Pullback",
+    "flow": "Flow",
+    "gap": "Gap",
+    "open_break": "OpenBreak",
+    "big_candle": "BigCandle",
+}
 
 
 async def main() -> None:
@@ -38,6 +44,10 @@ async def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--start", default="2026-01-01")
     parser.add_argument("--end", default="2026-03-23")
+    parser.add_argument(
+        "--strategy", default="all",
+        help="단일 전략만 테스트 (momentum/pullback/flow/gap/open_break/big_candle/all)",
+    )
     args = parser.parse_args()
 
     logger.remove()
@@ -67,8 +77,24 @@ async def main() -> None:
         backtest_config=backtest_config,
     )
 
+    # 전략 필터링
+    all_strategy_names = ["Momentum", "Pullback", "Flow", "Gap", "OpenBreak", "BigCandle"]
+    if args.strategy == "all":
+        STRATEGY_KEYS = all_strategy_names
+    else:
+        target = STRATEGY_NAME_MAP.get(args.strategy.lower())
+        if not target:
+            print(f"Unknown strategy: {args.strategy}")
+            print(f"Available: {', '.join(STRATEGY_NAME_MAP.keys())}")
+            return
+        STRATEGY_KEYS = [target]
+    SHORT_KEYS = [s[:3].upper() for s in STRATEGY_KEYS]
+
+    n_strat = len(STRATEGY_KEYS)
+    label = f"{n_strat}-Strategy Comparison" if n_strat > 1 else f"{STRATEGY_KEYS[0]} Single"
+
     print("=" * 120)
-    print(f"  5-Strategy Comparison Backtest")
+    print(f"  {label} Backtest")
     print(f"  Period: {args.start} ~ {args.end}")
     print(f"  Universe: {len(stocks)} stocks")
     print(f"  Cost: commission={backtest_config.commission*100:.3f}% tax={backtest_config.tax*100:.2f}% slippage={backtest_config.slippage*100:.3f}%")
@@ -100,7 +126,7 @@ async def main() -> None:
         row = f"{name}({ticker})"
         row = f"{row:<20}"
 
-        strategies = {
+        all_strategies = {
             "Momentum": MomentumStrategy(trading_config),
             "Pullback": PullbackStrategy(trading_config),
             "Flow": FlowStrategy(trading_config),
@@ -108,6 +134,7 @@ async def main() -> None:
             "OpenBreak": OpenBreakStrategy(trading_config),
             "BigCandle": BigCandleStrategy(trading_config),
         }
+        strategies = {k: all_strategies[k] for k in STRATEGY_KEYS}
 
         for sname, strategy in strategies.items():
             kpi = await bt.run_multi_day(ticker, args.start, args.end, strategy)
