@@ -600,6 +600,7 @@ class MainWindow(QMainWindow):
             "daily_pnl_pct": status.get("daily_pnl_pct", 0),
             "trades_count": status.get("trades_count", 0),
             "max_trades": status.get("max_trades", 5),
+            "open_positions_count": status.get("open_positions_count", 0),
             "wins": status.get("wins", 0),
             "losses": status.get("losses", 0),
             "win_rate": status.get("win_rate", 0),

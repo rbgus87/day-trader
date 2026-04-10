@@ -489,9 +489,7 @@ class EngineWorker(QThread):
                 if self._risk_manager.check_stop_loss(ticker, price):
                     qty = pos["remaining_qty"]
                     await self._order_manager.execute_sell_stop(ticker=ticker, qty=qty, price=int(price))
-                    pnl = (price - pos["entry_price"]) * qty
-                    self._risk_manager.record_pnl(pnl)
-                    self._risk_manager.remove_position(ticker)
+                    pnl = self._risk_manager.settle_sell(ticker, price, qty)
                     if pnl >= 0:
                         self._rt_wins += 1
                     else:
@@ -511,8 +509,7 @@ class EngineWorker(QThread):
                         ticker=ticker, price=int(price), remaining_qty=pos["remaining_qty"],
                     )
                     pnl = (price - pos["entry_price"]) * sell_qty
-                    self._risk_manager.record_pnl(pnl)
-                    self._risk_manager.mark_tp1_hit(ticker, sell_qty)
+                    self._risk_manager.mark_tp1_hit(ticker, sell_qty, sell_price=price)
                     self._rt_wins += 1
                     logger.info(f"TP1 실행: {ticker} {sell_qty}주 @ {price:,} PnL={pnl:+,.0f}")
                     self.signals.trade_executed.emit({
@@ -530,9 +527,7 @@ class EngineWorker(QThread):
                 ):
                     qty = pos["remaining_qty"]
                     await self._order_manager.execute_sell_force_close(ticker=ticker, qty=qty, price=int(price))
-                    pnl = (price - pos["entry_price"]) * qty
-                    self._risk_manager.record_pnl(pnl)
-                    self._risk_manager.remove_position(ticker)
+                    pnl = self._risk_manager.settle_sell(ticker, price, qty)
                     if pnl >= 0:
                         self._rt_wins += 1
                     else:
@@ -652,6 +647,11 @@ class EngineWorker(QThread):
                     max_qty = int(position_capital * 0.3 / signal.price)
                 total_qty = int(max_qty * self._risk_manager.position_scale)
                 total_qty = max(total_qty, 1)
+
+                cost = signal.price * total_qty
+                if cost > self._risk_manager.available_capital:
+                    logger.warning(f"자본 부족 — 매수 스킵: {signal.ticker} 필요={cost:,.0f} 가용={self._risk_manager.available_capital:,.0f}")
+                    continue
 
                 result = await self._order_manager.execute_buy(
                     ticker=signal.ticker,
@@ -786,6 +786,7 @@ class EngineWorker(QThread):
                 await self._order_manager.execute_sell_force_close(
                     ticker=ticker, qty=pos["remaining_qty"], price=close_price,
                 )
+                self._risk_manager.settle_sell(ticker, float(close_price), pos["remaining_qty"])
         await self._candle_builder.flush()
         self._candle_builder.reset()
         await self._risk_manager.save_daily_summary()

@@ -43,6 +43,9 @@ class RiskManager:
             "entry_time": datetime.now(),
             "strategy": strategy,
         }
+        # 자본 차감
+        cost = entry_price * qty
+        self._daily_capital -= cost
 
     def remove_position(self, ticker: str) -> None:
         self._positions.pop(ticker, None)
@@ -90,12 +93,30 @@ class RiskManager:
         profit_pct = (current_price - pos["entry_price"]) / pos["entry_price"]
         return profit_pct < min_profit
 
-    def mark_tp1_hit(self, ticker: str, sold_qty: int) -> None:
+    def settle_sell(self, ticker: str, sell_price: float, sell_qty: int) -> float:
+        """매도 정산 — 자본 복구 + PnL 반환."""
+        pos = self._positions.get(ticker)
+        if not pos:
+            return 0.0
+        entry_price = pos["entry_price"]
+        proceeds = sell_price * sell_qty
+        pnl = (sell_price - entry_price) * sell_qty
+        self._daily_capital += proceeds
+        self._daily_pnl += pnl
+        pos["remaining_qty"] -= sell_qty
+        if pos["remaining_qty"] <= 0:
+            self._positions.pop(ticker, None)
+        return pnl
+
+    def mark_tp1_hit(self, ticker: str, sold_qty: int, sell_price: float = 0) -> None:
         pos = self._positions.get(ticker)
         if pos:
             pos["tp1_hit"] = True
             pos["remaining_qty"] -= sold_qty
             pos["stop_loss"] = pos["entry_price"]
+            if sell_price > 0:
+                self._daily_capital += sell_price * sold_qty
+                self._daily_pnl += (sell_price - pos["entry_price"]) * sold_qty
 
     def is_trading_halted(self) -> bool:
         if self._halted:
