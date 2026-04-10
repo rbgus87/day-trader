@@ -18,16 +18,16 @@ trading:
   reduced_position_pct: 0.5         # 연속 손실 시 포지션 50%로 축소
 
   # 익절
-  tp1_pct: 0.04                     # 1차 익절 +4% (노이즈 손절 방지 위해 3%→4%)
+  tp1_pct: 0.06                     # 1차 익절 +6% (백테스트 최적: PF 1.11)
   tp1_sell_ratio: 0.5               # 1차 익절 시 50% 매도
   trailing_stop_pct: 0.01           # 고점 대비 -1% 트레일링 스톱
 
   # 진입 (멀티 종목 모델)
   entry_1st_ratio: 0.55             # 1차 매수 비율 55%
-  max_trades_per_day: 1             # 종목당 1회
+  max_trades_per_day: 2             # 종목당 1회
   max_positions: 3                  # 동시 포지션 최대 3개
   screening_top_n: 5                # 스크리닝 상위 5종목 감시
-  cooldown_minutes: 999             # 사실상 재진입 금지
+  cooldown_minutes: 120             # 사실상 재진입 금지
 
   # 시간 손절
   time_stop_minutes: 60             # 진입 후 60분
@@ -59,7 +59,7 @@ strategy:
   # 모멘텀 브레이크아웃 — 전일 고점 돌파 + 거래량 200%
   momentum:
     volume_ratio: 2.0               # 전일 대비 거래량 200%
-    stop_loss_pct: -0.020           # 손절 -2.0% (-0.8%는 노이즈 손절 유발)
+    stop_loss_pct: -0.030           # 손절 -3.0% (백테스트 최적: PF 1.00 손익분기)
     trailing_stop_pct: 0.015        # TP1 후 -1.5% 트레일링
     # vwap_filter: false            # 4회 실험 결과 개선 효과 없음
     # retest_band_pct: 0.008        # 향후 틱 백테스터에서 재검증용
