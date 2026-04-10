@@ -83,21 +83,33 @@ class OrderManager:
     async def execute_buy_2nd(self, ticker: str, price: int, remaining_qty: int, strategy: str = "unknown") -> dict | None:
         return await self._send_order(ticker, remaining_qty, price, "buy", strategy=strategy)
 
-    async def execute_sell_tp1(self, ticker: str, price: int, remaining_qty: int, strategy: str = "unknown") -> dict | None:
+    async def execute_sell_tp1(
+        self, ticker: str, price: int, remaining_qty: int,
+        strategy: str = "unknown", pnl: float | None = None, pnl_pct: float | None = None,
+    ) -> dict | None:
         if remaining_qty <= 1:
             sell_qty = remaining_qty  # 1주 보유 시 전량 매도
         else:
             sell_qty = max(1, int(remaining_qty * self._config.tp1_sell_ratio))
-        return await self._send_order(ticker, sell_qty, price, "sell", order_type="01", reason="tp1", strategy=strategy)
+        return await self._send_order(ticker, sell_qty, price, "sell", order_type="01", reason="tp1", strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
 
-    async def execute_sell_stop(self, ticker: str, qty: int, price: int = 0, strategy: str = "unknown") -> dict | None:
-        return await self._send_order(ticker, qty, price, "sell", order_type="00", reason="stop_loss", strategy=strategy)
+    async def execute_sell_stop(
+        self, ticker: str, qty: int, price: int = 0,
+        strategy: str = "unknown", pnl: float | None = None, pnl_pct: float | None = None,
+    ) -> dict | None:
+        return await self._send_order(ticker, qty, price, "sell", order_type="00", reason="stop_loss", strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
 
-    async def execute_sell_force_close(self, ticker: str, qty: int, price: int = 0, strategy: str = "unknown") -> dict | None:
+    async def execute_sell_force_close(
+        self, ticker: str, qty: int, price: int = 0,
+        strategy: str = "unknown", pnl: float | None = None, pnl_pct: float | None = None,
+    ) -> dict | None:
         logger.warning(f"강제 청산: {ticker} {qty}주")
-        return await self._send_order(ticker, qty, price, "sell", order_type="00", reason="force_close", strategy=strategy)
+        return await self._send_order(ticker, qty, price, "sell", order_type="00", reason="force_close", strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
 
-    async def _send_order(self, ticker, qty, price, side, order_type="01", reason: str = "", strategy: str = "unknown") -> dict | None:
+    async def _send_order(
+        self, ticker, qty, price, side, order_type="01", reason: str = "",
+        strategy: str = "unknown", pnl: float | None = None, pnl_pct: float | None = None,
+    ) -> dict | None:
         try:
             result = await self._rest_client.send_order(
                 ticker=ticker, qty=qty, price=price,
@@ -110,9 +122,9 @@ class OrderManager:
                     now = datetime.now().isoformat()
                     await self._db.execute_safe(
                         "INSERT INTO trades (ticker, strategy, side, order_type, "
-                        "price, qty, amount, exit_reason, traded_at) "
-                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        (ticker, strategy, side, order_type, price, qty, price * qty, reason, now),
+                        "price, qty, amount, pnl, pnl_pct, exit_reason, traded_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (ticker, strategy, side, order_type, price, qty, price * qty, pnl, pnl_pct, reason, now),
                     )
                 return {"order_no": result["output"]["ODNO"], "qty": qty}
             logger.error(f"주문 실패: {result}")

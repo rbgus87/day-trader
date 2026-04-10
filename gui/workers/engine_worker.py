@@ -488,8 +488,14 @@ class EngineWorker(QThread):
                 # 손절 체크
                 if self._risk_manager.check_stop_loss(ticker, price):
                     qty = pos["remaining_qty"]
-                    await self._order_manager.execute_sell_stop(ticker=ticker, qty=qty, price=int(price))
-                    pnl = self._risk_manager.settle_sell(ticker, price, qty)
+                    entry = pos["entry_price"]
+                    pnl = (price - entry) * qty
+                    pnl_pct = ((price / entry) - 1) * 100 if entry > 0 else 0
+                    await self._order_manager.execute_sell_stop(
+                        ticker=ticker, qty=qty, price=int(price),
+                        pnl=pnl, pnl_pct=pnl_pct,
+                    )
+                    self._risk_manager.settle_sell(ticker, price, qty)
                     if pnl >= 0:
                         self._rt_wins += 1
                     else:
@@ -508,10 +514,13 @@ class EngineWorker(QThread):
                 # TP1 체크
                 if self._risk_manager.check_tp1(ticker, price):
                     sell_qty = int(pos["remaining_qty"] * self._config.trading.tp1_sell_ratio)
+                    entry = pos["entry_price"]
+                    pnl = (price - entry) * sell_qty
+                    pnl_pct = ((price / entry) - 1) * 100 if entry > 0 else 0
                     await self._order_manager.execute_sell_tp1(
                         ticker=ticker, price=int(price), remaining_qty=pos["remaining_qty"],
+                        pnl=pnl, pnl_pct=pnl_pct,
                     )
-                    pnl = (price - pos["entry_price"]) * sell_qty
                     self._risk_manager.mark_tp1_hit(ticker, sell_qty, sell_price=price)
                     self._rt_wins += 1
                     logger.info(f"TP1 실행: {ticker} {sell_qty}주 @ {price:,} PnL={pnl:+,.0f}")
@@ -529,8 +538,14 @@ class EngineWorker(QThread):
                     self._config.trading.time_stop_min_profit,
                 ):
                     qty = pos["remaining_qty"]
-                    await self._order_manager.execute_sell_force_close(ticker=ticker, qty=qty, price=int(price))
-                    pnl = self._risk_manager.settle_sell(ticker, price, qty)
+                    entry = pos["entry_price"]
+                    pnl = (price - entry) * qty
+                    pnl_pct = ((price / entry) - 1) * 100 if entry > 0 else 0
+                    await self._order_manager.execute_sell_force_close(
+                        ticker=ticker, qty=qty, price=int(price),
+                        pnl=pnl, pnl_pct=pnl_pct,
+                    )
+                    self._risk_manager.settle_sell(ticker, price, qty)
                     if pnl >= 0:
                         self._rt_wins += 1
                     else:
@@ -790,10 +805,15 @@ class EngineWorker(QThread):
         for ticker, pos in list(self._risk_manager.get_open_positions().items()):
             if pos.get("remaining_qty", 0) > 0:
                 close_price = int(self._latest_prices.get(ticker, pos.get("entry_price", 0)))
+                qty = pos["remaining_qty"]
+                entry = pos.get("entry_price", 0)
+                pnl = (close_price - entry) * qty if entry > 0 else 0
+                pnl_pct = ((close_price / entry) - 1) * 100 if entry > 0 else 0
                 await self._order_manager.execute_sell_force_close(
-                    ticker=ticker, qty=pos["remaining_qty"], price=close_price,
+                    ticker=ticker, qty=qty, price=close_price,
+                    pnl=pnl, pnl_pct=pnl_pct,
                 )
-                self._risk_manager.settle_sell(ticker, float(close_price), pos["remaining_qty"])
+                self._risk_manager.settle_sell(ticker, float(close_price), qty)
         await self._candle_builder.flush()
         self._candle_builder.reset()
         await self._risk_manager.save_daily_summary()

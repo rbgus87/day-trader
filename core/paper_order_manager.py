@@ -109,25 +109,35 @@ class PaperOrderManager:
         """2차 매수 시뮬레이션."""
         return await self._simulate_order(ticker, remaining_qty, price, "buy", strategy=strategy)
 
-    async def execute_sell_tp1(self, ticker: str, price: int, remaining_qty: int, strategy: str = "unknown") -> dict | None:
+    async def execute_sell_tp1(
+        self, ticker: str, price: int, remaining_qty: int,
+        strategy: str = "unknown", pnl: float | None = None, pnl_pct: float | None = None,
+    ) -> dict | None:
         """1차 익절 시뮬레이션."""
         if remaining_qty <= 1:
             sell_qty = remaining_qty  # 1주 보유 시 전량 매도
         else:
             sell_qty = max(1, int(remaining_qty * self._config.tp1_sell_ratio))
-        return await self._simulate_order(ticker, sell_qty, price, "sell", reason="tp1", strategy=strategy)
+        return await self._simulate_order(ticker, sell_qty, price, "sell", reason="tp1", strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
 
-    async def execute_sell_stop(self, ticker: str, qty: int, price: int = 0, strategy: str = "unknown") -> dict | None:
+    async def execute_sell_stop(
+        self, ticker: str, qty: int, price: int = 0,
+        strategy: str = "unknown", pnl: float | None = None, pnl_pct: float | None = None,
+    ) -> dict | None:
         """손절 시뮬레이션."""
-        return await self._simulate_order(ticker, qty, price, "sell", reason="stop_loss", strategy=strategy)
+        return await self._simulate_order(ticker, qty, price, "sell", reason="stop_loss", strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
 
-    async def execute_sell_force_close(self, ticker: str, qty: int, price: int = 0, strategy: str = "unknown") -> dict | None:
+    async def execute_sell_force_close(
+        self, ticker: str, qty: int, price: int = 0,
+        strategy: str = "unknown", pnl: float | None = None, pnl_pct: float | None = None,
+    ) -> dict | None:
         """강제 청산 시뮬레이션."""
         logger.warning(f"[PAPER] 강제 청산: {ticker} {qty}주")
-        return await self._simulate_order(ticker, qty, price, "sell", reason="force_close", strategy=strategy)
+        return await self._simulate_order(ticker, qty, price, "sell", reason="force_close", strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
 
     async def _simulate_order(
-        self, ticker: str, qty: int, price: int, side: str, reason: str = "", strategy: str = "unknown",
+        self, ticker: str, qty: int, price: int, side: str, reason: str = "",
+        strategy: str = "unknown", pnl: float | None = None, pnl_pct: float | None = None,
     ) -> dict | None:
         """주문 시뮬레이션 공통 로직."""
         order_no = self._next_order_no()
@@ -142,9 +152,9 @@ class PaperOrderManager:
             now = datetime.now().isoformat()
             await self._db.execute_safe(
                 "INSERT INTO trades (ticker, strategy, side, order_type, "
-                "price, qty, amount, exit_reason, traded_at) "
-                "VALUES (?, ?, ?, 'market', ?, ?, ?, ?, ?)",
-                (ticker, strategy, side, price, qty, price * qty, reason, now),
+                "price, qty, amount, pnl, pnl_pct, exit_reason, traded_at) "
+                "VALUES (?, ?, ?, 'market', ?, ?, ?, ?, ?, ?, ?)",
+                (ticker, strategy, side, price, qty, price * qty, pnl, pnl_pct, reason, now),
             )
 
         if self._notifier:
