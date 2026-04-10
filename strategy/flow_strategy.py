@@ -17,6 +17,7 @@ class FlowStrategy(BaseStrategy):
     """수급추종 전략 — 거래량 급증 + 가격 상승 + VWAP 필터."""
 
     def __init__(self, config: TradingConfig) -> None:
+        super().__init__()
         self._config = config
         self._volume_history: list[int] = []
         self._volume_surge_ratio = config.flow_volume_surge_ratio

@@ -24,12 +24,14 @@ class BaseStrategy(ABC):
     BLOCK_UNTIL = time(9, 5)
     MARKET_CLOSE = time(15, 20)
 
-    _backtest_time: time | None = None
-    _trade_count: int = 0
-    _max_trades: int = 5
-    _cooldown_minutes: int = 10
-    _last_exit_time: datetime | None = None
-    _has_position: bool = False
+    def __init__(self) -> None:
+        """모든 인스턴스 변수 초기화 — 클래스 변수 공유 방지."""
+        self._trade_count: int = 0
+        self._max_trades: int = 5
+        self._cooldown_minutes: int = 10
+        self._last_exit_time: datetime | None = None
+        self._has_position: bool = False
+        self._backtest_time: time | None = None
 
     def configure_multi_trade(
         self, max_trades: int = 5, cooldown_minutes: int = 10,

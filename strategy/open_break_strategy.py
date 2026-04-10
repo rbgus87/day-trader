@@ -16,6 +16,7 @@ class OpenBreakStrategy(BaseStrategy):
     """시가 + break_pct 돌파 + 전일 대비 거래량 확인 후 매수."""
 
     def __init__(self, config: TradingConfig) -> None:
+        super().__init__()
         self._config = config
         self._prev_day_volume: int = 0
         # 신호 시작 시각 파싱

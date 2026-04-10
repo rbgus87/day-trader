@@ -23,6 +23,7 @@ class BigCandleStrategy(BaseStrategy):
     ATR_PERIOD = 10
 
     def __init__(self, config: TradingConfig) -> None:
+        super().__init__()
         self._config = config
         self._state: str = STATE_SCANNING
         self._big_candle_high: float = 0.0

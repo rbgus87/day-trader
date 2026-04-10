@@ -495,6 +495,9 @@ class EngineWorker(QThread):
                     else:
                         self._rt_losses += 1
                     logger.info(f"손절 실행: {ticker} {qty}주 @ {price:,} PnL={pnl:+,.0f}")
+                    strat_info = self._active_strategies.get(ticker)
+                    if strat_info:
+                        strat_info["strategy"].on_exit()
                     self.signals.trade_executed.emit({
                         "time": datetime.now().strftime("%H:%M:%S"),
                         "side": "sell", "ticker": ticker,
@@ -533,6 +536,9 @@ class EngineWorker(QThread):
                     else:
                         self._rt_losses += 1
                     logger.info(f"시간 손절: {ticker} {qty}주 @ {price:,} PnL={pnl:+,.0f}")
+                    strat_info = self._active_strategies.get(ticker)
+                    if strat_info:
+                        strat_info["strategy"].on_exit()
                     self.signals.trade_executed.emit({
                         "time": datetime.now().strftime("%H:%M:%S"),
                         "side": "sell", "ticker": ticker,
@@ -674,6 +680,7 @@ class EngineWorker(QThread):
                         trailing_pct=trailing,
                         strategy=signal.strategy or "",
                     )
+                    strategy.on_entry()
                     self.signals.trade_executed.emit({
                         "time": datetime.now().strftime("%H:%M:%S"),
                         "side": "buy",

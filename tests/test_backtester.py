@@ -215,6 +215,7 @@ class _MockBuyStrategy(BaseStrategy):
     """첫 번째 캔들에서 항상 매수 신호를 발생하는 목(mock) 전략."""
 
     def __init__(self, config: TradingConfig):
+        super().__init__()
         self._config = config
         self._fired = False
 

@@ -14,6 +14,7 @@ class GapStrategy(BaseStrategy):
     """갭업 확인 후 첫 양봉 매수."""
 
     def __init__(self, config: TradingConfig) -> None:
+        super().__init__()
         self._config = config
         self._prev_close: float = 0.0
         self._signaled_today: bool = False

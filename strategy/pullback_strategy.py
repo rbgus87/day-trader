@@ -22,6 +22,7 @@ class PullbackStrategy(BaseStrategy):
     MA_TOUCH_BAND = 0.005  # ±0.5%
 
     def __init__(self, config: TradingConfig):
+        super().__init__()
         self._config = config
         self._open_price: float | None = None
         self.configure_multi_trade(

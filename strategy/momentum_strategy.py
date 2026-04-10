@@ -15,6 +15,7 @@ class MomentumStrategy(BaseStrategy):
     """전일 고점 돌파 + 거래량 확인 + VWAP 필터 후 매수."""
 
     def __init__(self, config: TradingConfig) -> None:
+        super().__init__()
         self._config = config
         self._prev_day_high: float = 0.0
         self._prev_day_volume: int = 0
