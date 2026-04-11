@@ -18,9 +18,9 @@ trading:
   reduced_position_pct: 0.5         # 연속 손실 시 포지션 50%로 축소
 
   # 익절
-  tp1_pct: 0.06                     # 1차 익절 +6% (백테스트 최적: PF 1.11)
+  tp1_pct: 0.16                     # 1차 익절 +16% (사실상 전량 트레일링, 백테스트 최적: PF 1.22)
   tp1_sell_ratio: 0.5               # 1차 익절 시 50% 매도
-  trailing_stop_pct: 0.01           # 고점 대비 -1% 트레일링 스톱
+  trailing_stop_pct: 0.005
 
   # 진입 (멀티 종목 모델)
   entry_1st_ratio: 0.55             # 1차 매수 비율 55%
@@ -60,7 +60,7 @@ strategy:
   momentum:
     volume_ratio: 2.0               # 전일 대비 거래량 200%
     stop_loss_pct: -0.030           # 손절 -3.0% (백테스트 최적: PF 1.00 손익분기)
-    trailing_stop_pct: 0.015        # TP1 후 -1.5% 트레일링
+    trailing_stop_pct: 0.005
     # vwap_filter: false            # 4회 실험 결과 개선 효과 없음
     # retest_band_pct: 0.008        # 향후 틱 백테스터에서 재검증용
     # retest_timeout_minutes: 45

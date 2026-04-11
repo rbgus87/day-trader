@@ -1,9 +1,9 @@
-"""트레일링 스톱 그리드 서치 — config.yaml 자동 수정 + 백테스트 반복."""
+"""트레일링 스톱 타이트 그리드 서치 — 0.5~1.2% 범위 세밀 탐색."""
 import subprocess
 import sys
 from pathlib import Path
 
-GRID_VALUES = [0.010, 0.015, 0.020, 0.025, 0.030]
+GRID_VALUES = [0.005, 0.007, 0.010, 0.015, 0.020]
 START_DATE = "2025-05-07"
 END_DATE = "2026-04-10"
 CONFIG_PATH = Path("config.yaml")
@@ -55,7 +55,6 @@ def parse_result(output: str) -> dict:
     for line in output.split("\n"):
         if "Momentum" in line and "|" in line and "Single" not in line:
             parts = [p.strip() for p in line.split("|")]
-            # parts: ['', 'Momentum', '616', '1.05', '+32,193', '28', '']
             for part in parts:
                 tokens = part.split()
                 if len(tokens) >= 1 and tokens[0] == "Momentum":
@@ -97,11 +96,10 @@ def main():
     RESULT_DIR.mkdir(exist_ok=True)
     results = []
 
-    # 원래 값 백업
     original_text = CONFIG_PATH.read_text(encoding="utf-8")
 
     print("=" * 70)
-    print("Trailing Stop Grid Search")
+    print("Trailing Stop Tight Grid Search")
     print(f"Period: {START_DATE} ~ {END_DATE}")
     print(f"Values: {[f'-{v*100:.1f}%' for v in GRID_VALUES]}")
     print("=" * 70)
@@ -111,13 +109,20 @@ def main():
             print(f"\n[{i}/{len(GRID_VALUES)}] trailing -{trail*100:.1f}% ...")
 
             update_config(trail)
+            # 적용 확인
+            verify = subprocess.run(
+                [sys.executable, "-c",
+                 "from config.settings import AppConfig; "
+                 "c = AppConfig.from_yaml().trading; "
+                 "print(f'common={c.trailing_stop_pct}, momentum={c.momentum_trailing_stop_pct}')"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+            )
+            print(f"  verify: {(verify.stdout or '').strip()}")
             output = run_backtest()
 
-            # 결과 파일 저장
-            result_file = RESULT_DIR / f"trailing_{trail*100:.1f}.txt"
+            result_file = RESULT_DIR / f"trailing_tight_{trail*100:.1f}.txt"
             result_file.write_text(output, encoding="utf-8")
 
-            # 파싱
             r = parse_result(output)
             r["trailing"] = trail
             results.append(r)
@@ -125,13 +130,11 @@ def main():
             print(f"  trades={r['trades']}, PF={r['pf']:.2f}, PnL={r['pnl']:+,}, PF>1={r['pf_above_1']}")
 
     finally:
-        # 원래 config 복원
         CONFIG_PATH.write_text(original_text, encoding="utf-8")
         print("\n(config.yaml restored)")
 
-    # 최종 표 출력
     print("\n" + "=" * 70)
-    print("Trailing Stop Grid Search Results")
+    print("Trailing Stop Tight Grid Search Results")
     print("=" * 70)
     print(f"{'Trailing':<10} {'Trades':>6} {'PF':>6} {'Total PnL':>12} {'PF>1.0':>10}")
     print("-" * 50)
@@ -139,7 +142,6 @@ def main():
         pf_str = f"{r['pf']:.2f}" if r["pf"] < 100 else "INF"
         print(f"-{r['trailing']*100:>4.1f}%    {r['trades']:>6} {pf_str:>6} {r['pnl']:>+12,} {r['pf_above_1']:>10}")
 
-    # 최적값
     best = max(results, key=lambda x: x["pnl"])
     print()
     print(f"Best: trailing -{best['trailing']*100:.1f}% (PF {best['pf']:.2f}, PnL {best['pnl']:+,})")
