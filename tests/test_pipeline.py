@@ -37,7 +37,7 @@ async def test_pipeline_candle_to_strategy():
     from unittest.mock import patch
     from datetime import time
 
-    strat = MomentumStrategy(TradingConfig())
+    strat = MomentumStrategy(TradingConfig(adx_enabled=False))
     strat.set_prev_day_data(high=70000, volume=100_000)
     strat.configure_multi_trade(max_trades=5, cooldown_minutes=0)
     strat.set_backtest_time(time(10, 0))

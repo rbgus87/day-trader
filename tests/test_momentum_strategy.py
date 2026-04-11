@@ -14,7 +14,7 @@ from strategy.momentum_strategy import MomentumStrategy
 # ---------------------------------------------------------------------------
 
 def make_config(**overrides) -> TradingConfig:
-    defaults = dict(momentum_volume_ratio=2.0, tp1_pct=0.03, trailing_stop_pct=0.01)
+    defaults = dict(momentum_volume_ratio=2.0, tp1_pct=0.03, trailing_stop_pct=0.01, adx_enabled=False)
     defaults.update(overrides)
     return TradingConfig(**defaults)
 

@@ -61,6 +61,9 @@ strategy:
     volume_ratio: 2.0               # 전일 대비 거래량 200%
     stop_loss_pct: -0.030           # 손절 -3.0% (백테스트 최적: PF 1.00 손익분기)
     trailing_stop_pct: 0.005
+    adx_enabled: true               # ADX 추세 필터
+    adx_length: 14                  # ADX 계산 기간
+    adx_min: 25                     # 최소 ADX (25 이상만 진입)
     # vwap_filter: false            # 4회 실험 결과 개선 효과 없음
     # retest_band_pct: 0.008        # 향후 틱 백테스터에서 재검증용
     # retest_timeout_minutes: 45

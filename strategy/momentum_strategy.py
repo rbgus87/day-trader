@@ -57,6 +57,10 @@ class MomentumStrategy(BaseStrategy):
         if last_close <= self._prev_day_high:
             return None
 
+        # 4) ADX 추세 필터
+        if self._config.adx_enabled and not self._check_adx(candles):
+            return None
+
         logger.info(
             f"모멘텀 매수 신호: {tick['ticker']} price={current_price} "
             f"prev_high={self._prev_day_high} cum_vol={cum_volume:,.0f}"
@@ -69,6 +73,28 @@ class MomentumStrategy(BaseStrategy):
             strategy="momentum",
             reason=f"전일 고점({self._prev_day_high:,.0f}) 돌파 + 거래량 {self._config.momentum_volume_ratio:.1f}배 확인",
         )
+
+    def _check_adx(self, candles: pd.DataFrame) -> bool:
+        """ADX 추세 강도 필터. 캔들 부족 또는 계산 실패 시 False."""
+        min_candles = self._config.adx_length + 20
+        if len(candles) < min_candles:
+            return False
+        try:
+            import pandas_ta as ta
+            df = candles.tail(min_candles)
+            adx_result = ta.adx(df["high"], df["low"], df["close"], length=self._config.adx_length)
+            if adx_result is None or adx_result.empty:
+                return False
+            adx_col = f"ADX_{self._config.adx_length}"
+            if adx_col not in adx_result.columns:
+                return False
+            current_adx = adx_result[adx_col].iloc[-1]
+            if pd.isna(current_adx):
+                return False
+            return current_adx >= self._config.adx_min
+        except Exception as e:
+            logger.warning(f"ADX 계산 실패: {e}")
+            return False
 
     def get_stop_loss(self, entry_price: float) -> float:
         """손절가: 진입가 × (1 + momentum_stop_loss_pct)."""

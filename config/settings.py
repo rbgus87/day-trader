@@ -90,6 +90,9 @@ class TradingConfig:
     momentum_volume_ratio: float = 2.0
     momentum_stop_loss_pct: float = -0.008
     momentum_trailing_stop_pct: float = 0.015
+    adx_enabled: bool = True
+    adx_length: int = 14
+    adx_min: float = 25.0
     # DEPRECATED: 리테스트/VWAP 필터 — 4회 실험 결과 개선 효과 없음
     momentum_retest_band_pct: float = 0.008
     momentum_retest_timeout_min: int = 45
@@ -231,6 +234,9 @@ class AppConfig:
             momentum_retest_band_pct=mom.get("retest_band_pct", 0.008),
             momentum_retest_timeout_min=mom.get("retest_timeout_minutes", 45),
             momentum_vwap_filter=mom.get("vwap_filter", True),
+            adx_enabled=mom.get("adx_enabled", True),
+            adx_length=mom.get("adx_length", 14),
+            adx_min=mom.get("adx_min", 25.0),
             pullback_min_gain_pct=pb.get("min_gain_pct", 0.04),
             pullback_stop_loss_pct=pb.get("stop_loss_pct", -0.018),
             pullback_ma_short=pb.get("ma_short", 10),
