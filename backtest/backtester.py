@@ -468,6 +468,34 @@ class Backtester:
         )
         return kpi
 
+    async def run_multi_day_cached(
+        self,
+        ticker: str,
+        all_candles: pd.DataFrame,
+        strategy: BaseStrategy,
+    ) -> dict[str, Any]:
+        """이미 로드된 캔들 DataFrame으로 다일 백테스트 (DB 재로드 없음)."""
+        if all_candles.empty:
+            return {**self.calculate_kpi([]), "trades": []}
+
+        df = all_candles.copy()
+        if "date" not in df.columns:
+            df["date"] = df["ts"].dt.date
+        all_trades: list[dict] = []
+        prev_day_df: pd.DataFrame | None = None
+
+        for date, day_candles in df.groupby("date"):
+            day_df = day_candles.drop(columns=["date"]).reset_index(drop=True)
+            strategy.reset()
+            self._setup_strategy_day(strategy, day_df, prev_day_df)
+            result = self.run_backtest(day_df, strategy)
+            all_trades.extend(result.get("trades", []))
+            prev_day_df = day_df
+
+        kpi = self.calculate_kpi(all_trades)
+        kpi["trades"] = all_trades
+        return kpi
+
     # ------------------------------------------------------------------
     # 내부 헬퍼
     # ------------------------------------------------------------------
