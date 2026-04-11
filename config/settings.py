@@ -93,6 +93,11 @@ class TradingConfig:
     adx_enabled: bool = True
     adx_length: int = 14
     adx_min: float = 25.0
+    rvol_enabled: bool = True
+    rvol_window: int = 5
+    rvol_min: float = 3.0
+    vwap_enabled: bool = True
+    vwap_min_above: float = 0.0
     # DEPRECATED: 리테스트/VWAP 필터 — 4회 실험 결과 개선 효과 없음
     momentum_retest_band_pct: float = 0.008
     momentum_retest_timeout_min: int = 45
@@ -237,6 +242,11 @@ class AppConfig:
             adx_enabled=mom.get("adx_enabled", True),
             adx_length=mom.get("adx_length", 14),
             adx_min=mom.get("adx_min", 25.0),
+            rvol_enabled=mom.get("rvol_enabled", True),
+            rvol_window=mom.get("rvol_window", 5),
+            rvol_min=mom.get("rvol_min", 3.0),
+            vwap_enabled=mom.get("vwap_enabled", True),
+            vwap_min_above=mom.get("vwap_min_above", 0.0),
             pullback_min_gain_pct=pb.get("min_gain_pct", 0.04),
             pullback_stop_loss_pct=pb.get("stop_loss_pct", -0.018),
             pullback_ma_short=pb.get("ma_short", 10),

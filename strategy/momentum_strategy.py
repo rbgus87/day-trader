@@ -61,6 +61,14 @@ class MomentumStrategy(BaseStrategy):
         if self._config.adx_enabled and not self._check_adx(candles):
             return None
 
+        # 5) RVol 거래량 급증 필터
+        if self._config.rvol_enabled and not self._check_rvol(candles):
+            return None
+
+        # 6) VWAP 매수 우위 필터
+        if self._config.vwap_enabled and not self._check_vwap(candles, current_price):
+            return None
+
         logger.info(
             f"모멘텀 매수 신호: {tick['ticker']} price={current_price} "
             f"prev_high={self._prev_day_high} cum_vol={cum_volume:,.0f}"
@@ -94,6 +102,39 @@ class MomentumStrategy(BaseStrategy):
             return current_adx >= self._config.adx_min
         except Exception as e:
             logger.warning(f"ADX 계산 실패: {e}")
+            return False
+
+    def _check_rvol(self, candles: pd.DataFrame) -> bool:
+        """RVol 필터 — 직전 N분봉 거래량이 ��일 평균의 rvol_min배 이상."""
+        window = self._config.rvol_window
+        if len(candles) < window + 10:
+            return False
+        try:
+            recent_vol = candles["volume"].iloc[-window:].sum()
+            avg_vol = candles["volume"].iloc[:-window].mean()
+            if avg_vol <= 0:
+                return False
+            rvol = recent_vol / (avg_vol * window)
+            return rvol >= self._config.rvol_min
+        except Exception as e:
+            logger.warning(f"RVol 계산 실패: {e}")
+            return False
+
+    def _check_vwap(self, candles: pd.DataFrame, current_price: float) -> bool:
+        """VWAP 필터 — 현��가가 당일 VWAP 이상이어야 진입."""
+        if len(candles) < 10:
+            return False
+        try:
+            tp = (candles["high"] + candles["low"] + candles["close"]) / 3
+            vol = candles["volume"]
+            vwap_den = vol.sum()
+            if vwap_den <= 0:
+                return False
+            vwap = (tp * vol).sum() / vwap_den
+            threshold = vwap * (1 + self._config.vwap_min_above)
+            return current_price >= threshold
+        except Exception as e:
+            logger.warning(f"VWAP 계산 실패: {e}")
             return False
 
     def get_stop_loss(self, entry_price: float) -> float:

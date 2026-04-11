@@ -64,9 +64,11 @@ strategy:
     adx_enabled: true               # ADX 추세 필터
     adx_length: 14                  # ADX 계산 기간
     adx_min: 25                     # 최소 ADX (25 이상만 진입)
-    # vwap_filter: false            # 4회 실험 결과 개선 효과 없음
-    # retest_band_pct: 0.008        # 향후 틱 백테스터에서 재검증용
-    # retest_timeout_minutes: 45
+    rvol_enabled: true              # RVol 거래량 급증 필터
+    rvol_window: 5                  # 직전 5분봉 거래량 합산
+    rvol_min: 3.0                   # 당일 평균 대비 3배 이상
+    vwap_enabled: true              # VWAP 매수 우위 필터
+    vwap_min_above: 0.0             # VWAP 대비 최소 초과 비율
 
   # 눌림목 — 당일 상승 종목의 조정 후 반등
   pullback:
