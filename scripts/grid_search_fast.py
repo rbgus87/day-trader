@@ -34,7 +34,7 @@ from data.db_manager import DbManager
 logger.remove()
 logger.add(sys.stderr, level="WARNING")
 
-DEFAULT_START = "2025-05-07"
+DEFAULT_START = "2025-04-01"
 DEFAULT_END = "2026-04-10"
 DEFAULT_PARAM = "trailing_stop_pct"
 DEFAULT_VALUES = [0.005, 0.010, 0.015, 0.020, 0.025]
