@@ -10,6 +10,7 @@ logs/
 dist/
 build/
 .pytest_cache/
+*.txt
 
 # GUI build
 *.spec
