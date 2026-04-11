@@ -1,7 +1,7 @@
-"""고속 그리드 서치 — 캔들 메모리 캐싱 + 파라미터 직접 교체.
+"""고속 그리드 서치 — 캔들 캐싱 + ProcessPoolExecutor 병렬화.
 
 config.yaml 수정 없이 TradingConfig를 직접 replace하여 백테스트.
-데이터 로드 1회 → 그리드 값별 시뮬레이션만 반복.
+데이터 로드 1회 → pickle 직렬화 → 프로세스 풀에서 종목별 병렬 실행.
 
 사용법:
     python scripts/grid_search_fast.py
@@ -11,7 +11,11 @@ config.yaml 수정 없이 TradingConfig를 직접 replace하여 백테스트.
 """
 import argparse
 import asyncio
+import os
+import pickle
 import sys
+import time
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import replace
 from pathlib import Path
 
@@ -26,7 +30,6 @@ from loguru import logger
 from backtest.backtester import Backtester, BacktestConfig
 from config.settings import AppConfig
 from data.db_manager import DbManager
-from strategy.momentum_strategy import MomentumStrategy
 
 logger.remove()
 logger.add(sys.stderr, level="WARNING")
@@ -37,45 +40,27 @@ DEFAULT_PARAM = "trailing_stop_pct"
 DEFAULT_VALUES = [0.005, 0.007, 0.010, 0.015, 0.020]
 
 
-async def run_for_value(bt, candles_cache, stocks, trading_config, param_name, value):
-    """단일 파라미터 값으로 전종목 백테스트."""
-    new_config = replace(trading_config, **{param_name: value})
+def _simulate_one_stock(args):
+    """단일 종목 백테스트 (별도 프로세스에서 실행)."""
+    ticker, candles_pickle, trading_config, backtest_config, param_name, value = args
 
-    total_trades = 0
-    total_pnl = 0.0
-    gross_profit = 0.0
-    gross_loss = 0.0
-    pf_above_1 = 0
+    import asyncio as _aio
+    import pickle as _pk
+    from dataclasses import replace as _replace
 
-    for stock in stocks:
-        ticker = stock["ticker"]
-        if ticker not in candles_cache:
-            continue
+    from backtest.backtester import Backtester as _BT
+    from strategy.momentum_strategy import MomentumStrategy as _MS
 
-        strategy = MomentumStrategy(new_config)
-        kpi = await bt.run_multi_day_cached(ticker, candles_cache[ticker], strategy)
-
-        total_trades += kpi["total_trades"]
-        total_pnl += kpi["total_pnl"]
-        for t in kpi.get("trades", []):
-            if t["pnl"] > 0:
-                gross_profit += t["pnl"]
-            else:
-                gross_loss += abs(t["pnl"])
-        if kpi["profit_factor"] > 1.0 and kpi["total_trades"] > 0:
-            pf_above_1 += 1
-
-    pf = gross_profit / gross_loss if gross_loss > 0 else float("inf")
-    return {
-        "trades": total_trades,
-        "pnl": total_pnl,
-        "pf": pf,
-        "pf_above_1": pf_above_1,
-    }
+    candles = _pk.loads(candles_pickle)
+    new_config = _replace(trading_config, **{param_name: value})
+    strategy = _MS(new_config)
+    bt = _BT(db=None, config=new_config, backtest_config=backtest_config)
+    kpi = _aio.run(bt.run_multi_day_cached(ticker, candles, strategy))
+    return kpi
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="Fast grid search with cached candles")
+    parser = argparse.ArgumentParser(description="Fast grid search with ProcessPoolExecutor")
     parser.add_argument("--start", default=DEFAULT_START)
     parser.add_argument("--end", default=DEFAULT_END)
     parser.add_argument("--param", default=DEFAULT_PARAM, help="TradingConfig field name")
@@ -104,18 +89,21 @@ async def main():
     await db.init()
     bt = Backtester(db=db, config=trading_config, backtest_config=backtest_config)
 
-    # 데이터 1회 로드
+    # 데이터 1회 로드 + pickle 직렬화
+    t0 = time.time()
     print(f"Loading candles ({len(stocks)} stocks)...")
     candles_cache = {}
     for stock in stocks:
         ticker = stock["ticker"]
         candles = await bt.load_candles(ticker, args.start, f"{args.end} 23:59:59")
         if not candles.empty:
-            candles_cache[ticker] = candles
-    print(f"  Loaded: {len(candles_cache)} stocks")
+            candles_cache[ticker] = pickle.dumps(candles)
+    await db.close()
+    print(f"  Loaded: {len(candles_cache)} stocks ({time.time() - t0:.1f}s)")
 
-    # 현재값 표시
+    workers = max(2, os.cpu_count() - 1)
     current_val = getattr(trading_config, args.param, "N/A")
+    print(f"  Workers: {workers}")
     print()
     print("=" * 70)
     print(f"Fast Grid Search: {args.param}")
@@ -126,11 +114,28 @@ async def main():
 
     results = []
     for i, value in enumerate(grid, 1):
+        t1 = time.time()
         print(f"[{i}/{len(grid)}] {args.param}={value} ...", end=" ", flush=True)
-        r = await run_for_value(bt, candles_cache, stocks, trading_config, args.param, value)
-        r["value"] = value
+
+        tasks = [
+            (ticker, candles_cache[ticker], trading_config, backtest_config, args.param, value)
+            for ticker in candles_cache
+        ]
+
+        with ProcessPoolExecutor(max_workers=workers) as executor:
+            kpis = list(executor.map(_simulate_one_stock, tasks))
+
+        total_trades = sum(k["total_trades"] for k in kpis if k)
+        total_pnl = sum(k["total_pnl"] for k in kpis if k)
+        gp = sum(t["pnl"] for k in kpis if k for t in k.get("trades", []) if t["pnl"] > 0)
+        gl = sum(abs(t["pnl"]) for k in kpis if k for t in k.get("trades", []) if t["pnl"] < 0)
+        pf = gp / gl if gl > 0 else float("inf")
+        pf_above_1 = sum(1 for k in kpis if k and k["profit_factor"] > 1.0 and k["total_trades"] > 0)
+
+        r = {"value": value, "trades": total_trades, "pnl": total_pnl, "pf": pf, "pf_above_1": pf_above_1}
         results.append(r)
-        print(f"trades={r['trades']}, PF={r['pf']:.2f}, PnL={r['pnl']:+,.0f}, PF>1={r['pf_above_1']}")
+        elapsed = time.time() - t1
+        print(f"trades={r['trades']}, PF={r['pf']:.2f}, PnL={r['pnl']:+,.0f}, PF>1={r['pf_above_1']} ({elapsed:.1f}s)")
 
     # 결과 표
     print()
@@ -144,8 +149,6 @@ async def main():
     best = max(results, key=lambda x: x["pnl"])
     print()
     print(f"Best: {args.param}={best['value']} (PF {best['pf']:.2f}, PnL {best['pnl']:+,.0f})")
-
-    await db.close()
 
 
 if __name__ == "__main__":
