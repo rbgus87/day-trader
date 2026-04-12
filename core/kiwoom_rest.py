@@ -19,6 +19,8 @@ API_STOCK_PRICE = "ka10001"
 API_STOCK_DAILY = "ka10081"
 API_STOCK_MINUTE = "ka10080"
 API_ACCOUNT_BALANCE = "ka10070"
+API_INDEX_DAILY = "ka20006"        # 업종 일봉 (지수)
+API_STOCK_LIST = "ka10099"         # 종목정보 리스트 (시장별)
 
 EP_ORDER = "/api/dostk/ordr"
 EP_STOCK = "/api/dostk/stkinfo"
@@ -207,6 +209,42 @@ class KiwoomRestClient:
             "prev_close": abs(int(out.get("base_pric", 0))),
             "volume": abs(int(out.get("trde_qty", 0))),
         }
+
+    async def get_index_daily(self, index_code: str, base_dt: str = "") -> dict:
+        """업종 일봉 조회 (ka20006). 지수 일봉 OHLCV.
+
+        Args:
+            index_code: "001"(코스피종합), "101"(코스닥종합), "201"(KOSPI200)
+            base_dt: YYYYMMDD (빈 문자열이면 오늘)
+
+        Note:
+            응답의 가격 값은 100배 스케일링 → 실제 값 = cur_prc / 100
+        """
+        from datetime import datetime as _dt
+
+        if not base_dt:
+            base_dt = _dt.now().strftime("%Y%m%d")
+        body = {"inds_cd": index_code, "base_dt": base_dt}
+        return await self.request("POST", EP_CHART, API_INDEX_DAILY, data=body)
+
+    async def get_stock_list_by_market(self, market_code: str) -> list[dict]:
+        """시장별 종목 리스트 조회 (ka10099).
+
+        Args:
+            market_code: "0"(코스피), "10"(코스닥)
+
+        Returns:
+            list of dict (code, name 등 포함). 응답 컨테이너 키가
+            스펙에 따라 다를 수 있어 여러 후보 키를 fallback한다.
+        """
+        body = {"mrkt_tp": market_code}
+        resp = await self.request("POST", EP_STOCK, API_STOCK_LIST, data=body)
+        # 후보 키 순차 시도
+        for key in ("list", "stk_inf_lst", "output", "output1", "output2"):
+            val = resp.get(key)
+            if isinstance(val, list):
+                return val
+        return []
 
     async def get_market_snapshot(self) -> dict:
         """시장 지수/섹터 ETF 스냅샷을 반환한다.

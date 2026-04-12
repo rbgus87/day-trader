@@ -43,6 +43,10 @@ class EngineWorker(QThread):
         self._pre_market_screener = None
         self._strategy_selector = None
 
+        # Market filter (Phase 1 Day 3) — 코스피/코스닥 지수 MA 기반 매수 차단
+        self._market_filter = None
+        self._ticker_markets: dict[str, str] = {}  # {ticker: "kospi"/"kosdaq"/"unknown"}
+
         # Queues
         self._tick_queue = None
         self._candle_queue = None
@@ -218,6 +222,19 @@ class EngineWorker(QThread):
         )
         self._strategy_selector = StrategySelector(self._config, self._rest_client)
 
+        # Market filter (Phase 1 Day 3)
+        if self._config.trading.market_filter_enabled:
+            from core.market_filter import MarketFilter
+            self._market_filter = MarketFilter(
+                self._rest_client,
+                ma_length=self._config.trading.market_ma_length,
+            )
+            logger.info(
+                f"시장 필터 활성화 (MA{self._config.trading.market_ma_length})"
+            )
+        else:
+            logger.info("시장 필터 비활성화")
+
         # 3. Scheduler (BackgroundScheduler — 이벤트 루프와 독립 실행)
         self._scheduler = BackgroundScheduler()
 
@@ -303,6 +320,17 @@ class EngineWorker(QThread):
                     await self._ws_client.subscribe(all_tickers)
                     logger.info(f"유니버스 전체 WS 구독: {len(all_tickers)}종목")
 
+                # ticker → market 매핑 구축 (Phase 1 Day 3)
+                self._ticker_markets = {
+                    s["ticker"]: s.get("market", "unknown") for s in all_stocks
+                }
+                n_unknown = sum(1 for m in self._ticker_markets.values() if m == "unknown")
+                if n_unknown:
+                    logger.warning(
+                        f"⚠ universe.yaml에 market 필드 없는 종목 {n_unknown}개 "
+                        f"— scripts/update_universe_market.py 실행 권장"
+                    )
+
             # 유니버스 전체에 전략 인스턴스 생성
             force = getattr(self._config, 'force_strategy', '') or 'momentum'
             strategy_classes = {
@@ -361,6 +389,13 @@ class EngineWorker(QThread):
                     logger.debug(f"전일 고가 조회 실패 ({ticker}): {e}")
                 await asyncio.sleep(0.1)
             logger.info(f"전일 고가 초기화 완료: {init_count}/{len(self._active_strategies)}종목")
+
+            # 시장 필터 초기 갱신 (Phase 1 Day 3)
+            if self._market_filter is not None:
+                try:
+                    await self._market_filter.refresh()
+                except Exception as e:
+                    logger.error(f"시장 필터 초기 갱신 실패: {e}")
         except Exception as e:
             logger.error(f"WS 연결/전략 등록 실패: {e}")
 
@@ -645,6 +680,15 @@ class EngineWorker(QThread):
             try:
                 if signal.side != "buy" or signal.ticker not in self._active_strategies:
                     continue
+
+                # 시장 필터 (Phase 1 Day 3) — 해당 시장 약세 시 매수 차단
+                if self._market_filter is not None:
+                    market = self._ticker_markets.get(signal.ticker, "unknown")
+                    if not self._market_filter.is_allowed(market):
+                        logger.debug(
+                            f"[MARKET] 매수 차단 ({market} 약세): {signal.ticker}"
+                        )
+                        continue
 
                 # 포지션 한도 재확인
                 open_pos = self._risk_manager.get_open_positions()

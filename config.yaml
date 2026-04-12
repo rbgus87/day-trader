@@ -39,6 +39,10 @@ trading:
   screening_time: "08:30"           # 08:30 장 전 스크리닝
   report_time: "15:30"              # 15:30 일일 보고서 텔레그램 발송
 
+  # 시장 필터 (Phase 1 Day 3) — 코스피/코스닥 지수 MA 기반 매수 차단
+  market_filter_enabled: true       # true면 약세 시장 종목 매수 차단
+  market_ma_length: 5               # MA 기간 (일)
+
 # --- 전략 파라미터 ---
 strategy:
   force: "momentum"                     # 비어있으면 selector 로직, 값 있으면 해당 전략 강제 (페이퍼 테스트용)

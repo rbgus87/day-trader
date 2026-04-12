@@ -115,6 +115,10 @@ class TradingConfig:
     # 자본금
     initial_capital: int = 1_000_000
 
+    # 시장 필터 (코스피/코스닥 지수 MA 기반 매수 차단)
+    market_filter_enabled: bool = True
+    market_ma_length: int = 5
+
     # 갭 전략 (GapStrategy)
     gap_min_gap_pct: float = 0.015
     gap_stop_loss_pct: float = -0.01
@@ -270,6 +274,8 @@ class AppConfig:
             flow_signal_start=fl.get("signal_start", "09:30"),
             flow_signal_end=fl.get("signal_end", "14:30"),
             initial_capital=t.get("initial_capital", 1_000_000),
+            market_filter_enabled=t.get("market_filter_enabled", True),
+            market_ma_length=t.get("market_ma_length", 5),
         )
 
         # screener 섹션
