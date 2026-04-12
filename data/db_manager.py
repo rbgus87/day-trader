@@ -93,6 +93,17 @@ CREATE TABLE IF NOT EXISTS index_candles (
 );
 
 CREATE INDEX IF NOT EXISTS idx_index_candles_dt ON index_candles(index_code, dt);
+
+CREATE TABLE IF NOT EXISTS ticker_atr (
+    ticker    TEXT NOT NULL,
+    dt        TEXT NOT NULL,
+    atr       REAL NOT NULL,
+    atr_pct   REAL NOT NULL,
+    close     REAL NOT NULL,
+    PRIMARY KEY (ticker, dt)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ticker_atr_dt ON ticker_atr(dt);
 """
 
 
