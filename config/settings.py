@@ -96,6 +96,18 @@ class TradingConfig:
     atr_stop_multiplier: float = 1.5
     atr_stop_min_pct: float = 0.015
     atr_stop_max_pct: float = 0.080
+
+    # Phase 2 Day 7: ATR 기반 TP1
+    atr_tp_enabled: bool = True
+    atr_tp_multiplier: float = 3.0
+    atr_tp_min_pct: float = 0.03
+    atr_tp_max_pct: float = 0.25
+
+    # Phase 2 Day 7: Chandelier 트레일링 스톱
+    atr_trail_enabled: bool = True
+    atr_trail_multiplier: float = 2.5
+    atr_trail_min_pct: float = 0.02
+    atr_trail_max_pct: float = 0.10
     adx_enabled: bool = True
     adx_length: int = 14
     adx_min: float = 25.0
@@ -250,6 +262,14 @@ class AppConfig:
             atr_stop_multiplier=mom.get("atr_stop_multiplier", 1.5),
             atr_stop_min_pct=mom.get("atr_stop_min_pct", 0.015),
             atr_stop_max_pct=mom.get("atr_stop_max_pct", 0.080),
+            atr_tp_enabled=mom.get("atr_tp_enabled", True),
+            atr_tp_multiplier=mom.get("atr_tp_multiplier", 3.0),
+            atr_tp_min_pct=mom.get("atr_tp_min_pct", 0.03),
+            atr_tp_max_pct=mom.get("atr_tp_max_pct", 0.25),
+            atr_trail_enabled=mom.get("atr_trail_enabled", True),
+            atr_trail_multiplier=mom.get("atr_trail_multiplier", 2.5),
+            atr_trail_min_pct=mom.get("atr_trail_min_pct", 0.02),
+            atr_trail_max_pct=mom.get("atr_trail_max_pct", 0.10),
             momentum_retest_band_pct=mom.get("retest_band_pct", 0.008),
             momentum_retest_timeout_min=mom.get("retest_timeout_minutes", 45),
             momentum_vwap_filter=mom.get("vwap_filter", True),

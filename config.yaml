@@ -82,6 +82,18 @@ strategy:
     atr_stop_min_pct: 0.015         # 하한 1.5% (너무 타이트 방지)
     atr_stop_max_pct: 0.080         # 상한 8.0% (너무 여유 방지)
 
+    # Phase 2 Day 7: ATR 기반 TP1 (분할익절 1차 목표가)
+    atr_tp_enabled: true            # ATR 기반 TP1 계산
+    atr_tp_multiplier: 3.0          # TP1 = 진입가 + ATR% × N
+    atr_tp_min_pct: 0.03            # 하한 3% (너무 가까움 방지)
+    atr_tp_max_pct: 0.25            # 상한 25% (너무 멀리 방지)
+
+    # Phase 2 Day 7: Chandelier 트레일링 스톱 (TP1 후 남은 포지션)
+    atr_trail_enabled: true         # 최고가 - ATR × N 방식
+    atr_trail_multiplier: 2.5       # 트레일 거리 배수
+    atr_trail_min_pct: 0.02         # 하한 2%
+    atr_trail_max_pct: 0.10         # 상한 10%
+
   # 눌림목 — 당일 상승 종목의 조정 후 반등
   pullback:
     min_gain_pct: 0.04              # 당일 +4% 이상

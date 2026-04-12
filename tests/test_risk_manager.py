@@ -48,14 +48,16 @@ def test_daily_loss_limit_allows(risk_mgr):
 
 @pytest.mark.asyncio
 async def test_update_trailing_stop(risk_mgr):
-    risk_mgr._positions["005930"] = {
+    # Phase 2 Day 7: 이 테스트는 고정 trailing_pct 경로를 검증.
+    # 가짜 ticker로 ATR 조회가 None이 되도록 하여 폴백(고정) 경로 사용.
+    risk_mgr._positions["TEST001"] = {
         "entry_price": 70000, "stop_loss": 68950,
         "qty": 10, "remaining_qty": 5,
         "highest_price": 71400, "trailing_pct": 0.01,
         "tp1_hit": True,
     }
-    risk_mgr.update_trailing_stop("005930", current_price=72000)
-    pos = risk_mgr._positions["005930"]
+    risk_mgr.update_trailing_stop("TEST001", current_price=72000)
+    pos = risk_mgr._positions["TEST001"]
     assert pos["highest_price"] == 72000
     assert pos["stop_loss"] == 72000 * (1 - 0.01)
 

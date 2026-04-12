@@ -307,8 +307,41 @@ class Backtester:
                     # 고점 갱신
                     if high > position.get("highest_price", 0):
                         position["highest_price"] = high
-                        trailing_pct = self._config.trailing_stop_pct
-                        position["stop_loss"] = position["highest_price"] * (1 - trailing_pct)
+                        # Phase 2 Day 7: ATR 기반 Chandelier 트레일링 (폴백: 고정 trailing_stop_pct)
+                        new_stop = None
+                        if getattr(self._config, "atr_trail_enabled", False):
+                            try:
+                                from core.indicators import (
+                                    calculate_atr_trailing_stop,
+                                    get_latest_atr,
+                                )
+                                ticker = getattr(self, "_current_ticker", None)
+                                as_of = None
+                                try:
+                                    as_of = pd.to_datetime(row["ts"]).strftime("%Y-%m-%d")
+                                except Exception:
+                                    pass
+                                atr_pct = (
+                                    get_latest_atr(self._db.db_path, ticker, as_of)
+                                    if (self._db is not None and ticker)
+                                    else None
+                                )
+                                if atr_pct is not None:
+                                    new_stop = calculate_atr_trailing_stop(
+                                        peak_price=position["highest_price"],
+                                        atr_pct=atr_pct,
+                                        multiplier=self._config.atr_trail_multiplier,
+                                        min_pct=self._config.atr_trail_min_pct,
+                                        max_pct=self._config.atr_trail_max_pct,
+                                    )
+                            except Exception as e:
+                                logger.warning(f"[BT] ATR 트레일 실패 폴백: {e}")
+                                new_stop = None
+                        if new_stop is None:
+                            trailing_pct = self._config.trailing_stop_pct
+                            new_stop = position["highest_price"] * (1 - trailing_pct)
+                        # 트레일링 스톱은 위로만 움직임 (기존 stop보다 낮아지면 유지)
+                        position["stop_loss"] = max(position["stop_loss"], new_stop)
 
                     remaining = position.get("remaining_ratio", 0.5)
                     # 트레일링 스톱 체크

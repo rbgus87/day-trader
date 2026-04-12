@@ -72,3 +72,59 @@ def test_atr_fetch_invalid_db_path_returns_none():
     """존재하지 않는 DB 파일은 예외 없이 None."""
     atr = get_latest_atr("/nonexistent/path.db", "005930")
     assert atr is None
+
+
+# ──────────────────────────────────────────────────────────────────────
+# ATR TP1 — Phase 2 Day 7
+# ──────────────────────────────────────────────────────────────────────
+
+def test_atr_tp1_basic():
+    """ATR 3%, multiplier 3.0 → TP1 +9%."""
+    from core.indicators import calculate_atr_tp1
+
+    tp = calculate_atr_tp1(10000, 0.03, 3.0, 0.03, 0.25)
+    assert tp == pytest.approx(10900.0)
+
+
+def test_atr_tp1_min_clamp():
+    """ATR 0.5% × 3.0 = 1.5% → 하한 3% 적용."""
+    from core.indicators import calculate_atr_tp1
+
+    tp = calculate_atr_tp1(10000, 0.005, 3.0, 0.03, 0.25)
+    assert tp == pytest.approx(10300.0)
+
+
+def test_atr_tp1_max_clamp():
+    """ATR 15% × 3.0 = 45% → 상한 25% 적용."""
+    from core.indicators import calculate_atr_tp1
+
+    tp = calculate_atr_tp1(10000, 0.15, 3.0, 0.03, 0.25)
+    assert tp == pytest.approx(12500.0)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# ATR 트레일링 — Chandelier
+# ──────────────────────────────────────────────────────────────────────
+
+def test_atr_trailing_basic():
+    """peak=10000, ATR 3%, multiplier 2.5 → 트레일 -7.5%."""
+    from core.indicators import calculate_atr_trailing_stop
+
+    trail = calculate_atr_trailing_stop(10000, 0.03, 2.5, 0.02, 0.10)
+    assert trail == pytest.approx(9250.0)
+
+
+def test_atr_trailing_min_clamp():
+    """ATR 0.5% × 2.5 = 1.25% → 하한 2%."""
+    from core.indicators import calculate_atr_trailing_stop
+
+    trail = calculate_atr_trailing_stop(10000, 0.005, 2.5, 0.02, 0.10)
+    assert trail == pytest.approx(9800.0)
+
+
+def test_atr_trailing_max_clamp():
+    """ATR 10% × 2.5 = 25% → 상한 10%."""
+    from core.indicators import calculate_atr_trailing_stop
+
+    trail = calculate_atr_trailing_stop(10000, 0.10, 2.5, 0.02, 0.10)
+    assert trail == pytest.approx(9000.0)

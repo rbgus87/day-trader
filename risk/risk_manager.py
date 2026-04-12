@@ -69,7 +69,31 @@ class RiskManager:
             return
         if current_price > pos["highest_price"]:
             pos["highest_price"] = current_price
-            pos["stop_loss"] = current_price * (1 - pos["trailing_pct"])
+
+            # Phase 2 Day 7: ATR 기반 Chandelier 트레일링 (폴백: 고정 trailing_pct)
+            new_stop = None
+            if getattr(self._config, "atr_trail_enabled", False):
+                try:
+                    from core.indicators import (
+                        calculate_atr_trailing_stop,
+                        get_latest_atr,
+                    )
+                    atr_pct = get_latest_atr("daytrader.db", ticker)
+                    if atr_pct is not None:
+                        new_stop = calculate_atr_trailing_stop(
+                            peak_price=current_price,
+                            atr_pct=atr_pct,
+                            multiplier=self._config.atr_trail_multiplier,
+                            min_pct=self._config.atr_trail_min_pct,
+                            max_pct=self._config.atr_trail_max_pct,
+                        )
+                except Exception:
+                    new_stop = None
+            if new_stop is None:
+                new_stop = current_price * (1 - pos["trailing_pct"])
+
+            # 트레일링은 위로만 (기존 stop_loss 아래로 내려가지 않음)
+            pos["stop_loss"] = max(pos["stop_loss"], new_stop)
 
     def check_tp1(self, ticker: str, current_price: float) -> bool:
         pos = self._positions.get(ticker)

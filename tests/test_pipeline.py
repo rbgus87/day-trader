@@ -126,19 +126,23 @@ async def test_position_monitor_tp1(risk_manager, order_manager):
 
 @pytest.mark.asyncio
 async def test_position_monitor_trailing_stop(risk_manager):
-    """틱 가격이 고점 갱신 → trailing_stop 갱신."""
+    """틱 가격이 고점 갱신 → trailing_stop 갱신 (고정 경로).
+
+    Phase 2 Day 7: 가짜 ticker로 ATR 조회 None → 폴백(고정 trailing_pct).
+    ATR 트레일링 자체는 tests/test_atr_stop.py에서 별도 검증.
+    """
     risk_manager.register_position(
-        ticker="005930", entry_price=70000, qty=100,
+        ticker="TEST001", entry_price=70000, qty=100,
         stop_loss=68950, tp1_price=72100,
     )
     # TP1 히트 시뮬레이션
-    risk_manager.mark_tp1_hit("005930", 50)
-    pos = risk_manager.get_position("005930")
+    risk_manager.mark_tp1_hit("TEST001", 50)
+    pos = risk_manager.get_position("TEST001")
     assert pos["tp1_hit"] is True
 
     # 고점 갱신
-    risk_manager.update_trailing_stop("005930", 73000)
-    pos = risk_manager.get_position("005930")
+    risk_manager.update_trailing_stop("TEST001", 73000)
+    pos = risk_manager.get_position("TEST001")
     assert pos["highest_price"] == 73000
     assert pos["stop_loss"] == 73000 * (1 - TradingConfig().trailing_stop_pct)
 

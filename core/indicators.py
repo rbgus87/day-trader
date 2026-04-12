@@ -110,3 +110,43 @@ def calculate_atr_stop_loss(
     stop_pct = atr_pct * multiplier
     stop_pct = max(min_pct, min(max_pct, stop_pct))
     return entry_price * (1 - stop_pct)
+
+
+def calculate_atr_tp1(
+    entry_price: float,
+    atr_pct: float,
+    multiplier: float = 3.0,
+    min_pct: float = 0.03,
+    max_pct: float = 0.25,
+) -> float:
+    """ATR 기반 TP1(1차 익절) 목표가 계산.
+
+    TP1 상승폭 = atr_pct × multiplier (min_pct / max_pct 클램프).
+    """
+    tp_pct = atr_pct * multiplier
+    tp_pct = max(min_pct, min(max_pct, tp_pct))
+    return entry_price * (1 + tp_pct)
+
+
+def calculate_atr_trailing_stop(
+    peak_price: float,
+    atr_pct: float,
+    multiplier: float = 2.5,
+    min_pct: float = 0.02,
+    max_pct: float = 0.10,
+) -> float:
+    """Chandelier 트레일링 스톱 — peak - ATR × multiplier.
+
+    Args:
+        peak_price: 포지션 보유 중 최고가
+        atr_pct:    ATR% 비율
+        multiplier: ATR 배수
+        min_pct:    트레일 폭 하한 (비율)
+        max_pct:    트레일 폭 상한 (비율)
+
+    Returns:
+        트레일링 스톱 가격.
+    """
+    trail_pct = atr_pct * multiplier
+    trail_pct = max(min_pct, min(max_pct, trail_pct))
+    return peak_price * (1 - trail_pct)
