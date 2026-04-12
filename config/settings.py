@@ -51,6 +51,12 @@ class TradingConfig:
     daily_max_loss_pct: float = -0.02
     consecutive_loss_days: int = 3
     reduced_position_pct: float = 0.5
+    # Phase 2 Day 10: 약세장 방어
+    daily_max_loss_enabled: bool = True
+    blacklist_enabled: bool = True
+    blacklist_lookback_days: int = 5
+    blacklist_loss_threshold: int = 3
+    blacklist_days: int = 7
 
     # 익절
     tp1_pct: float = 0.03
@@ -233,6 +239,11 @@ class AppConfig:
             daily_max_loss_pct=t.get("daily_max_loss_pct", -0.02),
             consecutive_loss_days=t.get("consecutive_loss_days", 3),
             reduced_position_pct=t.get("reduced_position_pct", 0.5),
+            daily_max_loss_enabled=t.get("daily_max_loss_enabled", True),
+            blacklist_enabled=t.get("blacklist_enabled", True),
+            blacklist_lookback_days=t.get("blacklist_lookback_days", 5),
+            blacklist_loss_threshold=t.get("blacklist_loss_threshold", 3),
+            blacklist_days=t.get("blacklist_days", 7),
             tp1_pct=t.get("tp1_pct", 0.03),
             tp1_sell_ratio=t.get("tp1_sell_ratio", 0.5),
             trailing_stop_pct=t.get("trailing_stop_pct", 0.01),

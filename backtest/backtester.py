@@ -577,6 +577,9 @@ class Backtester:
         prev_day_df: pd.DataFrame | None = None
 
         market_filter_enabled = getattr(self._config, "market_filter_enabled", False)
+        blacklist_enabled = getattr(self._config, "blacklist_enabled", False)
+        bl_lookback = getattr(self._config, "blacklist_lookback_days", 5)
+        bl_threshold = getattr(self._config, "blacklist_loss_threshold", 3)
 
         for date, day_candles in df.groupby("date"):
             day_df = day_candles.drop(columns=["date"]).reset_index(drop=True)
@@ -588,6 +591,27 @@ class Backtester:
                 strong = self._market_strong_by_date.get(date_key)
                 # strong이 없으면(데이터 누락) 보수적으로 허용
                 if strong is not None and not strong.get(self._ticker_market, True):
+                    skip_day = True
+
+            # Phase 2 Day 10: 블랙리스트 — 최근 lookback일 내 손실 ≥ threshold면 당일 skip
+            if not skip_day and blacklist_enabled:
+                from datetime import timedelta as _td
+                cutoff = date - _td(days=bl_lookback)
+                recent_losses = 0
+                for t in all_trades:
+                    try:
+                        exit_ts = t.get("exit_ts")
+                        if exit_ts is None:
+                            continue
+                        exit_date = (
+                            exit_ts.date() if hasattr(exit_ts, "date")
+                            else pd.to_datetime(exit_ts).date()
+                        )
+                    except Exception:
+                        continue
+                    if cutoff <= exit_date < date and t.get("pnl", 0.0) < 0:
+                        recent_losses += 1
+                if recent_losses >= bl_threshold:
                     skip_day = True
 
             if skip_day:

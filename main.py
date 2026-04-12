@@ -234,6 +234,9 @@ async def main():
             ticker = candle["ticker"]
             if ticker not in active_strategies:
                 continue
+            # Phase 2 Day 10: 블랙리스트 체크
+            if risk_manager.is_ticker_blacklisted(ticker):
+                continue
 
             # 동시 포지션 한도
             open_pos = risk_manager.get_open_positions()

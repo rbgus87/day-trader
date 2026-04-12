@@ -647,6 +647,9 @@ class EngineWorker(QThread):
                     continue
                 if ticker not in self._active_strategies:
                     continue
+                # Phase 2 Day 10: 블랙리스트 체크 (신호 평가 자체를 차단)
+                if self._risk_manager.is_ticker_blacklisted(ticker):
+                    continue
 
                 # 동시 포지션 한도
                 open_pos = self._risk_manager.get_open_positions()

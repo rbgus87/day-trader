@@ -17,6 +17,13 @@ trading:
   consecutive_loss_days: 3          # N일 연속 손실 시 포지션 축소
   reduced_position_pct: 0.5         # 연속 손실 시 포지션 50%로 축소
 
+  # Phase 2 Day 10: 약세장 방어
+  daily_max_loss_enabled: true
+  blacklist_enabled: true
+  blacklist_lookback_days: 5        # 최근 5일 집계
+  blacklist_loss_threshold: 3       # 5일 내 3회 이상 손실 시 블랙
+  blacklist_days: 7                 # 7일간 매매 제외
+
   # 익절
   tp1_pct: 0.16                     # 1차 익절 +16% (사실상 전량 트레일링, 백테스트 최적: PF 1.22)
   tp1_sell_ratio: 0.5               # 1차 익절 시 50% 매도

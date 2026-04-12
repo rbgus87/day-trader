@@ -1,6 +1,8 @@
 """risk/risk_manager.py — 리스크 관리 (손절, 일일한도, 강제청산, 연속손실, 시간손절)."""
 
-from datetime import datetime
+import sqlite3
+from datetime import datetime, timedelta
+
 from loguru import logger
 
 from config.settings import TradingConfig
@@ -145,6 +147,9 @@ class RiskManager:
     def is_trading_halted(self) -> bool:
         if self._halted:
             return True
+        # Phase 2 Day 10: enabled=False 면 한도 체크 생략 (halt는 외부에서만)
+        if not getattr(self._config, "daily_max_loss_enabled", True):
+            return False
         if self._daily_capital <= 0:
             return False
         loss_pct = self._daily_pnl / self._daily_capital
@@ -156,6 +161,44 @@ class RiskManager:
 
     def record_pnl(self, pnl: float) -> None:
         self._daily_pnl += pnl
+
+    def is_ticker_blacklisted(
+        self,
+        ticker: str,
+        current_date: datetime | None = None,
+        db_path: str = "daytrader.db",
+    ) -> bool:
+        """Phase 2 Day 10: 최근 lookback_days 내 손실 횟수 ≥ threshold면 블랙.
+
+        현재는 "최근 N일 내 M회 이상 손실"만 체크 (days 만료 조건은 향후 확장).
+        DB 조회 실패 시 False (보수적으로 매수 허용).
+        """
+        if not getattr(self._config, "blacklist_enabled", False):
+            return False
+
+        now = current_date or datetime.now()
+        lookback = self._config.blacklist_lookback_days
+        threshold = self._config.blacklist_loss_threshold
+        since = (now - timedelta(days=lookback)).strftime("%Y-%m-%d")
+
+        try:
+            conn = sqlite3.connect(db_path)
+        except Exception:
+            return False
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM trades "
+                "WHERE ticker=? AND side='sell' AND pnl<0 "
+                "AND date(traded_at)>=?",
+                (ticker, since),
+            ).fetchone()
+        except Exception:
+            conn.close()
+            return False
+        conn.close()
+
+        loss_count = row[0] if row else 0
+        return loss_count >= threshold
 
     def set_daily_capital(self, capital: float) -> None:
         self._daily_capital = capital
