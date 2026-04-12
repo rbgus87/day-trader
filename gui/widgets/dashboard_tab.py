@@ -1,12 +1,20 @@
 """Dashboard Tab — matplotlib 차트 + 멀티종목 대시보드."""
 
+import re
+import sqlite3
+from datetime import datetime, time as dt_time
+from pathlib import Path
+
+import yaml
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFrame, QLabel,
     QTableWidget, QTableWidgetItem, QSplitter, QHeaderView,
     QAbstractItemView, QSizePolicy, QProgressBar,
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QColor
+
+from config.settings import AppConfig
 
 # matplotlib 차트 (OpenGL 불필요, segfault 안전)
 try:
@@ -35,7 +43,139 @@ class DashboardTab(QWidget):
         self._daily_fig = None
         self._daily_ax = None
         self._daily_canvas = None
+
+        # Phase 3 Day 12+ GUI Level 1: 상태 패널 캐시
+        self._market_map: dict[str, str] = self._load_market_map()
+        self._atr_cache: dict[str, float] = self._load_atr_cache()
+        self._kospi_strong: bool | None = None
+        self._kosdaq_strong: bool | None = None
+        self._daily_pnl: float = 0.0
+        self._daily_capital: float = 1_000_000.0
+        try:
+            cfg = AppConfig.from_yaml().trading
+            self._buy_time_end = cfg.buy_time_end
+            self._buy_time_enabled = cfg.buy_time_limit_enabled
+            self._daily_loss_limit = cfg.daily_max_loss_pct
+        except Exception:
+            self._buy_time_end = "12:00"
+            self._buy_time_enabled = True
+            self._daily_loss_limit = -0.015
+
         self._build_ui()
+
+        # 1초 타이머로 시간/매수시간 라벨 갱신
+        self._status_timer = QTimer(self)
+        self._status_timer.timeout.connect(self._refresh_status_strip)
+        self._status_timer.start(1000)
+        self._refresh_status_strip()
+
+    # ------------------------------------------------------------------
+    # Phase 3 Day 12+ GUI Level 1 helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _load_market_map() -> dict[str, str]:
+        try:
+            path = Path("config/universe.yaml")
+            if not path.exists():
+                return {}
+            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            return {
+                s["ticker"]: s.get("market", "")
+                for s in data.get("stocks", [])
+                if s.get("ticker")
+            }
+        except Exception:
+            return {}
+
+    @staticmethod
+    def _load_atr_cache(db_path: str = "daytrader.db") -> dict[str, float]:
+        """ticker별 최신 ATR% 로드 (테이블 없거나 실패 시 빈 dict)."""
+        try:
+            conn = sqlite3.connect(db_path)
+        except Exception:
+            return {}
+        try:
+            rows = conn.execute(
+                "SELECT ticker, atr_pct FROM ticker_atr t "
+                "WHERE dt = (SELECT MAX(dt) FROM ticker_atr WHERE ticker=t.ticker)"
+            ).fetchall()
+        except Exception:
+            conn.close()
+            return {}
+        conn.close()
+        return {t: pct for t, pct in rows if pct is not None}
+
+    def _parse_time_str(self, s: str) -> dt_time | None:
+        m = re.match(r"(\d+):(\d+)", s or "")
+        if not m:
+            return None
+        try:
+            return dt_time(int(m.group(1)), int(m.group(2)))
+        except ValueError:
+            return None
+
+    def _refresh_status_strip(self) -> None:
+        """1초 타이머: 시간/매수시간 상태 갱신."""
+        now = datetime.now().time()
+        self._lbl_status_time.setText(now.strftime("⏱ %H:%M:%S"))
+
+        # 매수 가능 여부
+        limit = self._parse_time_str(self._buy_time_end)
+        if not self._buy_time_enabled or limit is None:
+            self._lbl_status_buytime.setText("매수: 제한없음")
+            self._lbl_status_buytime.setStyleSheet(
+                "padding: 6px 12px; font-weight: bold; color: #6c7086;"
+            )
+        elif now >= limit:
+            self._lbl_status_buytime.setText(f"매수 차단 ≥{self._buy_time_end}")
+            self._lbl_status_buytime.setStyleSheet(
+                "padding: 6px 12px; font-weight: bold; color: #f38ba8;"
+            )
+        else:
+            self._lbl_status_buytime.setText(f"매수 가능 <{self._buy_time_end}")
+            self._lbl_status_buytime.setStyleSheet(
+                "padding: 6px 12px; font-weight: bold; color: #a6e3a1;"
+            )
+
+    def on_market_status(self, kospi_strong: bool, kosdaq_strong: bool) -> None:
+        """EngineSignals.market_status_updated 수신용."""
+        self._kospi_strong = kospi_strong
+        self._kosdaq_strong = kosdaq_strong
+
+        def _fmt(strong: bool) -> tuple[str, str]:
+            return ("강세", "#a6e3a1") if strong else ("약세", "#f38ba8")
+
+        k_text, k_color = _fmt(kospi_strong)
+        q_text, q_color = _fmt(kosdaq_strong)
+        self._lbl_status_kospi.setText(f"KOSPI {k_text}")
+        self._lbl_status_kospi.setStyleSheet(
+            f"padding: 6px 12px; font-weight: bold; color: {k_color};"
+        )
+        self._lbl_status_kosdaq.setText(f"KOSDAQ {q_text}")
+        self._lbl_status_kosdaq.setStyleSheet(
+            f"padding: 6px 12px; font-weight: bold; color: {q_color};"
+        )
+
+    def on_daily_loss(self, pnl: float, capital: float | None = None) -> None:
+        """일일 PnL 수신 → 한도 대비 % 표시."""
+        self._daily_pnl = pnl
+        if capital and capital > 0:
+            self._daily_capital = capital
+        ratio = pnl / self._daily_capital if self._daily_capital else 0.0
+        limit_pct = self._daily_loss_limit  # 음수 (-0.015)
+        if ratio >= -0.01:
+            color = "#a6e3a1"
+        elif ratio > limit_pct:
+            color = "#f9e2af"
+        else:
+            color = "#f38ba8"
+        self._lbl_status_loss.setText(
+            f"일일손실 {ratio*100:+.2f}% / {limit_pct*100:.1f}%"
+        )
+        self._lbl_status_loss.setStyleSheet(
+            f"padding: 6px 12px; font-weight: bold; color: {color};"
+        )
 
     # ------------------------------------------------------------------
     # UI construction
@@ -45,6 +185,9 @@ class DashboardTab(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(6)
+
+        # 0. 상태 패널 (시간/매수/시장/손실) — Phase 3 Day 12+ GUI Level 1
+        root.addLayout(self._build_status_strip())
 
         # 1. 서머리 바
         root.addLayout(self._build_summary_bar())
@@ -65,6 +208,37 @@ class DashboardTab(QWidget):
 
         # 5. 최근 성과 바 차트
         root.addWidget(self._build_daily_history())
+
+    def _build_status_strip(self) -> QHBoxLayout:
+        """Phase 3 Day 12+ Level 1: 상단 한 줄 상태 패널."""
+        layout = QHBoxLayout()
+        layout.setSpacing(4)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self._lbl_status_time = QLabel("⏱ --:--:--")
+        self._lbl_status_buytime = QLabel("매수: -")
+        self._lbl_status_kospi = QLabel("KOSPI: -")
+        self._lbl_status_kosdaq = QLabel("KOSDAQ: -")
+        self._lbl_status_loss = QLabel("일일손실: -")
+
+        neutral = "padding: 6px 12px; font-weight: bold; color: #6c7086;"
+        for lbl in (
+            self._lbl_status_time, self._lbl_status_buytime,
+            self._lbl_status_kospi, self._lbl_status_kosdaq, self._lbl_status_loss,
+        ):
+            lbl.setStyleSheet(neutral)
+
+        for i, lbl in enumerate((
+            self._lbl_status_time, self._lbl_status_buytime,
+            self._lbl_status_kospi, self._lbl_status_kosdaq, self._lbl_status_loss,
+        )):
+            layout.addWidget(lbl)
+            if i < 4:
+                sep = QLabel("|")
+                sep.setStyleSheet("color: #45475a; padding: 0 4px;")
+                layout.addWidget(sep)
+        layout.addStretch()
+        return layout
 
     def _build_summary_bar(self) -> QHBoxLayout:
         layout = QHBoxLayout()
@@ -261,7 +435,8 @@ class DashboardTab(QWidget):
         vbox.addLayout(header)
 
         self._watchlist_table = QTableWidget()
-        columns = ["종목", "현재가", "등락%", "전일고가", "돌파%"]
+        # Phase 3 Day 12+ Level 1: 시장(K/Q), ATR% 컬럼 추가
+        columns = ["종목", "시장", "현재가", "등락%", "전일고가", "돌파%", "ATR%"]
         self._watchlist_table.setColumnCount(len(columns))
         self._watchlist_table.setHorizontalHeaderLabels(columns)
         self._watchlist_table.setAlternatingRowColors(True)
@@ -464,12 +639,36 @@ class DashboardTab(QWidget):
             ticker_text = f"⭐ {name}" if has_pos else name
             ticker_color = QColor("#f9e2af") if has_pos else QColor("#89b4fa")
 
+            # Phase 3 Day 12+ Level 1: 시장 구분 + ATR%
+            market = self._market_map.get(ticker, "")
+            market_text = "K" if market == "kospi" else ("Q" if market == "kosdaq" else "-")
+            market_color = (
+                QColor("#89b4fa") if market == "kospi"
+                else QColor("#f9e2af") if market == "kosdaq"
+                else QColor("#6c7086")
+            )
+
+            atr_pct = self._atr_cache.get(ticker)
+            if atr_pct is not None:
+                atr_text = f"{atr_pct:.1f}%"
+                if atr_pct >= 10:
+                    atr_color = QColor("#f38ba8")
+                elif atr_pct >= 5:
+                    atr_color = QColor("#f9e2af")
+                else:
+                    atr_color = QColor("#a6e3a1")
+            else:
+                atr_text = "—"
+                atr_color = QColor("#6c7086")
+
             cells = [
                 (ticker_text, ticker_color),
+                (market_text, market_color),
                 (f"{int(current):,}" if current > 0 else "—", None),
                 (f"{'+' if change_pct >= 0 else ''}{change_pct:.2f}%", change_color),
                 (f"{int(prev_high):,}" if prev_high > 0 else "—", QColor("#6c7086")),
                 (breakout_text, breakout_color),
+                (atr_text, atr_color),
             ]
 
             for col, (text, color) in enumerate(cells):
@@ -484,6 +683,16 @@ class DashboardTab(QWidget):
         table = self._positions_table
         table.setRowCount(0)
         self._positions_count_label.setText(f"{len(positions)} / 3")
+
+        # Phase 3 Day 12+ Level 1: 빈 영역 가이드
+        if not positions:
+            table.setRowCount(1)
+            item = QTableWidgetItem("보유 종목 없음 — 신호 대기 중")
+            item.setForeground(QColor("#6c7086"))
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            table.setItem(0, 0, item)
+            table.setSpan(0, 0, 1, table.columnCount())
+            return
 
         for row_data in positions:
             row = table.rowCount()
@@ -550,6 +759,16 @@ class DashboardTab(QWidget):
         """Rebuild today's trades table."""
         table = self._trades_table
         table.setRowCount(0)
+
+        # Phase 3 Day 12+ Level 1: 빈 영역 가이드
+        if not trades:
+            table.setRowCount(1)
+            item = QTableWidgetItem("오늘 체결 없음")
+            item.setForeground(QColor("#6c7086"))
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            table.setItem(0, 0, item)
+            table.setSpan(0, 0, 1, table.columnCount())
+            return
 
         for row_data in trades:
             row = table.rowCount()

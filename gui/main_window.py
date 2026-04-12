@@ -236,10 +236,13 @@ class MainWindow(QMainWindow):
         s.market_status_updated.connect(self._on_market_status)
 
     def _on_market_status(self, kospi_strong: bool, kosdaq_strong: bool):
-        """Phase 3 Day 12+: 시장필터 갱신 수신 → 상태바 라벨."""
+        """Phase 3 Day 12+: 시장필터 갱신 수신 → 상태바 + 대시보드."""
         k = "강세" if kospi_strong else "약세"
         q = "강세" if kosdaq_strong else "약세"
         self._lbl_market_status.setText(f"  시장: KOSPI {k} | KOSDAQ {q}  ")
+        # 대시보드 상태 스트립에도 전파
+        if hasattr(self, "dashboard_tab") and hasattr(self.dashboard_tab, "on_market_status"):
+            self.dashboard_tab.on_market_status(kospi_strong, kosdaq_strong)
 
     def _on_stop(self):
         if not self._worker:
@@ -643,6 +646,12 @@ class MainWindow(QMainWindow):
     def _on_pnl_updated(self, pnl: float):
         import time as _time
         self.dashboard_tab.update_pnl_chart(_time.time(), pnl)
+        # Phase 3 Day 12+ Level 1: 일일손실 라벨 갱신
+        if hasattr(self.dashboard_tab, "on_daily_loss"):
+            capital = None
+            if self._worker and self._worker._risk_manager:
+                capital = self._worker._risk_manager._daily_capital
+            self.dashboard_tab.on_daily_loss(pnl, capital)
 
     def _on_candidates_updated(self, candidates: list):
         self.screener_tab.update_candidates(candidates)
