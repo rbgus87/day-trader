@@ -351,6 +351,9 @@ class EngineWorker(QThread):
                     max_trades=self._config.trading.max_trades_per_day,
                     cooldown_minutes=self._config.trading.cooldown_minutes,
                 )
+                # Phase 2 Day 6: ATR 손절용 ticker 주입
+                if hasattr(strat, "set_ticker"):
+                    strat.set_ticker(ticker)
                 self._active_strategies[ticker] = {
                     "strategy": strat,
                     "name": s.get("name", ticker),

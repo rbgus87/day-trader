@@ -19,6 +19,9 @@ class MomentumStrategy(BaseStrategy):
         self._config = config
         self._prev_day_high: float = 0.0
         self._prev_day_volume: int = 0
+        # Phase 2 Day 6: ATR 손절 컨텍스트
+        self._ticker: str = ""
+        self._last_signal_date: str = ""  # YYYY-MM-DD
         self.configure_multi_trade(
             max_trades=config.max_trades_per_day,
             cooldown_minutes=config.cooldown_minutes,
@@ -28,6 +31,10 @@ class MomentumStrategy(BaseStrategy):
         """전일 고가·거래량 기준값 저장."""
         self._prev_day_high = high
         self._prev_day_volume = volume
+
+    def set_ticker(self, ticker: str) -> None:
+        """ATR 조회용 종목 코드 주입 (backtester/engine_worker에서 호출)."""
+        self._ticker = ticker
 
     def generate_signal(self, candles: pd.DataFrame, tick: dict) -> Signal | None:
         """매수 신호 생성."""
@@ -68,6 +75,15 @@ class MomentumStrategy(BaseStrategy):
         # 6) VWAP 매수 우위 필터
         if self._config.vwap_enabled and not self._check_vwap(candles, current_price):
             return None
+
+        # ATR 손절 계산을 위한 신호 발생 날짜 캡처 (캔들의 마지막 ts 기준)
+        try:
+            if candles is not None and not candles.empty and "ts" in candles.columns:
+                self._last_signal_date = pd.to_datetime(
+                    candles["ts"].iloc[-1]
+                ).strftime("%Y-%m-%d")
+        except Exception:
+            pass  # 폴백은 get_stop_loss에서 처리
 
         logger.info(
             f"모멘텀 매수 신호: {tick['ticker']} price={current_price} "
@@ -138,8 +154,34 @@ class MomentumStrategy(BaseStrategy):
             return False
 
     def get_stop_loss(self, entry_price: float) -> float:
-        """손절가: 진입가 × (1 + momentum_stop_loss_pct)."""
-        return entry_price * (1 + self._config.momentum_stop_loss_pct)
+        """손절가 계산.
+
+        Phase 2 Day 6: atr_stop_enabled면 ticker_atr 캐시에서 조회한 ATR%로
+        종목별 동적 손절을 계산. 실패 시 고정 -3% 폴백.
+        """
+        fallback = entry_price * (1 + self._config.momentum_stop_loss_pct)
+        if not getattr(self._config, "atr_stop_enabled", False):
+            return fallback
+        if not self._ticker:
+            return fallback
+        try:
+            from core.indicators import calculate_atr_stop_loss, get_latest_atr
+
+            atr_pct = get_latest_atr(
+                "daytrader.db", self._ticker, self._last_signal_date or None
+            )
+            if atr_pct is None:
+                return fallback
+            return calculate_atr_stop_loss(
+                entry_price=entry_price,
+                atr_pct=atr_pct,
+                multiplier=self._config.atr_stop_multiplier,
+                min_pct=self._config.atr_stop_min_pct,
+                max_pct=self._config.atr_stop_max_pct,
+            )
+        except Exception as e:
+            logger.warning(f"ATR 손절 계산 실패 ({self._ticker}): {e}")
+            return fallback
 
     def get_take_profit(self, entry_price: float) -> tuple[float, float]:
         """(tp1, tp2): tp1 = 진입가 × (1 + tp1_pct), tp2 = 0 (트레일링 스톱)."""

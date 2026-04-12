@@ -570,6 +570,9 @@ async def main():
                 max_trades=config.trading.max_trades_per_day,
                 cooldown_minutes=config.trading.cooldown_minutes,
             )
+            # Phase 2 Day 6: ATR 손절용 ticker 주입
+            if hasattr(_strat, "set_ticker"):
+                _strat.set_ticker(_ticker)
             active_strategies[_ticker] = {
                 "strategy": _strat,
                 "name": s.get("name", _ticker),

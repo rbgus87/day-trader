@@ -479,6 +479,7 @@ class Backtester:
         Returns:
             통합 KPI + trades
         """
+        self._current_ticker = ticker
         all_candles = await self.load_candles(ticker, start_date, f"{end_date} 23:59:59")
         if all_candles.empty:
             return {**self.calculate_kpi([]), "trades": []}
@@ -524,6 +525,7 @@ class Backtester:
         시장 필터가 활성화된 경우 ticker_market + market_strong_by_date 기반으로
         약세 시장 날짜는 매매를 건너뛴다 (prev_day_df는 여전히 갱신).
         """
+        self._current_ticker = ticker
         if all_candles.empty:
             return {**self.calculate_kpi([]), "trades": []}
 
@@ -565,13 +567,16 @@ class Backtester:
     # 내부 헬퍼
     # ------------------------------------------------------------------
 
-    @staticmethod
     def _setup_strategy_day(
+        self,
         strategy: BaseStrategy,
         day_df: pd.DataFrame,
         prev_day_df: pd.DataFrame | None,
     ) -> None:
         """전략별 당일/전일 데이터를 자동 설정한다."""
+        # Phase 2 Day 6: ATR 조회용 ticker 주입 (run_multi_day_cached가 알고 있음)
+        if hasattr(strategy, "set_ticker") and hasattr(self, "_current_ticker"):
+            strategy.set_ticker(self._current_ticker)
         # Momentum: 전일 고가/거래량 설정
         if hasattr(strategy, "set_prev_day_data") and prev_day_df is not None:
             prev_high = float(prev_day_df["high"].max())

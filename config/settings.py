@@ -90,6 +90,12 @@ class TradingConfig:
     momentum_volume_ratio: float = 2.0
     momentum_stop_loss_pct: float = -0.008
     momentum_trailing_stop_pct: float = 0.015
+
+    # Phase 2: ATR 기반 동적 손절 (Chandelier 준비)
+    atr_stop_enabled: bool = True
+    atr_stop_multiplier: float = 1.5
+    atr_stop_min_pct: float = 0.015
+    atr_stop_max_pct: float = 0.080
     adx_enabled: bool = True
     adx_length: int = 14
     adx_min: float = 25.0
@@ -240,6 +246,10 @@ class AppConfig:
             momentum_volume_ratio=mom.get("volume_ratio", 2.0),
             momentum_stop_loss_pct=mom.get("stop_loss_pct", -0.008),
             momentum_trailing_stop_pct=mom.get("trailing_stop_pct", 0.015),
+            atr_stop_enabled=mom.get("atr_stop_enabled", True),
+            atr_stop_multiplier=mom.get("atr_stop_multiplier", 1.5),
+            atr_stop_min_pct=mom.get("atr_stop_min_pct", 0.015),
+            atr_stop_max_pct=mom.get("atr_stop_max_pct", 0.080),
             momentum_retest_band_pct=mom.get("retest_band_pct", 0.008),
             momentum_retest_timeout_min=mom.get("retest_timeout_minutes", 45),
             momentum_vwap_filter=mom.get("vwap_filter", True),
