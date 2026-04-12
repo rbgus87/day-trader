@@ -23,6 +23,45 @@ SLIPPAGE_RATE: float = 0.00005    # 0.005% (슬리피지 가정) — config.yaml
 from config.settings import BacktestConfig
 
 
+def build_market_strong_by_date(
+    db_path: str,
+    ma_length: int = 5,
+) -> dict[str, dict[str, bool]]:
+    """index_candles에서 코스피/코스닥 MA 기반 날짜별 강세 맵 생성.
+
+    Returns:
+        {"20260410": {"kospi": True, "kosdaq": False}, ...}
+        MA 계산에 필요한 과거 데이터가 부족한 초반 날짜는 맵에 포함되지 않음.
+    """
+    import sqlite3
+
+    result: dict[str, dict[str, bool]] = {}
+    conn = sqlite3.connect(db_path)
+    try:
+        for index_code, market in (("001", "kospi"), ("101", "kosdaq")):
+            cur = conn.execute(
+                "SELECT dt, close FROM index_candles "
+                "WHERE index_code=? ORDER BY dt ASC",
+                (index_code,),
+            )
+            rows = cur.fetchall()
+            if len(rows) <= ma_length:
+                logger.warning(
+                    f"index {index_code} 데이터 부족: {len(rows)}건 (MA{ma_length} 요구 > {ma_length}건)"
+                )
+                continue
+            # 각 날짜 i에 대해 직전 ma_length일의 평균으로 MA 계산
+            for i in range(ma_length, len(rows)):
+                dt, close = rows[i]
+                recent = [rows[j][1] for j in range(i - ma_length, i)]
+                ma = sum(recent) / ma_length
+                strong = close > ma
+                result.setdefault(dt, {})[market] = strong
+    finally:
+        conn.close()
+    return result
+
+
 class Backtester:
     """순수 pandas 기반 단타 전략 백테스터."""
 
@@ -34,6 +73,8 @@ class Backtester:
         tax: float | None = None,
         slippage: float | None = None,
         backtest_config: BacktestConfig | None = None,
+        ticker_market: str = "unknown",
+        market_strong_by_date: dict[str, dict[str, bool]] | None = None,
     ) -> None:
         self._db = db
         self._config = config
@@ -43,6 +84,10 @@ class Backtester:
         self._exit_fee = commission if commission is not None else bt.commission
         self._tax = tax if tax is not None else bt.tax
         self._slippage = slippage if slippage is not None else bt.slippage
+        # 시장 필터 (Phase 1 Day 4)
+        # market_strong_by_date: {"20260410": {"kospi": True, "kosdaq": False}, ...}
+        self._ticker_market = ticker_market
+        self._market_strong_by_date = market_strong_by_date or {}
 
     # ------------------------------------------------------------------
     # 데이터 로드
@@ -474,7 +519,11 @@ class Backtester:
         all_candles: pd.DataFrame,
         strategy: BaseStrategy,
     ) -> dict[str, Any]:
-        """이미 로드된 캔들 DataFrame으로 다일 백테스트 (DB 재로드 없음)."""
+        """이미 로드된 캔들 DataFrame으로 다일 백테스트 (DB 재로드 없음).
+
+        시장 필터가 활성화된 경우 ticker_market + market_strong_by_date 기반으로
+        약세 시장 날짜는 매매를 건너뛴다 (prev_day_df는 여전히 갱신).
+        """
         if all_candles.empty:
             return {**self.calculate_kpi([]), "trades": []}
 
@@ -484,8 +533,24 @@ class Backtester:
         all_trades: list[dict] = []
         prev_day_df: pd.DataFrame | None = None
 
+        market_filter_enabled = getattr(self._config, "market_filter_enabled", False)
+
         for date, day_candles in df.groupby("date"):
             day_df = day_candles.drop(columns=["date"]).reset_index(drop=True)
+
+            # 시장 필터: 약세 시장 종목은 해당 날짜 매매 건너뛰기
+            skip_day = False
+            if market_filter_enabled and self._ticker_market in ("kospi", "kosdaq"):
+                date_key = date.strftime("%Y%m%d")
+                strong = self._market_strong_by_date.get(date_key)
+                # strong이 없으면(데이터 누락) 보수적으로 허용
+                if strong is not None and not strong.get(self._ticker_market, True):
+                    skip_day = True
+
+            if skip_day:
+                prev_day_df = day_df
+                continue
+
             strategy.reset()
             self._setup_strategy_day(strategy, day_df, prev_day_df)
             result = self.run_backtest(day_df, strategy)

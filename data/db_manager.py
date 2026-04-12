@@ -80,6 +80,19 @@ CREATE TABLE IF NOT EXISTS system_log (
     detail     TEXT,
     created_at TEXT DEFAULT (datetime('now','localtime'))
 );
+
+CREATE TABLE IF NOT EXISTS index_candles (
+    index_code TEXT NOT NULL,
+    dt         TEXT NOT NULL,
+    open       REAL,
+    high       REAL,
+    low        REAL,
+    close      REAL,
+    volume     INTEGER,
+    PRIMARY KEY (index_code, dt)
+);
+
+CREATE INDEX IF NOT EXISTS idx_index_candles_dt ON index_candles(index_code, dt);
 """
 
 
@@ -89,6 +102,10 @@ class DbManager:
     def __init__(self, db_path: str):
         self._db_path = db_path
         self._conn: aiosqlite.Connection | None = None
+
+    @property
+    def db_path(self) -> str:
+        return self._db_path
 
     async def init(self) -> None:
         self._conn = await aiosqlite.connect(self._db_path)
