@@ -95,6 +95,9 @@ class EngineWorker(QThread):
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
 
+        # Phase 3 Day 12+: 일일 손실 한도 도달 1회성 알림 플래그
+        self._daily_halt_notified = False
+
         try:
             self._loop.run_until_complete(self._run_engine())
         except Exception as e:
@@ -397,6 +400,20 @@ class EngineWorker(QThread):
             if self._market_filter is not None:
                 try:
                     await self._market_filter.refresh()
+                    # Phase 3 Day 12+: GUI로 상태 전파
+                    self.signals.market_status_updated.emit(
+                        self._market_filter.kospi_strong,
+                        self._market_filter.kosdaq_strong,
+                    )
+                    if self._notifier:
+                        try:
+                            k = "강세" if self._market_filter.kospi_strong else "약세"
+                            q = "강세" if self._market_filter.kosdaq_strong else "약세"
+                            await self._notifier.send(
+                                f"[MARKET] 시장 필터 갱신 — 코스피 {k} / 코스닥 {q}"
+                            )
+                        except Exception:
+                            pass
                 except Exception as e:
                     logger.error(f"시장 필터 초기 갱신 실패: {e}")
         except Exception as e:
@@ -485,6 +502,22 @@ class EngineWorker(QThread):
 
     # ── Pipeline consumers (ported from main.py) ──
 
+    async def _notify_execution(
+        self, side: str, ticker: str, price: int, qty: int, pnl: int = 0
+    ) -> None:
+        """Phase 3 Day 12+: 체결 텔레그램 알림 (전송 실패는 로그만)."""
+        if not self._notifier:
+            return
+        try:
+            name = self._active_strategies.get(ticker, {}).get("name", ticker)
+            amount = int(price) * int(qty)
+            await self._notifier.send_execution(
+                ticker=ticker, name=name, side=side,
+                price=int(price), qty=int(qty), amount=amount,
+            )
+        except Exception as e:
+            logger.warning(f"체결 텔레그램 전송 실패 ({ticker}): {e}")
+
     async def _tick_consumer(self):
         """틱 -> 캔들 빌더 + 포지션 모니터링."""
         import time as _time
@@ -548,6 +581,7 @@ class EngineWorker(QThread):
                         "price": int(price), "qty": qty,
                         "pnl": int(pnl), "reason": "stop_loss",
                     })
+                    await self._notify_execution("sell", ticker, int(price), qty, int(pnl))
                     continue
                 # TP1 체크
                 if self._risk_manager.check_tp1(ticker, price):
@@ -568,6 +602,7 @@ class EngineWorker(QThread):
                         "price": int(price), "qty": sell_qty,
                         "pnl": int(pnl), "reason": "tp1",
                     })
+                    await self._notify_execution("sell", ticker, int(price), sell_qty, int(pnl))
                     continue
                 # 시간 손절
                 if self._risk_manager.check_time_stop(
@@ -598,6 +633,7 @@ class EngineWorker(QThread):
                         "price": int(price), "qty": qty,
                         "pnl": int(pnl), "reason": "time_stop",
                     })
+                    await self._notify_execution("sell", ticker, int(price), qty, int(pnl))
                     continue
                 # 트레일링 스톱 갱신
                 self._risk_manager.update_trailing_stop(ticker, price)
@@ -644,6 +680,20 @@ class EngineWorker(QThread):
                 if not self._active_strategies:
                     continue
                 if self._risk_manager.is_trading_halted():
+                    # Phase 3 Day 12+: 일일 손실 한도 도달 — 최초 1회 텔레그램 알림
+                    if not self._daily_halt_notified and self._notifier:
+                        self._daily_halt_notified = True
+                        try:
+                            loss = self._risk_manager._daily_pnl
+                            limit = self._config.trading.daily_max_loss_pct * 100
+                            await self._notifier.send_urgent(
+                                f"[HALT] 일일 손실 한도 도달\n"
+                                f"일일 PnL: {loss:+,.0f}원\n"
+                                f"한도: {limit:.1f}%\n"
+                                f"오늘 추가 매수 차단"
+                            )
+                        except Exception as e:
+                            logger.warning(f"halt 텔레그램 실패: {e}")
                     continue
                 if ticker not in self._active_strategies:
                     continue
@@ -757,6 +807,9 @@ class EngineWorker(QThread):
                         "qty": result["qty"],
                         "pnl": None, "reason": signal.strategy or "entry",
                     })
+                    await self._notify_execution(
+                        "buy", signal.ticker, int(signal.price), int(result["qty"])
+                    )
             except Exception as e:
                 logger.error(f"signal_consumer 오류: {e}")
 
@@ -871,6 +924,8 @@ class EngineWorker(QThread):
         self._candle_builder.reset()
         await self._risk_manager.save_daily_summary()
         self._risk_manager.reset_daily()
+        # Phase 3 Day 12+: 다음 날 다시 halt 알림 가능하도록 플래그 리셋
+        self._daily_halt_notified = False
         self._active_strategy = None
         self._active_strategies = {}
         self._candle_history.clear()
@@ -1103,6 +1158,7 @@ class EngineWorker(QThread):
         """risk_manager + candle_builder 리셋."""
         if self._risk_manager:
             self._risk_manager.reset_daily()
+        self._daily_halt_notified = False
         if self._candle_builder:
             self._candle_builder.reset()
         self._candle_history.clear()

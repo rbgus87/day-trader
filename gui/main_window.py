@@ -88,7 +88,9 @@ class MainWindow(QMainWindow):
         self.setStatusBar(self.status_bar)
         self._lbl_status_left = QLabel("Mode: PAPER | Engine: Stopped")
         self._lbl_status_time = QLabel()
+        self._lbl_market_status = QLabel("시장: -")
         self.status_bar.addWidget(self._lbl_status_left, 1)
+        self.status_bar.addPermanentWidget(self._lbl_market_status)
         self.status_bar.addPermanentWidget(self._lbl_status_time)
 
         # Connect sidebar signals
@@ -231,6 +233,13 @@ class MainWindow(QMainWindow):
         s.candidates_updated.connect(self._on_candidates_updated)
         s.watchlist_updated.connect(self._on_watchlist_updated)
         s.daily_history_updated.connect(self._on_daily_history)
+        s.market_status_updated.connect(self._on_market_status)
+
+    def _on_market_status(self, kospi_strong: bool, kosdaq_strong: bool):
+        """Phase 3 Day 12+: 시장필터 갱신 수신 → 상태바 라벨."""
+        k = "강세" if kospi_strong else "약세"
+        q = "강세" if kosdaq_strong else "약세"
+        self._lbl_market_status.setText(f"  시장: KOSPI {k} | KOSDAQ {q}  ")
 
     def _on_stop(self):
         if not self._worker:
