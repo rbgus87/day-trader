@@ -650,6 +650,9 @@ class EngineWorker(QThread):
                 # Phase 2 Day 10: 블랙리스트 체크 (신호 평가 자체를 차단)
                 if self._risk_manager.is_ticker_blacklisted(ticker):
                     continue
+                # Phase 3 Day 11.5: 연속 손실 휴식
+                if self._risk_manager.is_in_loss_rest():
+                    continue
 
                 # 동시 포지션 한도
                 open_pos = self._risk_manager.get_open_positions()

@@ -237,6 +237,9 @@ async def main():
             # Phase 2 Day 10: 블랙리스트 체크
             if risk_manager.is_ticker_blacklisted(ticker):
                 continue
+            # Phase 3 Day 11.5: 연속 손실 휴식
+            if risk_manager.is_in_loss_rest():
+                continue
 
             # 동시 포지션 한도
             open_pos = risk_manager.get_open_positions()

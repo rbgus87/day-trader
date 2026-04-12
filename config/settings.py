@@ -58,6 +58,11 @@ class TradingConfig:
     blacklist_loss_threshold: int = 3
     blacklist_days: int = 7
 
+    # Phase 3 Day 11.5: 방어 레벨 A — 연속 손실 휴식
+    consecutive_loss_rest_enabled: bool = True
+    consecutive_loss_threshold: int = 3
+    consecutive_loss_rest_days: int = 1
+
     # 익절
     tp1_pct: float = 0.03
     tp1_sell_ratio: float = 0.5
@@ -95,6 +100,9 @@ class TradingConfig:
     # 모멘텀 전략
     momentum_volume_ratio: float = 2.0
     momentum_stop_loss_pct: float = -0.008
+    # Phase 3 Day 11.5: 오전 매수 제한
+    buy_time_limit_enabled: bool = True
+    buy_time_end: str = "11:30"
     momentum_trailing_stop_pct: float = 0.015
 
     # Phase 2: ATR 기반 동적 손절 (Chandelier 준비)
@@ -244,6 +252,9 @@ class AppConfig:
             blacklist_lookback_days=t.get("blacklist_lookback_days", 5),
             blacklist_loss_threshold=t.get("blacklist_loss_threshold", 3),
             blacklist_days=t.get("blacklist_days", 7),
+            consecutive_loss_rest_enabled=t.get("consecutive_loss_rest_enabled", True),
+            consecutive_loss_threshold=t.get("consecutive_loss_threshold", 3),
+            consecutive_loss_rest_days=t.get("consecutive_loss_rest_days", 1),
             tp1_pct=t.get("tp1_pct", 0.03),
             tp1_sell_ratio=t.get("tp1_sell_ratio", 0.5),
             trailing_stop_pct=t.get("trailing_stop_pct", 0.01),
@@ -269,6 +280,8 @@ class AppConfig:
             momentum_volume_ratio=mom.get("volume_ratio", 2.0),
             momentum_stop_loss_pct=mom.get("stop_loss_pct", -0.008),
             momentum_trailing_stop_pct=mom.get("trailing_stop_pct", 0.015),
+            buy_time_limit_enabled=mom.get("buy_time_limit_enabled", True),
+            buy_time_end=mom.get("buy_time_end", "11:30"),
             atr_stop_enabled=mom.get("atr_stop_enabled", True),
             atr_stop_multiplier=mom.get("atr_stop_multiplier", 1.5),
             atr_stop_min_pct=mom.get("atr_stop_min_pct", 0.015),

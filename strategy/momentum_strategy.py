@@ -36,9 +36,30 @@ class MomentumStrategy(BaseStrategy):
         """ATR 조회용 종목 코드 주입 (backtester/engine_worker에서 호출)."""
         self._ticker = ticker
 
+    def _check_buy_time_limit(self) -> bool:
+        """Phase 3 Day 11.5: 매수 허용 시간 초과 여부. True면 차단.
+
+        `buy_time_end` (예: "11:30") 이후 신호를 차단. 백테스트는 주입된
+        `_backtest_time`, 실시간은 `datetime.now().time()` 기준.
+        """
+        if not getattr(self._config, "buy_time_limit_enabled", False):
+            return False
+        import re
+        from datetime import datetime, time as _time
+        m = re.match(r"(\d+):(\d+)", str(self._config.buy_time_end))
+        if not m:
+            return False
+        limit = _time(int(m.group(1)), int(m.group(2)))
+        now = self._backtest_time if self._backtest_time else datetime.now().time()
+        return now >= limit
+
     def generate_signal(self, candles: pd.DataFrame, tick: dict) -> Signal | None:
         """매수 신호 생성."""
         if not self.can_trade():
+            return None
+
+        # Phase 3 Day 11.5: 오전 매수 제한
+        if self._check_buy_time_limit():
             return None
 
         current_price: float = tick["price"]

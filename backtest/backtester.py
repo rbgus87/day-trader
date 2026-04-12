@@ -580,6 +580,12 @@ class Backtester:
         blacklist_enabled = getattr(self._config, "blacklist_enabled", False)
         bl_lookback = getattr(self._config, "blacklist_lookback_days", 5)
         bl_threshold = getattr(self._config, "blacklist_loss_threshold", 3)
+        # Phase 3 Day 11.5: 연속 손실 휴식 (backtester 자체 추적, DB 미사용)
+        rest_enabled = getattr(self._config, "consecutive_loss_rest_enabled", False)
+        rest_threshold = getattr(self._config, "consecutive_loss_threshold", 3)
+
+        # 일별 PnL → 연속 손실 카운터
+        daily_pnl_by_date: dict = {}
 
         for date, day_candles in df.groupby("date"):
             day_df = day_candles.drop(columns=["date"]).reset_index(drop=True)
@@ -614,6 +620,21 @@ class Backtester:
                 if recent_losses >= bl_threshold:
                     skip_day = True
 
+            # Phase 3 Day 11.5: 이전 N일 연속 손실 시 당일 휴식
+            if not skip_day and rest_enabled:
+                past_dates = sorted(
+                    (d for d in daily_pnl_by_date.keys() if d < date),
+                    reverse=True,
+                )
+                consecutive = 0
+                for d in past_dates:
+                    if daily_pnl_by_date[d] < 0:
+                        consecutive += 1
+                    else:
+                        break
+                if consecutive >= rest_threshold:
+                    skip_day = True
+
             if skip_day:
                 prev_day_df = day_df
                 continue
@@ -621,7 +642,10 @@ class Backtester:
             strategy.reset()
             self._setup_strategy_day(strategy, day_df, prev_day_df)
             result = self.run_backtest(day_df, strategy)
-            all_trades.extend(result.get("trades", []))
+            day_trades = result.get("trades", [])
+            all_trades.extend(day_trades)
+            # Phase 3 Day 11.5: 당일 PnL 집계 (연속 손실 휴식용)
+            daily_pnl_by_date[date] = sum(t.get("pnl", 0.0) for t in day_trades)
             prev_day_df = day_df
 
         kpi = self.calculate_kpi(all_trades)

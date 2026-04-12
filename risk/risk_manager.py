@@ -162,6 +162,46 @@ class RiskManager:
     def record_pnl(self, pnl: float) -> None:
         self._daily_pnl += pnl
 
+    def is_in_loss_rest(
+        self,
+        current_date: datetime | None = None,
+        db_path: str = "daytrader.db",
+    ) -> bool:
+        """Phase 3 Day 11.5: 최근 N일 연속 손실 시 당일 매수 휴식.
+
+        DB의 trades(sell, pnl) 일별 합계를 내림차순으로 훑어 threshold 이상
+        연속 손실(daily_pnl<0)이면 True. DB 실패 시 안전 폴백(False).
+        """
+        if not getattr(self._config, "consecutive_loss_rest_enabled", False):
+            return False
+
+        now = current_date or datetime.now()
+        threshold = self._config.consecutive_loss_threshold
+        try:
+            conn = sqlite3.connect(db_path)
+        except Exception:
+            return False
+        try:
+            rows = conn.execute(
+                "SELECT date(traded_at) AS dt, SUM(pnl) AS daily_pnl "
+                "FROM trades WHERE side='sell' AND pnl IS NOT NULL "
+                "AND date(traded_at) < ? "
+                "GROUP BY date(traded_at) ORDER BY dt DESC LIMIT ?",
+                (now.strftime("%Y-%m-%d"), max(threshold * 2, 10)),
+            ).fetchall()
+        except Exception:
+            conn.close()
+            return False
+        conn.close()
+
+        consecutive = 0
+        for _, daily_pnl in rows:
+            if daily_pnl is not None and daily_pnl < 0:
+                consecutive += 1
+            else:
+                break
+        return consecutive >= threshold
+
     def is_ticker_blacklisted(
         self,
         ticker: str,
