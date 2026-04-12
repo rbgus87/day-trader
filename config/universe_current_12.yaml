@@ -1,0 +1,49 @@
+# ============================================================================
+# universe.yaml — 단타 유니버스 (market 필드 자동 추가됨)
+# ============================================================================
+# 주의: 이 파일은 scripts/update_universe_market.py에 의해 재생성될 때
+#       원본 주석이 유실됩니다. 원본 주석은 git 히스토리를 참조하세요.
+# ============================================================================
+
+meta:
+  source: backtest_filtered
+  period: 2025-04-01 ~ 2026-04-10
+  criteria: PF>=1.3, trades>=15
+  count: 12
+stocks:
+- ticker: '240810'
+  name: 원익IPS
+  market: kosdaq
+- ticker: '226950'
+  name: 올릭스
+  market: kosdaq
+- ticker: '277810'
+  name: 레인보우로보틱스
+  market: kosdaq
+- ticker: 095340
+  name: ISC
+  market: kosdaq
+- ticker: '141080'
+  name: 리가켐바이오
+  market: kosdaq
+- ticker: '000250'
+  name: 삼천당제약
+  market: kosdaq
+- ticker: '027360'
+  name: 아주IB투자
+  market: kosdaq
+- ticker: 086520
+  name: 에코프로
+  market: kosdaq
+- ticker: '100790'
+  name: 미래에셋벤처투자
+  market: kosdaq
+- ticker: '298380'
+  name: 에이비엘바이오
+  market: kosdaq
+- ticker: '047040'
+  name: 대우건설
+  market: kospi
+- ticker: '950160'
+  name: 코오롱티슈진
+  market: kosdaq

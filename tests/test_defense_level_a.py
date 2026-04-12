@@ -18,34 +18,39 @@ from strategy.momentum_strategy import MomentumStrategy
 # 매수 시간 제한
 # ──────────────────────────────────────────────────────────────────────
 
+def _cfg_with_buy_time(end: str = "11:30", enabled: bool = True):
+    """테스트용 config — buy_time을 명시 고정 (config.yaml 변경에 무관)."""
+    return replace(
+        AppConfig.from_yaml().trading,
+        buy_time_limit_enabled=enabled,
+        buy_time_end=end,
+    )
+
+
 def test_buy_time_limit_before_cutoff():
-    """11:30 이전은 허용 (10:30)."""
-    cfg = AppConfig.from_yaml().trading
-    strategy = MomentumStrategy(cfg)
+    """cutoff 이전은 허용 (10:30 vs 11:30)."""
+    strategy = MomentumStrategy(_cfg_with_buy_time("11:30"))
     strategy._backtest_time = time(10, 30)
     assert strategy._check_buy_time_limit() is False
 
 
 def test_buy_time_limit_after_cutoff():
-    """11:30 이후 차단 (12:00)."""
-    cfg = AppConfig.from_yaml().trading
-    strategy = MomentumStrategy(cfg)
+    """cutoff 이후 차단 (12:00 vs 11:30)."""
+    strategy = MomentumStrategy(_cfg_with_buy_time("11:30"))
     strategy._backtest_time = time(12, 0)
     assert strategy._check_buy_time_limit() is True
 
 
 def test_buy_time_limit_at_cutoff():
-    """정확히 11:30은 차단 (>=)."""
-    cfg = AppConfig.from_yaml().trading
-    strategy = MomentumStrategy(cfg)
+    """정확히 cutoff 시점은 차단 (>=)."""
+    strategy = MomentumStrategy(_cfg_with_buy_time("11:30"))
     strategy._backtest_time = time(11, 30)
     assert strategy._check_buy_time_limit() is True
 
 
 def test_buy_time_limit_disabled():
     """비활성 시 항상 False."""
-    cfg = replace(AppConfig.from_yaml().trading, buy_time_limit_enabled=False)
-    strategy = MomentumStrategy(cfg)
+    strategy = MomentumStrategy(_cfg_with_buy_time("11:30", enabled=False))
     strategy._backtest_time = time(15, 0)
     assert strategy._check_buy_time_limit() is False
 
