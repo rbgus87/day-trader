@@ -75,6 +75,7 @@ class Backtester:
         backtest_config: BacktestConfig | None = None,
         ticker_market: str = "unknown",
         market_strong_by_date: dict[str, dict[str, bool]] | None = None,
+        atr_db_path: str = "daytrader.db",
     ) -> None:
         self._db = db
         self._config = config
@@ -88,6 +89,9 @@ class Backtester:
         # market_strong_by_date: {"20260410": {"kospi": True, "kosdaq": False}, ...}
         self._ticker_market = ticker_market
         self._market_strong_by_date = market_strong_by_date or {}
+        # ATR 조회용 DB 경로 (Phase 2 Day 7 버그픽스):
+        # ProcessPool 워커에서 db=None으로 생성 시 ATR 트레일이 꺼지던 문제 해결
+        self._atr_db_path = atr_db_path
 
     # ------------------------------------------------------------------
     # 데이터 로드
@@ -321,10 +325,14 @@ class Backtester:
                                     as_of = pd.to_datetime(row["ts"]).strftime("%Y-%m-%d")
                                 except Exception:
                                     pass
+                                # db가 None이면 _atr_db_path (default "daytrader.db") 사용
+                                db_path = (
+                                    self._db.db_path if self._db is not None
+                                    else self._atr_db_path
+                                )
                                 atr_pct = (
-                                    get_latest_atr(self._db.db_path, ticker, as_of)
-                                    if (self._db is not None and ticker)
-                                    else None
+                                    get_latest_atr(db_path, ticker, as_of)
+                                    if ticker else None
                                 )
                                 if atr_pct is not None:
                                     new_stop = calculate_atr_trailing_stop(
