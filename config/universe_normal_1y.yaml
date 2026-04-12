@@ -1,0 +1,30 @@
+meta:
+  source: backtest_filtered
+  period: 2025-04-01 ~ 2026-04-10
+  criteria: PF>=1.3, trades>=15
+  count: 12
+stocks:
+- ticker: '240810'
+  name: 원익IPS
+- ticker: '226950'
+  name: 올릭스
+- ticker: '277810'
+  name: 레인보우로보틱스
+- ticker: 095340
+  name: ISC
+- ticker: '141080'
+  name: 리가켐바이오
+- ticker: '000250'
+  name: 삼천당제약
+- ticker: '027360'
+  name: 아주IB투자
+- ticker: 086520
+  name: 에코프로
+- ticker: '100790'
+  name: 미래에셋벤처투자
+- ticker: '298380'
+  name: 에이비엘바이오
+- ticker: '047040'
+  name: 대우건설
+- ticker: '950160'
+  name: 코오롱티슈진

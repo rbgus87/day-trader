@@ -1,0 +1,12 @@
+meta:
+  source: backtest_filtered
+  period: 2025-04-01 ~ 2026-04-10
+  criteria: PF>=1.5, trades>=20
+  count: 3
+stocks:
+- ticker: '277810'
+  name: 레인보우로보틱스
+- ticker: '000250'
+  name: 삼천당제약
+- ticker: 086520
+  name: 에코프로
