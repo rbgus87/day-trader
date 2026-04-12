@@ -34,77 +34,87 @@ START = "2025-04-01"
 END = "2026-04-10"
 
 COMBINATIONS = [
+    # 기존 8개 (regression check)
     (
         "A. 필터 없음",
-        {
-            "adx_enabled": False,
-            "rvol_enabled": False,
-            "vwap_enabled": False,
-            "market_filter_enabled": False,
-        },
+        {"adx_enabled": False, "rvol_enabled": False, "vwap_enabled": False,
+         "market_filter_enabled": False},
     ),
     (
-        "B. ADX만",
-        {
-            "adx_enabled": True,
-            "rvol_enabled": False,
-            "vwap_enabled": False,
-            "market_filter_enabled": False,
-        },
+        "B. ADX25",
+        {"adx_enabled": True, "adx_min": 25.0,
+         "rvol_enabled": False, "vwap_enabled": False, "market_filter_enabled": False},
     ),
     (
-        "C. ADX+RVol",
-        {
-            "adx_enabled": True,
-            "rvol_enabled": True,
-            "vwap_enabled": False,
-            "market_filter_enabled": False,
-        },
+        "C. ADX25+RVol3",
+        {"adx_enabled": True, "adx_min": 25.0,
+         "rvol_enabled": True, "rvol_min": 3.0,
+         "vwap_enabled": False, "market_filter_enabled": False},
     ),
     (
-        "D. ADX+RVol+VWAP",
-        {
-            "adx_enabled": True,
-            "rvol_enabled": True,
-            "vwap_enabled": True,
-            "market_filter_enabled": False,
-        },
+        "D. ADX25+RVol3+VWAP",
+        {"adx_enabled": True, "adx_min": 25.0,
+         "rvol_enabled": True, "rvol_min": 3.0,
+         "vwap_enabled": True, "market_filter_enabled": False},
     ),
     (
-        "E. 전부 (+시장)",
-        {
-            "adx_enabled": True,
-            "rvol_enabled": True,
-            "vwap_enabled": True,
-            "market_filter_enabled": True,
-        },
+        "E. 전부 (ADX25)",
+        {"adx_enabled": True, "adx_min": 25.0,
+         "rvol_enabled": True, "rvol_min": 3.0,
+         "vwap_enabled": True, "market_filter_enabled": True},
     ),
     (
-        "F. RVol만",
-        {
-            "adx_enabled": False,
-            "rvol_enabled": True,
-            "vwap_enabled": False,
-            "market_filter_enabled": False,
-        },
+        "F. RVol3만",
+        {"adx_enabled": False,
+         "rvol_enabled": True, "rvol_min": 3.0,
+         "vwap_enabled": False, "market_filter_enabled": False},
     ),
     (
-        "G. RVol+시장",
-        {
-            "adx_enabled": False,
-            "rvol_enabled": True,
-            "vwap_enabled": False,
-            "market_filter_enabled": True,
-        },
+        "G. RVol3+시장",
+        {"adx_enabled": False,
+         "rvol_enabled": True, "rvol_min": 3.0,
+         "vwap_enabled": False, "market_filter_enabled": True},
     ),
     (
         "H. 시장만",
-        {
-            "adx_enabled": False,
-            "rvol_enabled": False,
-            "vwap_enabled": False,
-            "market_filter_enabled": True,
-        },
+        {"adx_enabled": False, "rvol_enabled": False, "vwap_enabled": False,
+         "market_filter_enabled": True},
+    ),
+    # RVol 완화
+    (
+        "I. RVol2.0+시장",
+        {"adx_enabled": False,
+         "rvol_enabled": True, "rvol_min": 2.0,
+         "vwap_enabled": False, "market_filter_enabled": True},
+    ),
+    (
+        "J. RVol2.5+시장",
+        {"adx_enabled": False,
+         "rvol_enabled": True, "rvol_min": 2.5,
+         "vwap_enabled": False, "market_filter_enabled": True},
+    ),
+    # ADX20 시도
+    (
+        "K. ADX20만",
+        {"adx_enabled": True, "adx_min": 20.0,
+         "rvol_enabled": False, "vwap_enabled": False, "market_filter_enabled": False},
+    ),
+    (
+        "L. ADX20+시장",
+        {"adx_enabled": True, "adx_min": 20.0,
+         "rvol_enabled": False, "vwap_enabled": False, "market_filter_enabled": True},
+    ),
+    (
+        "M. ADX20+RVol2+시장",
+        {"adx_enabled": True, "adx_min": 20.0,
+         "rvol_enabled": True, "rvol_min": 2.0,
+         "vwap_enabled": False, "market_filter_enabled": True},
+    ),
+    (
+        "N. ADX20+RVol2.5+시장",
+        {"adx_enabled": True, "adx_min": 20.0,
+         "rvol_enabled": True, "rvol_min": 2.5,
+         "vwap_enabled": False, "market_filter_enabled": True},
     ),
 ]
 

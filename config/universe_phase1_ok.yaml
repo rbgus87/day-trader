@@ -1,0 +1,56 @@
+meta:
+  source: backtest_filtered
+  period: 2025-04-01 ~ 2026-04-10
+  criteria: PF>=1.0, trades>=5
+  count: 25
+stocks:
+- ticker: 005380
+  name: 현대차
+- ticker: '475150'
+  name: SK이터닉스
+- ticker: '240810'
+  name: 원익IPS
+- ticker: 078600
+  name: 대주전자재료
+- ticker: '000720'
+  name: 현대건설
+- ticker: '042700'
+  name: 한미반도체
+- ticker: '226950'
+  name: 올릭스
+- ticker: 095340
+  name: ISC
+- ticker: '141080'
+  name: 리가켐바이오
+- ticker: '006400'
+  name: 삼성SDI
+- ticker: '000250'
+  name: 삼천당제약
+- ticker: 080220
+  name: 제주반도체
+- ticker: '247540'
+  name: 에코프로비엠
+- ticker: '196170'
+  name: 알테오젠
+- ticker: '277810'
+  name: 레인보우로보틱스
+- ticker: 009830
+  name: 한화솔루션
+- ticker: '475830'
+  name: 오름테라퓨틱
+- ticker: '403870'
+  name: HPSP
+- ticker: '047040'
+  name: 대우건설
+- ticker: 083650
+  name: 비에이치아이
+- ticker: 086520
+  name: 에코프로
+- ticker: '376900'
+  name: 로킷헬스케어
+- ticker: '950160'
+  name: 코오롱티슈진
+- ticker: '298380'
+  name: 에이비엘바이오
+- ticker: '100790'
+  name: 미래에셋벤처투자

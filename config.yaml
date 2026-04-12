@@ -61,18 +61,20 @@ strategy:
   #   stop_loss_pct: -0.012
 
   # 모멘텀 브레이크아웃 — 전일 고점 돌파 + 거래량 200%
+  # Phase 1 최종 (2026-04-12): ADX20 + 시장 필터 조합 (L) 채택
+  #   그리드 결과: 거래 501건 / PF 1.46 / PnL +208,303 / PF>1 35종목
   momentum:
     volume_ratio: 2.0               # 전일 대비 거래량 200%
     stop_loss_pct: -0.030           # 손절 -3.0% (백테스트 최적: PF 1.00 손익분기)
     trailing_stop_pct: 0.005
     adx_enabled: true               # ADX 추세 필터
     adx_length: 14                  # ADX 계산 기간
-    adx_min: 25                     # 최소 ADX (25 이상만 진입)
-    rvol_enabled: true              # RVol 거래량 급증 필터
-    rvol_window: 5                  # 직전 5분봉 거래량 합산
-    rvol_min: 3.0                   # 당일 평균 대비 3배 이상
-    vwap_enabled: true              # VWAP 매수 우위 필터
-    vwap_min_above: 0.0             # VWAP 대비 최소 초과 비율
+    adx_min: 20                     # Phase 1: 25 → 20 (거래수 유지 + 가짜 돌파 차단)
+    rvol_enabled: false             # Phase 1: true → false (RVol 단독은 PnL 감소)
+    rvol_window: 5
+    rvol_min: 3.0
+    vwap_enabled: false             # Phase 1: true → false (효과 무의미, D=C)
+    vwap_min_above: 0.0
 
   # 눌림목 — 당일 상승 종목의 조정 후 반등
   pullback:
