@@ -232,7 +232,6 @@ class MainWindow(QMainWindow):
         s.pnl_updated.connect(self._on_pnl_updated)
         s.candidates_updated.connect(self._on_candidates_updated)
         s.watchlist_updated.connect(self._on_watchlist_updated)
-        s.daily_history_updated.connect(self._on_daily_history)
         s.market_status_updated.connect(self._on_market_status)
 
     def _on_market_status(self, kospi_strong: bool, kosdaq_strong: bool):
@@ -606,6 +605,9 @@ class MainWindow(QMainWindow):
         ws_ok = status.get("ws_connected", False)
         rest_ok = status.get("running", False)  # REST는 엔진 실행 중이면 연결
         self.sidebar.update_connection(rest_ok, ws_ok)
+        # 대시보드 상태 패널: 차단 판정 + 자본 표시용 캐시
+        if hasattr(self.dashboard_tab, "on_engine_status"):
+            self.dashboard_tab.on_engine_status(status)
         # Update dashboard summary
         self.dashboard_tab.update_summary({
             "daily_pnl": status.get("daily_pnl", 0),
@@ -658,9 +660,6 @@ class MainWindow(QMainWindow):
 
     def _on_watchlist_updated(self, items: list):
         self.dashboard_tab.update_watchlist(items)
-
-    def _on_daily_history(self, data: list):
-        self.dashboard_tab.update_daily_history(data)
 
     # ── 트레이 ────────────────────────────────────────────────────────────────
 

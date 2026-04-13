@@ -11,10 +11,11 @@ from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QSplitter, QHeaderView,
     QAbstractItemView, QSizePolicy, QProgressBar,
 )
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QEvent
 from PyQt6.QtGui import QColor
 
 from config.settings import AppConfig
+from gui.widgets.card import Card
 
 # matplotlib 차트 (OpenGL 불필요, segfault 안전)
 try:
@@ -33,6 +34,36 @@ except ImportError:
 class DashboardTab(QWidget):
     """Dashboard tab — summary, PnL chart, positions, watchlist, trades, daily history."""
 
+    # 차단 사유 코드 → 한국어 표시명 (상세값은 _format_block_label 에서 동적 조합)
+    BLOCK_REASON_LABELS = {
+        "HALT": "긴급 정지",
+        "LOSS": "일일 손실 한도",
+        "POS": "포지션 가득",
+        "TIME": "시간",
+        "MKT": "시장 약세",
+    }
+
+    # 보유 포지션 컬럼 비율 (종목/진입가/수량/현재가/수익률/경과/손절가/TP1/상태)
+    POSITIONS_COLUMN_RATIOS = [18, 10, 6, 10, 9, 13, 10, 10, 14]
+
+    # 매도 사유 + 전략명 → 짧은 코드 매핑 (툴팁에 원본)
+    REASON_CODES = {
+        "force_close": "FC",
+        "tp1": "TP1",
+        "stop_loss": "SL",
+        "trailing": "TRL",
+        "time_stop": "TS",
+        "momentum": "MOM",
+        "pullback": "PB",
+        "flow": "FLW",
+        "gap": "GAP",
+        "openbreak": "OB",
+        "bigcandle": "BC",
+        "paper": "?",
+        "unknown": "?",
+        "": "?",
+    }
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._pnl_timestamps: list[float] = []
@@ -40,9 +71,6 @@ class DashboardTab(QWidget):
         self._pnl_fig = None
         self._pnl_ax = None
         self._pnl_canvas = None
-        self._daily_fig = None
-        self._daily_ax = None
-        self._daily_canvas = None
 
         # Phase 3 Day 12+ GUI Level 1: 상태 패널 캐시
         self._market_map: dict[str, str] = self._load_market_map()
@@ -51,6 +79,11 @@ class DashboardTab(QWidget):
         self._kosdaq_strong: bool | None = None
         self._daily_pnl: float = 0.0
         self._daily_capital: float = 1_000_000.0
+        self._halted: bool = False
+        self._positions_count: int = 0
+        self._max_positions: int = 3
+        self._available_capital: float = 0.0
+        self._initial_capital: float = 0.0
         try:
             cfg = AppConfig.from_yaml().trading
             self._buy_time_end = cfg.buy_time_end
@@ -115,28 +148,134 @@ class DashboardTab(QWidget):
         except ValueError:
             return None
 
+    def _compute_block_reasons(self) -> list[tuple[str, str]]:
+        """현재 매수 차단 사유 목록을 우선순위 순으로 반환.
+
+        Returns:
+            list of (code, display_text). 비어 있으면 "매수 가능".
+        """
+        reasons: list[tuple[str, str]] = []
+
+        # 1. daily_max_loss (최고 우선순위)
+        if self._halted:
+            reasons.append(("HALT", "일일 한도 도달 (정지)"))
+        elif self._daily_capital > 0:
+            ratio = self._daily_pnl / self._daily_capital
+            if ratio <= self._daily_loss_limit:
+                reasons.append((
+                    "LOSS",
+                    f"일일손실 {ratio*100:+.2f}% ≤ {self._daily_loss_limit*100:.1f}%",
+                ))
+
+        # 2. max_positions
+        if self._positions_count >= self._max_positions:
+            reasons.append((
+                "POS",
+                f"포지션 {self._positions_count}/{self._max_positions}",
+            ))
+
+        # 3. 시간 차단
+        limit = self._parse_time_str(self._buy_time_end)
+        if self._buy_time_enabled and limit is not None:
+            now = datetime.now().time()
+            if now >= limit:
+                reasons.append(("TIME", f"시간 ≥{self._buy_time_end}"))
+
+        # 4. 시장 약세 (KOSPI/KOSDAQ 둘 다 약세일 때만)
+        if self._kospi_strong is False and self._kosdaq_strong is False:
+            reasons.append(("MKT", "KOSPI/KOSDAQ 약세"))
+
+        return reasons
+
+    def _format_block_label(self, code: str, detail: str) -> str:
+        """차단 사유 코드 + detail → 사용자용 표시 문자열."""
+        base = self.BLOCK_REASON_LABELS.get(code, code)
+        if code == "TIME":
+            return f"시간 (≥{self._buy_time_end})"
+        if code == "POS":
+            return f"포지션 가득 ({self._positions_count}/{self._max_positions})"
+        if code == "LOSS":
+            # 상세 퍼센트는 툴팁/detail 로 확인, 표시는 표시명만
+            return base
+        # HALT, MKT 등 — 표시명만
+        return base
+
     def _refresh_status_strip(self) -> None:
-        """1초 타이머: 시간/매수시간 상태 갱신."""
+        """1초 타이머: 시간 + 매수 차단 사유 + 자본 라벨 갱신."""
         now = datetime.now().time()
         self._lbl_status_time.setText(now.strftime("⏱ %H:%M:%S"))
 
-        # 매수 가능 여부
-        limit = self._parse_time_str(self._buy_time_end)
-        if not self._buy_time_enabled or limit is None:
-            self._lbl_status_buytime.setText("매수: 제한없음")
-            self._lbl_status_buytime.setStyleSheet(
-                "padding: 6px 12px; font-weight: bold; color: #6c7086;"
-            )
-        elif now >= limit:
-            self._lbl_status_buytime.setText(f"매수 차단 ≥{self._buy_time_end}")
-            self._lbl_status_buytime.setStyleSheet(
-                "padding: 6px 12px; font-weight: bold; color: #f38ba8;"
-            )
-        else:
-            self._lbl_status_buytime.setText(f"매수 가능 <{self._buy_time_end}")
+        # 매수 차단 사유
+        reasons = self._compute_block_reasons()
+        if not reasons:
+            self._lbl_status_buytime.setText("매수 가능")
             self._lbl_status_buytime.setStyleSheet(
                 "padding: 6px 12px; font-weight: bold; color: #a6e3a1;"
             )
+            self._lbl_status_buytime.setToolTip("")
+        else:
+            top_code, top_detail = reasons[0]
+            top_label = self._format_block_label(top_code, top_detail)
+            self._lbl_status_buytime.setText(f"매수 차단 — {top_label}")
+            self._lbl_status_buytime.setStyleSheet(
+                "padding: 6px 12px; font-weight: bold; color: #f38ba8;"
+            )
+            if len(reasons) > 1:
+                lines = []
+                for c, d in reasons:
+                    label = self._format_block_label(c, d)
+                    # detail 이 라벨과 다르면 부가 정보로 함께 표기
+                    if d and d not in label:
+                        lines.append(f"• {label}: {d}")
+                    else:
+                        lines.append(f"• {label}")
+                self._lbl_status_buytime.setToolTip("\n".join(lines))
+            else:
+                # 단일 차단: detail 이 유의미하면 툴팁으로만 표시
+                _, d = reasons[0]
+                if d and d not in top_label:
+                    self._lbl_status_buytime.setToolTip(d)
+                else:
+                    self._lbl_status_buytime.setToolTip("")
+
+        # 자본 라벨
+        self._refresh_capital_label()
+
+    def _refresh_capital_label(self) -> None:
+        """자본 604,150 (-1.37%) 형식."""
+        avail = self._available_capital
+        init = self._initial_capital
+        if init <= 0:
+            self._lbl_status_capital.setText("자본 —")
+            self._lbl_status_capital.setStyleSheet(
+                "padding: 6px 12px; font-weight: bold; color: #6c7086;"
+            )
+            return
+        change = (avail - init) / init
+        if change > 0.0005:
+            color = "#a6e3a1"
+        elif change < -0.0005:
+            color = "#f38ba8"
+        else:
+            color = "#cdd6f4"
+        self._lbl_status_capital.setText(
+            f"자본 {int(avail):,} ({change*100:+.2f}%)"
+        )
+        self._lbl_status_capital.setStyleSheet(
+            f"padding: 6px 12px; font-weight: bold; color: {color};"
+        )
+
+    def on_engine_status(self, status: dict) -> None:
+        """main_window._on_status_updated 에서 호출 — 차단 판정 + 자본 표시용 캐시."""
+        self._halted = bool(status.get("halted", False))
+        self._positions_count = int(
+            status.get("positions_count", 0) or status.get("open_positions_count", 0)
+        )
+        self._max_positions = int(status.get("max_positions", 3) or 3)
+        self._available_capital = float(status.get("available_capital", 0) or 0)
+        self._initial_capital = float(status.get("initial_capital", 0) or 0)
+        # 화면 즉시 반영
+        self._refresh_capital_label()
 
     def on_market_status(self, kospi_strong: bool, kosdaq_strong: bool) -> None:
         """EngineSignals.market_status_updated 수신용."""
@@ -186,31 +325,42 @@ class DashboardTab(QWidget):
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(6)
 
-        # 0. 상태 패널 (시간/매수/시장/손실) — Phase 3 Day 12+ GUI Level 1
+        # 0. 상태 패널
         root.addLayout(self._build_status_strip())
 
-        # 1. 서머리 바
-        root.addLayout(self._build_summary_bar())
+        # 1. 서머리 바 (KPI 카드 4개) + PnL 차트 카드 (좌우, 같은 높이)
+        TOP_ROW_HEIGHT = 104  # KPI 카드 + 차트 카드 공통 높이 (타이틀 공간 포함)
+        top_row = QHBoxLayout()
+        top_row.setSpacing(8)
 
-        # 2. PnL 차트 (전체 폭)
-        root.addWidget(self._build_pnl_chart())
+        summary_widget = QWidget()
+        summary_layout = self._build_summary_bar()
+        summary_widget.setLayout(summary_layout)
+        summary_widget.setFixedHeight(TOP_ROW_HEIGHT)
+        top_row.addWidget(summary_widget, stretch=1)
 
-        # 3. 중앙: 포지션(좌) + 감시종목(우)
-        mid_splitter = QSplitter(Qt.Orientation.Horizontal)
-        mid_splitter.addWidget(self._build_positions_panel())
-        mid_splitter.addWidget(self._build_watchlist_panel())
-        mid_splitter.setSizes([550, 450])
-        mid_splitter.setChildrenCollapsible(False)
-        root.addWidget(mid_splitter, stretch=1)
+        chart_card = self._build_pnl_chart_card()
+        chart_card.setFixedHeight(TOP_ROW_HEIGHT)
+        top_row.addWidget(chart_card, stretch=1)
+        root.addLayout(top_row)
 
-        # 4. 당일 체결
-        root.addWidget(self._build_trades_panel())
+        # 2. 보유 포지션 카드 (가로 전체, 헤더+3행 고정)
+        root.addWidget(self._build_positions_panel())
 
-        # 5. 최근 성과 바 차트
-        root.addWidget(self._build_daily_history())
+        # 3. 하단: 감시종목 카드(좌 6) + 당일 체결 카드(우 4)
+        bottom_splitter = QSplitter(Qt.Orientation.Horizontal)
+        bottom_splitter.setHandleWidth(10)  # 카드 사이 여백용
+        bottom_splitter.setStyleSheet(
+            "QSplitter::handle { background-color: transparent; }"
+        )
+        bottom_splitter.addWidget(self._build_watchlist_panel())
+        bottom_splitter.addWidget(self._build_trades_panel())
+        bottom_splitter.setSizes([600, 400])
+        bottom_splitter.setChildrenCollapsible(False)
+        root.addWidget(bottom_splitter, stretch=1)
 
     def _build_status_strip(self) -> QHBoxLayout:
-        """Phase 3 Day 12+ Level 1: 상단 한 줄 상태 패널."""
+        """상단 한 줄 상태 패널 (시간 / 매수차단 / KOSPI / KOSDAQ / 일일손실 / 자본)."""
         layout = QHBoxLayout()
         layout.setSpacing(4)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -220,24 +370,28 @@ class DashboardTab(QWidget):
         self._lbl_status_kospi = QLabel("KOSPI: -")
         self._lbl_status_kosdaq = QLabel("KOSDAQ: -")
         self._lbl_status_loss = QLabel("일일손실: -")
+        self._lbl_status_capital = QLabel("자본: -")
 
         neutral = "padding: 6px 12px; font-weight: bold; color: #6c7086;"
-        for lbl in (
+        labels = (
             self._lbl_status_time, self._lbl_status_buytime,
-            self._lbl_status_kospi, self._lbl_status_kosdaq, self._lbl_status_loss,
-        ):
+            self._lbl_status_kospi, self._lbl_status_kosdaq,
+            self._lbl_status_loss, self._lbl_status_capital,
+        )
+        for lbl in labels:
             lbl.setStyleSheet(neutral)
 
-        for i, lbl in enumerate((
-            self._lbl_status_time, self._lbl_status_buytime,
-            self._lbl_status_kospi, self._lbl_status_kosdaq, self._lbl_status_loss,
-        )):
+        # 좌측: 시간 / 매수차단 / KOSPI / KOSDAQ / 일일손실
+        # 우측 끝: 자본 (addStretch 뒤)
+        left_labels = labels[:-1]
+        for i, lbl in enumerate(left_labels):
             layout.addWidget(lbl)
-            if i < 4:
+            if i < len(left_labels) - 1:
                 sep = QLabel("|")
                 sep.setStyleSheet("color: #45475a; padding: 0 4px;")
                 layout.addWidget(sep)
         layout.addStretch()
+        layout.addWidget(self._lbl_status_capital)
         return layout
 
     def _build_summary_bar(self) -> QHBoxLayout:
@@ -268,12 +422,10 @@ class DashboardTab(QWidget):
 
         return layout
 
-    def _make_summary_card(self, title: str) -> tuple["QFrame", "QLabel", "QLabel"]:
-        frame = QFrame()
-        frame.setStyleSheet("QFrame { background-color: #313244; border-radius: 6px; }")
-        vbox = QVBoxLayout(frame)
-        vbox.setContentsMargins(10, 8, 10, 8)
-        vbox.setSpacing(2)
+    def _make_summary_card(self, title: str) -> tuple["Card", "QLabel", "QLabel"]:
+        # KPI 카드는 커스텀 3줄 구조 (제목/값/부제) 유지 → Card(title=None) 후 내부 배치
+        card = Card()
+        card.content_layout().setSpacing(2)  # 기존 KPI 카드와 픽셀 동일
 
         title_label = QLabel(title)
         title_label.setStyleSheet("font-size: 10px; color: #6c7086;")
@@ -282,11 +434,11 @@ class DashboardTab(QWidget):
         subtitle_label = QLabel("")
         subtitle_label.setStyleSheet("font-size: 10px; color: #6c7086;")
 
-        vbox.addWidget(title_label)
-        vbox.addWidget(value_label)
-        vbox.addWidget(subtitle_label)
+        card.addWidget(title_label)
+        card.addWidget(value_label)
+        card.addWidget(subtitle_label)
 
-        return frame, value_label, subtitle_label
+        return card, value_label, subtitle_label
 
     # ── 차트 빌더 ────────────────────────────────────────────────────────
 
@@ -302,31 +454,25 @@ class DashboardTab(QWidget):
         for spine in ax.spines.values():
             spine.set_visible(False)
 
-    def _setup_daily_empty_state(self) -> None:
-        ax = self._daily_ax
-        ax.clear()
-        ax.set_facecolor("#313244")
-        ax.text(0.5, 0.5, "최근 5일 성과 — 데이터 수집 중",
-                transform=ax.transAxes, ha="center", va="center",
-                color="#6c7086", fontsize=9)
-        ax.set_xticks([])
-        ax.set_yticks([])
-        for spine in ax.spines.values():
-            spine.set_visible(False)
+    def _build_pnl_chart_card(self) -> "Card":
+        """일중 PnL 차트를 타이틀 Card로 감싸 반환."""
+        card = Card(title="일일 손익 추이")
+        chart = self._build_pnl_chart()
+        card.addWidget(chart, stretch=1)
+        return card
 
     def _build_pnl_chart(self) -> QWidget:
-        """일중 PnL 영역 차트 (matplotlib)."""
+        """일중 PnL 영역 차트 (matplotlib) — 높이는 외부에서 설정."""
         if not _HAS_MATPLOTLIB:
             return self._pnl_text_fallback()
         try:
-            self._pnl_fig = Figure(figsize=(10, 1.5), dpi=100)
+            self._pnl_fig = Figure(figsize=(6, 0.9), dpi=100)
             self._pnl_fig.patch.set_facecolor("#313244")
             self._pnl_ax = self._pnl_fig.add_subplot(111)
             self._setup_pnl_empty_state()
-            self._pnl_fig.tight_layout(pad=0.5)
+            self._pnl_fig.tight_layout(pad=0.3)
 
             canvas = FigureCanvasQTAgg(self._pnl_fig)
-            canvas.setFixedHeight(150)
             self._pnl_canvas = canvas
             return canvas
         except Exception as e:
@@ -336,7 +482,6 @@ class DashboardTab(QWidget):
 
     def _pnl_text_fallback(self) -> QWidget:
         frame = QFrame()
-        frame.setFixedHeight(60)
         frame.setStyleSheet("background-color: #313244; border-radius: 6px;")
         layout = QHBoxLayout(frame)
         layout.setContentsMargins(12, 8, 12, 8)
@@ -352,87 +497,77 @@ class DashboardTab(QWidget):
         self._pnl_ax = None
         return frame
 
-    def _build_daily_history(self) -> QWidget:
-        """최근 5일 일일 PnL 바 차트 (matplotlib)."""
-        if not _HAS_MATPLOTLIB:
-            return self._daily_history_fallback()
-        try:
-            self._daily_fig = Figure(figsize=(10, 0.8), dpi=100)
-            self._daily_fig.patch.set_facecolor("#313244")
-            self._daily_ax = self._daily_fig.add_subplot(111)
-            self._setup_daily_empty_state()
-            self._daily_fig.tight_layout(pad=0.5)
-
-            canvas = FigureCanvasQTAgg(self._daily_fig)
-            canvas.setFixedHeight(80)
-            self._daily_canvas = canvas
-            return canvas
-        except Exception as e:
-            from loguru import logger
-            logger.warning(f"일일 성과 차트 초기화 실패: {e}")
-            return self._daily_history_fallback()
-
-    def _daily_history_fallback(self) -> QWidget:
-        frame = QFrame()
-        frame.setFixedHeight(40)
-        frame.setStyleSheet("background-color: #313244; border-radius: 6px;")
-        layout = QHBoxLayout(frame)
-        layout.setContentsMargins(12, 4, 12, 4)
-        lbl = QLabel("최근 성과: matplotlib 미설치")
-        lbl.setStyleSheet("color: #6c7086; font-size: 10px;")
-        layout.addWidget(lbl)
-        self._daily_canvas = None
-        self._daily_ax = None
-        self._daily_fig = None
-        return frame
-
     # ── 테이블 빌더 ──────────────────────────────────────────────────────
 
     def _build_positions_panel(self) -> QWidget:
-        panel = QWidget()
-        vbox = QVBoxLayout(panel)
-        vbox.setContentsMargins(0, 0, 4, 0)
-        vbox.setSpacing(2)
-
-        header = QHBoxLayout()
-        header.setContentsMargins(0, 0, 0, 0)
-        title = QLabel("보유 포지션")
-        title.setStyleSheet("font-size: 12px; font-weight: bold; color: #cdd6f4;")
-        header.addWidget(title)
-        self._positions_count_label = QLabel("0 / 3")
-        self._positions_count_label.setStyleSheet("font-size: 11px; color: #6c7086;")
-        header.addWidget(self._positions_count_label)
-        header.addStretch()
-        vbox.addLayout(header)
+        self._positions_card = Card(title="보유 포지션  0 / 3")
 
         self._positions_table = QTableWidget()
-        columns = ["종목", "진입가", "현재가", "수익률", "경과", "손절가", "TP1", "상태"]
+        columns = ["종목", "진입가", "수량", "현재가", "수익률", "경과", "손절가", "TP1", "상태"]
+        assert len(columns) == len(self.POSITIONS_COLUMN_RATIOS), \
+            "positions columns/ratios mismatch"
         self._positions_table.setColumnCount(len(columns))
         self._positions_table.setHorizontalHeaderLabels(columns)
         self._positions_table.setAlternatingRowColors(True)
-        self._positions_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        # 비례 폭 — Interactive 모드 + eventFilter 로 리사이즈마다 재분배
+        hdr = self._positions_table.horizontalHeader()
+        hdr.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        hdr.setStretchLastSection(False)
         self._positions_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._positions_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._positions_table.verticalHeader().setVisible(False)
-        vbox.addWidget(self._positions_table, stretch=1)
-        return panel
+        # 헤더 + max_positions(3) 행 고정 높이
+        row_h = self._positions_table.verticalHeader().defaultSectionSize()  # 보통 30
+        header_h = self._positions_table.horizontalHeader().sizeHint().height()
+        self._positions_table.setFixedHeight(header_h + row_h * 3 + 4)
+        # 리사이즈 이벤트 감지해 비례 폭 재계산
+        self._positions_table.installEventFilter(self)
+        # 최초 1회 (viewport 초기 폭이 잡힌 뒤)
+        QTimer.singleShot(0, self._apply_positions_column_widths)
+        self._positions_card.addWidget(self._positions_table)
+        self._positions_card.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+        return self._positions_card
+
+    def eventFilter(self, obj, event):  # type: ignore[override]
+        if obj is self._positions_table and event.type() == QEvent.Type.Resize:
+            # 리사이즈 시점에 viewport().width() 가 아직 갱신되지 않음 →
+            # event.size() 의 새 폭에서 frame/scrollbar 차감해 직접 계산
+            tbl = self._positions_table
+            new_w = event.size().width() - tbl.frameWidth() * 2
+            sb = tbl.verticalScrollBar()
+            if sb.isVisible():
+                new_w -= sb.width()
+            self._apply_positions_column_widths(new_w)
+        return super().eventFilter(obj, event)
+
+    def _apply_positions_column_widths(self, total: int | None = None) -> None:
+        """보유 포지션 컬럼을 비율대로 재배치.
+
+        Args:
+            total: 사용할 viewport 폭. None 이면 viewport().width() 직접 조회
+                   (초기 호출용). 리사이즈 핸들러는 갱신 지연 회피를 위해 명시 전달.
+        """
+        table = getattr(self, "_positions_table", None)
+        if not table:
+            return
+        if total is None:
+            total = table.viewport().width()
+        if total <= 0:
+            return
+        ratios = self.POSITIONS_COLUMN_RATIOS
+        s = sum(ratios)
+        # 마지막 컬럼은 잔여 할당 (반올림 오차 흡수)
+        used = 0
+        for i, r in enumerate(ratios[:-1]):
+            w = max(1, int(total * r / s))
+            table.setColumnWidth(i, w)
+            used += w
+        table.setColumnWidth(len(ratios) - 1, max(1, total - used))
 
     def _build_watchlist_panel(self) -> QWidget:
-        panel = QWidget()
-        vbox = QVBoxLayout(panel)
-        vbox.setContentsMargins(4, 0, 0, 0)
-        vbox.setSpacing(2)
-
-        header = QHBoxLayout()
-        header.setContentsMargins(0, 0, 0, 0)
-        title = QLabel("감시 종목")
-        title.setStyleSheet("font-size: 12px; font-weight: bold; color: #cdd6f4;")
-        header.addWidget(title)
-        self._watchlist_count_label = QLabel("0종목")
-        self._watchlist_count_label.setStyleSheet("font-size: 11px; color: #6c7086;")
-        header.addWidget(self._watchlist_count_label)
-        header.addStretch()
-        vbox.addLayout(header)
+        self._watchlist_card = Card(title="감시 종목  0종목")
 
         self._watchlist_table = QTableWidget()
         # Phase 3 Day 12+ Level 1: 시장(K/Q), ATR% 컬럼 추가
@@ -444,18 +579,41 @@ class DashboardTab(QWidget):
         self._watchlist_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._watchlist_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._watchlist_table.verticalHeader().setVisible(False)
-        vbox.addWidget(self._watchlist_table, stretch=1)
-        return panel
+        self._watchlist_card.addWidget(self._watchlist_table, stretch=1)
+        return self._watchlist_card
+
+    def _make_side_chip(self, side: str) -> QWidget:
+        """매수/매도 컬러 칩 (한국 시장 관습: 매수=빨강, 매도=파랑).
+
+        QLabel 을 좌우 stretch 컨테이너에 넣어 셀 가운데 정렬 + 칩 폭은 텍스트만큼.
+        """
+        s = (side or "").lower()
+        if s == "buy":
+            text, bg = "매수", "#dc2626"
+        elif s == "sell":
+            text, bg = "매도", "#2563eb"
+        else:
+            text, bg = side or "?", "#6c7086"
+
+        chip = QLabel(text)
+        chip.setStyleSheet(
+            f"QLabel {{ background-color: {bg}; color: white; "
+            f"border-radius: 4px; padding: 2px 8px; font-weight: bold; "
+            f"font-size: 11px; }}"
+        )
+        chip.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        chip.setToolTip(side or "")
+
+        container = QWidget()
+        h = QHBoxLayout(container)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.addStretch()
+        h.addWidget(chip)
+        h.addStretch()
+        return container
 
     def _build_trades_panel(self) -> QWidget:
-        panel = QWidget()
-        vbox = QVBoxLayout(panel)
-        vbox.setContentsMargins(0, 4, 0, 0)
-        vbox.setSpacing(2)
-
-        title = QLabel("당일 체결")
-        title.setStyleSheet("font-size: 12px; font-weight: bold; color: #cdd6f4;")
-        vbox.addWidget(title)
+        self._trades_card = Card(title="당일 체결")
 
         self._trades_table = QTableWidget()
         columns = ["시간", "종목", "매매", "가격", "수량", "손익", "사유"]
@@ -466,9 +624,8 @@ class DashboardTab(QWidget):
         self._trades_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._trades_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._trades_table.verticalHeader().setVisible(False)
-        self._trades_table.setMaximumHeight(120)
-        vbox.addWidget(self._trades_table)
-        return panel
+        self._trades_card.addWidget(self._trades_table, stretch=1)
+        return self._trades_card
 
     # ------------------------------------------------------------------
     # Public update methods
@@ -519,39 +676,6 @@ class DashboardTab(QWidget):
 
         self._pnl_fig.tight_layout(pad=0.5)
         self._pnl_canvas.draw_idle()
-
-    def update_daily_history(self, daily_data: list[dict]) -> None:
-        """최근 N일 PnL 바 차트 업데이트."""
-        if self._daily_ax is None or self._daily_canvas is None:
-            return
-
-        ax = self._daily_ax
-        ax.clear()
-        ax.set_facecolor("#313244")
-
-        if not daily_data:
-            self._setup_daily_empty_state()
-            self._daily_canvas.draw_idle()
-            return
-
-        ax.axhline(y=0, color="#585b70", linewidth=0.5)
-        ax.set_title("최근 5일 성과 (천원)", color="#6c7086", fontsize=8, loc="left", pad=2)
-
-        dates = [d.get("date", "") for d in daily_data]
-        values = [d.get("pnl", 0) / 1000 for d in daily_data]
-        colors = ["#a6e3a1" if v >= 0 else "#f38ba8" for v in values]
-
-        ax.bar(range(len(dates)), values, color=colors, width=0.6, alpha=0.8)
-        ax.set_xticks(range(len(dates)))
-        ax.set_xticklabels(dates, color="#6c7086", fontsize=7)
-        ax.tick_params(colors="#6c7086", labelsize=7)
-        ax.spines["top"].set_visible(False)
-        ax.spines["right"].set_visible(False)
-        ax.spines["left"].set_color("#45475a")
-        ax.spines["bottom"].set_color("#45475a")
-
-        self._daily_fig.tight_layout(pad=0.5)
-        self._daily_canvas.draw_idle()
 
     def update_summary(self, data: dict) -> None:
         """Update summary bar."""
@@ -607,7 +731,7 @@ class DashboardTab(QWidget):
         """감시 종목 테이블 업데이트 (유니버스 전체, 돌파율 정렬)."""
         table = self._watchlist_table
         table.setRowCount(0)
-        self._watchlist_count_label.setText(f"{len(items)}종목")
+        self._watchlist_card.setTitle(f"감시 종목  {len(items)}종목")
 
         for item in items:
             row = table.rowCount()
@@ -682,7 +806,7 @@ class DashboardTab(QWidget):
         """Rebuild the active positions table."""
         table = self._positions_table
         table.setRowCount(0)
-        self._positions_count_label.setText(f"{len(positions)} / 3")
+        self._positions_card.setTitle(f"보유 포지션  {len(positions)} / {self._max_positions}")
 
         # Phase 3 Day 12+ Level 1: 빈 영역 가이드
         if not positions:
@@ -737,9 +861,17 @@ class DashboardTab(QWidget):
                 elapsed_text = "—"
                 elapsed_color = QColor("#6c7086")
 
+            qty_total = int(row_data.get("qty", 0) or 0)
+            qty_remaining = int(row_data.get("remaining_qty", qty_total) or qty_total)
+            if qty_remaining and qty_remaining != qty_total:
+                qty_text = f"{qty_remaining}/{qty_total}"
+            else:
+                qty_text = f"{qty_total}"
+
             cells = [
                 (ticker_text, QColor("#89b4fa")),
                 (f"{row_data.get('entry_price', 0):,.0f}", None),
+                (qty_text, None),
                 (f"{row_data.get('current_price', 0):,.0f}", None),
                 (f"{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%", pnl_color),
                 (elapsed_text, elapsed_color),
@@ -783,13 +915,12 @@ class DashboardTab(QWidget):
             else:
                 time_text = raw_time
 
-            # 매매 구분 색상
-            side = str(row_data.get("side", ""))
-            side_color = QColor("#a6e3a1") if side.lower() == "buy" else QColor("#f38ba8")
+            # 매매 컬러 칩 (한국 시장 관습: 매수=빨강, 매도=파랑) — setCellWidget 으로 별도 삽입
+            side = str(row_data.get("side", "")).lower()
 
             # 손익: 매수는 "—", 매도는 금액
             pnl = row_data.get("pnl")
-            if side.lower() == "buy" or pnl is None:
+            if side == "buy" or pnl is None:
                 pnl_text = "—"
                 pnl_color = QColor("#6c7086")
             else:
@@ -797,25 +928,30 @@ class DashboardTab(QWidget):
                 pnl_text = f"{pnl:+,}"
                 pnl_color = QColor("#a6e3a1") if pnl >= 0 else QColor("#f38ba8")
 
-            # 사유: 전략명 또는 매도 사유
-            reason = str(row_data.get("reason", "") or row_data.get("strategy", "") or "")
+            # 사유: 매도면 exit_reason, 매수면 전략명. 원본은 툴팁.
+            if side == "sell":
+                raw_reason = str(row_data.get("exit_reason", "") or row_data.get("reason", "") or "")
+            else:
+                raw_reason = str(row_data.get("strategy", "") or "")
+            reason_code = self.REASON_CODES.get(raw_reason.lower(), raw_reason[:4].upper() or "?")
+            reason_tooltip = raw_reason or "—"
 
             ticker = str(row_data.get("ticker", ""))
             name = str(row_data.get("name", ""))
             ticker_text = f"{name} ({ticker})" if name else ticker
 
             cells = [
-                (time_text, None),
-                (ticker_text, QColor("#89b4fa")),
-                (side, side_color),
-                (f"{int(row_data.get('price', 0) or 0):,}", None),
-                (str(row_data.get("qty", 0) or 0), None),
-                (pnl_text, pnl_color),
-                (reason, None),
+                (time_text, None, None),
+                (ticker_text, QColor("#89b4fa"), None),
+                ("", None, None),  # 매매 컬럼은 setCellWidget 으로 컬러 칩 삽입
+                (f"{int(row_data.get('price', 0) or 0):,}", None, None),
+                (str(row_data.get("qty", 0) or 0), None, None),
+                (pnl_text, pnl_color, None),
+                (reason_code, None, reason_tooltip),
             ]
 
             align_right_cols = {3, 4, 5}  # 가격, 수량, 손익
-            for col, (text, color) in enumerate(cells):
+            for col, (text, color, tooltip) in enumerate(cells):
                 item = QTableWidgetItem(str(text))
                 if col in align_right_cols:
                     item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -823,4 +959,9 @@ class DashboardTab(QWidget):
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 if color is not None:
                     item.setForeground(color)
+                if tooltip:
+                    item.setToolTip(tooltip)
                 table.setItem(row, col, item)
+
+            # 매매 컬럼: 컬러 칩 (한국 시장 관습)
+            table.setCellWidget(row, 2, self._make_side_chip(side))

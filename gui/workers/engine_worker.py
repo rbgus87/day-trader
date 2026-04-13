@@ -432,14 +432,6 @@ class EngineWorker(QThread):
 
         logger.info("파이프라인 시작 -- 매매 대기 중 (GUI)")
 
-        # 일일 성과 히스토리 전송 (1회)
-        try:
-            await asyncio.wait_for(self._emit_daily_history(), timeout=5.0)
-        except asyncio.TimeoutError:
-            logger.warning("일일 성과 히스토리 조회 타임아웃 — 스킵")
-        except Exception as e:
-            logger.warning(f"일일 성과 히스토리 조회 실패: {e}")
-
         logger.info("=== polling loop 진입 ===")
 
         # 4. Polling loop (2-second interval, 0.2s check for fast stop)
@@ -1375,20 +1367,6 @@ class EngineWorker(QThread):
             self.signals.candidates_updated.emit(enriched)
         except Exception as e:
             logger.debug(f"후보 종목 emit 실패: {e}")
-
-    async def _emit_daily_history(self):
-        """최근 5일 일일 PnL을 DB에서 조회하여 전송."""
-        if not self._db:
-            return
-        try:
-            rows = await self._db.fetch_all(
-                "SELECT date, total_pnl FROM daily_pnl ORDER BY date DESC LIMIT 5"
-            )
-            if rows:
-                data = [{"date": r["date"][-5:], "pnl": r["total_pnl"]} for r in reversed(rows)]
-                self.signals.daily_history_updated.emit(data)
-        except Exception as e:
-            logger.debug(f"일일 히스토리 emit 실패: {e}")
 
     # ── Cleanup ──
 

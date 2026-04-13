@@ -41,7 +41,6 @@ class EngineSignals(QObject):
     pnl_updated = pyqtSignal(float)
     candidates_updated = pyqtSignal(list)
     watchlist_updated = pyqtSignal(list)
-    daily_history_updated = pyqtSignal(list)
     log_message = pyqtSignal(str, str)
     market_status_updated = pyqtSignal(bool, bool)  # (kospi_strong, kosdaq_strong)
 
