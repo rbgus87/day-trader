@@ -15,7 +15,6 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QStackedWidget,
     QScrollArea,
-    QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QHeaderView,

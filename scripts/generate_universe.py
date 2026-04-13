@@ -21,7 +21,6 @@ from pathlib import Path
 
 import numpy as np
 import requests
-import yaml
 from dotenv import load_dotenv
 
 # .env 로드
@@ -191,9 +190,9 @@ def generate_universe(
     print(f"\n  기준일: {date}")
 
     # 2. 코스닥 + 코스피 전종목 조회
-    print(f"  코스닥 전종목 조회 중...")
+    print("  코스닥 전종목 조회 중...")
     kosdaq_records = api.get_stocks(date, "kosdaq") or []
-    print(f"  코스피 전종목 조회 중...")
+    print("  코스피 전종목 조회 중...")
     kospi_records = api.get_stocks(date, "kospi") or []
 
     # 시가총액/거래대금 파싱
@@ -284,7 +283,7 @@ def generate_universe(
         save_universe_yaml(universe, date)
         print(f"\n  [OK] 저장 완료: {OUTPUT_PATH}")
     else:
-        print(f"\n  [DRY RUN] 파일 생성 건너뜀")
+        print("\n  [DRY RUN] 파일 생성 건너뜀")
 
     return universe
 

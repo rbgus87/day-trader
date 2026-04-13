@@ -2,13 +2,11 @@
 
 import ctypes
 import re
-import sys
 from datetime import datetime
 from pathlib import Path
 
 import yaml
-from PyQt6.QtCore import QTimer, Qt, pyqtSignal
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication, QHBoxLayout, QLabel, QMainWindow, QMessageBox,
     QStatusBar, QTabWidget, QVBoxLayout, QWidget,
@@ -387,7 +385,8 @@ class MainWindow(QMainWindow):
                 # UI 업데이트는 메인 스레드에서
                 QTimer.singleShot(0, lambda: self._show_backtest_result(result))
             except Exception as e:
-                QTimer.singleShot(0, lambda: self._show_backtest_error(str(e)))
+                err = str(e)
+                QTimer.singleShot(0, lambda err=err: self._show_backtest_error(err))
 
         Thread(target=_run, daemon=True).start()
 
@@ -485,7 +484,8 @@ class MainWindow(QMainWindow):
                 loop.close()
                 QTimer.singleShot(0, lambda: self._show_compare_result(result))
             except Exception as e:
-                QTimer.singleShot(0, lambda: self._show_backtest_error(str(e)))
+                err = str(e)
+                QTimer.singleShot(0, lambda err=err: self._show_backtest_error(err))
 
         Thread(target=_run, daemon=True).start()
 

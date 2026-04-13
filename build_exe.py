@@ -4,10 +4,19 @@
 결과: dist/DayTrader.exe
 """
 
-import PyInstaller.__main__
 import os
 import shutil
+import subprocess
 import sys
+
+# 콘솔 cp949 환경에서도 한글 출력 안전화 (subprocess UTF-8 캡처 결과 print 시 필수)
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
+import PyInstaller.__main__
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
@@ -23,6 +32,8 @@ def build() -> None:
         # Data files
         f"--add-data={os.path.join(PROJECT_ROOT, 'config.yaml')};.",
         f"--add-data={os.path.join(PROJECT_ROOT, 'config', 'universe.yaml')};config",
+        # Selftest
+        "--hidden-import=selftest",
         # Hidden imports — GUI
         "--hidden-import=gui.main_window",
         "--hidden-import=gui.widgets.dashboard_tab",
@@ -31,11 +42,12 @@ def build() -> None:
         "--hidden-import=gui.widgets.strategy_tab",
         "--hidden-import=gui.widgets.log_tab",
         "--hidden-import=gui.widgets.sidebar",
+        "--hidden-import=gui.widgets.card",
         "--hidden-import=gui.workers.engine_worker",
         "--hidden-import=gui.workers.signals",
         "--hidden-import=gui.themes",
         "--hidden-import=gui.tray_icon",
-        # Hidden imports — Engine
+        # Hidden imports — Engine (운영 중)
         "--hidden-import=config.settings",
         "--hidden-import=core.auth",
         "--hidden-import=core.kiwoom_rest",
@@ -48,11 +60,8 @@ def build() -> None:
         "--hidden-import=data.db_manager",
         "--hidden-import=strategy.base_strategy",
         "--hidden-import=strategy.momentum_strategy",
-        "--hidden-import=strategy.pullback_strategy",
-        "--hidden-import=strategy.flow_strategy",
-        "--hidden-import=strategy.gap_strategy",
-        "--hidden-import=strategy.open_break_strategy",
-        "--hidden-import=strategy.big_candle_strategy",
+        # 미사용 전략(pullback/flow/gap/open_break/big_candle)은 함수 내부
+        # lazy import 로 PyInstaller 정적 분석이 자동 감지하므로 명시 불필요
         "--hidden-import=screener.candidate_collector",
         "--hidden-import=screener.pre_market",
         "--hidden-import=screener.strategy_selector",
@@ -72,18 +81,21 @@ def build() -> None:
         "--hidden-import=apscheduler.jobstores.memory",
         "--hidden-import=apscheduler.executors.pool",
         "--hidden-import=apscheduler.executors.asyncio",
-        "--hidden-import=pandas_ta",
+        # numba/llvmlite/pandas_ta — collect_all 로 sub-module + 데이터 + 바이너리 일괄 수집
+        # (2026-04-13 페이퍼 1일차 numba silent failure 재발 방지)
+        "--collect-all=numba",
+        "--collect-all=llvmlite",
+        "--collect-all=pandas_ta",
         "--hidden-import=loguru",
         "--hidden-import=yaml",
         "--hidden-import=dotenv",
         "--hidden-import=aiohttp",
         "--hidden-import=websockets",
         "--hidden-import=aiosqlite",
-        # Exclusions
+        # Exclusions (numba 는 절대 제외 금지)
         "--exclude-module=streamlit",
         "--exclude-module=tkinter",
         "--exclude-module=pytest",
-        "--exclude-module=numba",
         "--exclude-module=IPython",
         "--exclude-module=jupyter",
         "--exclude-module=notebook",
@@ -100,15 +112,42 @@ def build() -> None:
     PyInstaller.__main__.run(args)
 
     exe_path = os.path.join(PROJECT_ROOT, "dist", "DayTrader.exe")
-    if os.path.exists(exe_path):
-        size_mb = os.path.getsize(exe_path) / (1024 * 1024)
-        print(f"\n빌드 완료: {exe_path} ({size_mb:.1f} MB)")
-        root_exe = os.path.join(PROJECT_ROOT, "DayTrader.exe")
-        shutil.copy2(exe_path, root_exe)
-        print(f"루트에 복사: {root_exe}")
-    else:
+    if not os.path.exists(exe_path):
         print("\n빌드 실패!")
         sys.exit(1)
+
+    size_mb = os.path.getsize(exe_path) / (1024 * 1024)
+    print(f"\n빌드 완료: {exe_path} ({size_mb:.1f} MB)")
+    root_exe = os.path.join(PROJECT_ROOT, "DayTrader.exe")
+    shutil.copy2(exe_path, root_exe)
+    print(f"루트에 복사: {root_exe}")
+
+    # 빌드 직후 selftest 자동 실행 — silent failure 조기 차단
+    print("\n" + "=" * 50)
+    print("빌드된 exe selftest 실행")
+    print("=" * 50)
+    try:
+        result = subprocess.run(
+            [exe_path, "--selftest"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except subprocess.TimeoutExpired:
+        print("*** selftest 30초 타임아웃 — 운영 투입 금지 ***")
+        sys.exit(1)
+
+    print(result.stdout)
+    if result.returncode != 0:
+        if result.stderr:
+            print("STDERR:")
+            print(result.stderr)
+        print("\n*** 빌드된 exe selftest FAIL ***")
+        print("운영 투입 금지. 빌드 옵션 재검토 필요.")
+        sys.exit(1)
+    print("*** 빌드 + selftest 모두 통과 ***")
 
 
 if __name__ == "__main__":

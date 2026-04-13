@@ -7,7 +7,6 @@
 from datetime import time
 
 import pandas as pd
-from loguru import logger
 
 from config.settings import TradingConfig
 from strategy.base_strategy import BaseStrategy, Signal

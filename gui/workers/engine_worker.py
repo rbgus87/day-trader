@@ -294,7 +294,7 @@ class EngineWorker(QThread):
             mismatches = await self._risk_manager.reconcile_positions(holdings)
             if mismatches:
                 await self._notifier.send_urgent(
-                    f"포지션 불일치 감지!\n" + "\n".join(mismatches)
+                    "포지션 불일치 감지!\n" + "\n".join(mismatches)
                 )
         except Exception as e:
             logger.error(f"장애 복구 점검 실패: {e}")

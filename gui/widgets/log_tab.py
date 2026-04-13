@@ -8,7 +8,6 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QPlainTextEdit,
 )
-from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QTextCursor, QFont
 
 # Log-level → hex color mapping (Catppuccin Mocha palette)

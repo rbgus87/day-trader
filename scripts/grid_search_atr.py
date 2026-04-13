@@ -256,7 +256,7 @@ async def main() -> int:
     print(f"  거래수:      {best3['trades']}")
     print(f"  PF>1 종목:   {best3['pf_above_1']}")
     print()
-    print(f"  [기준선] Phase 1 L 조합: PnL +208,303, PF 1.46, 거래 501")
+    print("  [기준선] Phase 1 L 조합: PnL +208,303, PF 1.46, 거래 501")
     improvement = best3["pnl"] - 208_303
     print(f"  [증감] PnL {improvement:+,.0f} ({improvement/208303*100:+.1f}%)")
     return 0

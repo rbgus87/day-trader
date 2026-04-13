@@ -8,7 +8,6 @@ import asyncio
 import os
 import pickle
 import sys
-from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import replace
 from pathlib import Path

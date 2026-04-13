@@ -1,6 +1,5 @@
 """tests/test_backtester.py — Backtester 단위/통합 테스트."""
 
-import math
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -9,10 +8,6 @@ import pytest_asyncio
 
 from backtest.backtester import (
     Backtester,
-    ENTRY_FEE_RATE,
-    EXIT_FEE_RATE,
-    SELL_TAX_RATE,
-    SLIPPAGE_RATE,
 )
 from config.settings import TradingConfig
 from data.db_manager import DbManager

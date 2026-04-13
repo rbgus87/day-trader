@@ -1,7 +1,6 @@
 """tests/test_screening_score.py — Flow 최적화 스크리닝 점수 테스트."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 import pandas as pd
 
 from screener.candidate_collector import CandidateCollector

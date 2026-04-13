@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import datetime, time
 
 import pandas as pd
 from loguru import logger

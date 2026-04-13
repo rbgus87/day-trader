@@ -5,7 +5,6 @@
   PULLBACK → 되돌림(mid 이하) 대기 후 양봉 반등 시 진입
 """
 
-from datetime import time as dt_time
 
 import pandas as pd
 from loguru import logger

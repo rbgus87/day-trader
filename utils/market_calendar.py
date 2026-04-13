@@ -4,7 +4,7 @@ KST 기준 장 시간 판정, 거래일 체크(주말/공휴일 제외),
 WebSocket 활성 시간대 판정 등을 제공한다.
 """
 
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time
 
 
 # 장 시작/종료 시간

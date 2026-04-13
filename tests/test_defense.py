@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from config.settings import AppConfig, TradingConfig
+from config.settings import TradingConfig
 from risk.risk_manager import RiskManager
 
 

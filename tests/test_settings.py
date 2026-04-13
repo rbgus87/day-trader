@@ -1,4 +1,4 @@
-from config.settings import AppConfig, TradingConfig
+from config.settings import TradingConfig
 
 
 def test_trading_config_defaults():

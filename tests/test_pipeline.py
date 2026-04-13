@@ -2,7 +2,7 @@
 
 import asyncio
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 from data.candle_builder import CandleBuilder
 from risk.risk_manager import RiskManager
@@ -34,7 +34,6 @@ async def test_pipeline_candle_to_strategy():
     import pandas as pd
     from strategy.momentum_strategy import MomentumStrategy
     from config.settings import TradingConfig
-    from unittest.mock import patch
     from datetime import time
 
     strat = MomentumStrategy(TradingConfig(adx_enabled=False, rvol_enabled=False, vwap_enabled=False))

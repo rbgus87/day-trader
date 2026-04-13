@@ -2,6 +2,12 @@
 
 import asyncio
 import sys
+import re
+
+# --selftest: GUI/엔진 시작 전 환경 검증 (운영 의존 import 회피)
+if "--selftest" in sys.argv:
+    from selftest import run_selftest
+    sys.exit(run_selftest())
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -434,7 +440,7 @@ async def main():
     async def backup_db():
         """15:35 DB 백업 (7일 보관)."""
         import shutil
-        from datetime import datetime
+        from datetime import datetime, timedelta
         from pathlib import Path
 
         backup_dir = Path("backups")
@@ -527,7 +533,7 @@ async def main():
         mismatches = await risk_manager.reconcile_positions(holdings)
         if mismatches:
             await notifier.send_urgent(
-                f"포지션 불일치 감지!\n" + "\n".join(mismatches)
+                "포지션 불일치 감지!\n" + "\n".join(mismatches)
             )
     except Exception as e:
         logger.error(f"장애 복구 점검 실패: {e}")

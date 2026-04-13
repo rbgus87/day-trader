@@ -12,7 +12,6 @@ from PyQt6.QtWidgets import (
     QLabel,
     QTableWidget,
     QTableWidgetItem,
-    QHeaderView,
     QAbstractItemView,
 )
 from PyQt6.QtCore import Qt, pyqtSignal

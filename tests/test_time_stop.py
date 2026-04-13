@@ -10,7 +10,7 @@ from risk.risk_manager import RiskManager
 
 @pytest.fixture
 def rm(tmp_path):
-    from unittest.mock import AsyncMock, MagicMock
+    from unittest.mock import MagicMock
     db = MagicMock()
     notifier = MagicMock()
     config = TradingConfig()

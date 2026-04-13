@@ -74,7 +74,7 @@ async def main(start: str, end: str) -> int:
     bt_loader = Backtester(db=db, config=base_config, backtest_config=backtest_config)
 
     print("=" * 64)
-    print(f" 단일 백테스트 (run_multi_day_cached, 시장필터 적용)")
+    print(" 단일 백테스트 (run_multi_day_cached, 시장필터 적용)")
     print("=" * 64)
     print(f"  Universe  : {len(stocks)}종목")
     print(f"  기간      : {start} ~ {end}")
