@@ -256,7 +256,7 @@ def test_run_backtest_basic():
     assert len(result["trades"]) == 2, "TP1 분할매도 + 나머지 청산 = 2건"
 
     tp1_trade = result["trades"][0]
-    assert tp1_trade["exit_reason"] == "tp1"
+    assert tp1_trade["exit_reason"] == "tp1_hit"
     assert tp1_trade["entry_price"] > 0
     assert tp1_trade["exit_price"] > 0
     assert tp1_trade["pnl"] > 0
@@ -372,7 +372,7 @@ def test_fee_and_slippage_reduce_pnl():
 
     # TP1 분할매도(50%) trade
     tp1_trade = result["trades"][0]
-    assert tp1_trade["exit_reason"] == "tp1"
+    assert tp1_trade["exit_reason"] == "tp1_hit"
     # 수수료/슬리피지 없이 계산한 raw 수익 (50% 비율)
     raw_gain_50pct = (entry_close * 1.02 - entry_close) * 0.5  # 1,000
     # 실제 PnL은 raw보다 작아야 함 (수수료 차감)

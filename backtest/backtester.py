@@ -218,8 +218,7 @@ class Backtester:
                         "entry_price": entry_price,
                         "net_entry": net_entry,
                         "stop_loss": stop_loss,
-                        "tp1": tp1,
-                        "tp2": tp2 if tp2 else None,
+                        "tp1_price": tp1,
                     }
                     logger.debug(
                         f"[BT] 진입 ts={row['ts']} price={entry_price:.1f} "
@@ -258,8 +257,8 @@ class Backtester:
                     strategy.on_exit()
 
                 # TP1 확인 (캔들 고가 기준) — 분할매도
-                elif not position.get("tp1_hit") and position["tp1"] and high >= position["tp1"]:
-                    tp1_price = position["tp1"]
+                elif not position.get("tp1_hit") and position["tp1_price"] and high >= position["tp1_price"]:
+                    tp1_price = position["tp1_price"]
                     tp1_slipped = tp1_price * (1 - self._slippage)
                     tp1_fee = tp1_slipped * (self._exit_fee + self._tax)
                     net_tp1 = tp1_slipped - tp1_fee
@@ -273,7 +272,7 @@ class Backtester:
                         "exit_price": tp1_slipped,
                         "pnl": pnl,
                         "pnl_pct": pnl_pct,
-                        "exit_reason": "tp1",
+                        "exit_reason": "tp1_hit",
                     })
                     logger.debug(
                         f"[BT] TP1 분할매도 ts={row['ts']} exit={tp1_slipped:.1f} "
@@ -392,26 +391,6 @@ class Backtester:
                         })
                         position = None
                         strategy.on_exit()
-
-                # TP2 확인 (캔들 고가 기준) — TP1 미히트 상태
-                elif position.get("tp2") and high >= position["tp2"]:
-                    exit_price = position["tp2"]
-                    exit_price_slipped = exit_price * (1 - self._slippage)
-                    exit_fee = exit_price_slipped * (self._exit_fee + self._tax)
-                    net_exit = exit_price_slipped - exit_fee
-                    pnl = net_exit - position["net_entry"]
-                    pnl_pct = pnl / position["net_entry"]
-                    trades.append({
-                        "entry_ts": position["entry_ts"],
-                        "exit_ts": row["ts"],
-                        "entry_price": position["entry_price"],
-                        "exit_price": exit_price_slipped,
-                        "pnl": pnl,
-                        "pnl_pct": pnl_pct,
-                        "exit_reason": "tp2",
-                    })
-                    position = None
-                    strategy.on_exit()
 
                 # 마지막 캔들 강제 청산 (TP1 미히트 상태)
                 elif idx == len(candles) - 1:
