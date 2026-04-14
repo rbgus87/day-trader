@@ -86,7 +86,6 @@ class TradingConfig:
     # Phase 3 Day 11.5: 오전 매수 제한
     buy_time_limit_enabled: bool = True
     buy_time_end: str = "11:30"
-    momentum_trailing_stop_pct: float = 0.015
 
     # Phase 2: ATR 기반 동적 손절 (Chandelier 준비)
     atr_stop_enabled: bool = True
@@ -239,7 +238,6 @@ class AppConfig:
             report_time=t.get("report_time", "15:30"),
             momentum_volume_ratio=mom.get("volume_ratio", 2.0),
             momentum_stop_loss_pct=mom.get("stop_loss_pct", -0.008),
-            momentum_trailing_stop_pct=mom.get("trailing_stop_pct", 0.015),
             buy_time_limit_enabled=mom.get("buy_time_limit_enabled", True),
             buy_time_end=mom.get("buy_time_end", "11:30"),
             atr_stop_enabled=mom.get("atr_stop_enabled", True),

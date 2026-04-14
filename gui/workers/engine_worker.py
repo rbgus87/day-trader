@@ -734,18 +734,14 @@ class EngineWorker(QThread):
                     strategy=signal.strategy,
                 )
                 if result:
-                    # 전략별 trailing_stop_pct 적용
-                    trailing = None
-                    from strategy.momentum_strategy import MomentumStrategy
-                    if isinstance(strategy, MomentumStrategy):
-                        trailing = self._config.trading.momentum_trailing_stop_pct
+                    # trailing_pct는 None으로 두면 register_position이
+                    # 글로벌 trailing_stop_pct를 사용 (실전 ↔ 백테스트 통일)
                     self._risk_manager.register_position(
                         ticker=signal.ticker,
                         entry_price=signal.price,
                         qty=result["qty"],
                         stop_loss=sl,
                         tp1_price=tp1,
-                        trailing_pct=trailing,
                         strategy=signal.strategy or "",
                     )
                     strategy.on_entry()
