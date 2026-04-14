@@ -73,6 +73,17 @@ class OrderManager:
                             "VALUES (?, ?, 'buy', 'limit', ?, ?, ?, ?)",
                             (ticker, strategy, price, qty_1st, price * qty_1st, now),
                         )
+                    # 체결 텔레그램 알림
+                    if self._notifier:
+                        try:
+                            await self._notifier.send_execution(
+                                ticker=ticker,
+                                name=self._name_map.get(ticker, ticker),
+                                side="buy", price=price, qty=qty_1st,
+                                amount=price * qty_1st,
+                            )
+                        except Exception as e:
+                            logger.warning(f"체결 알림 실패 ({ticker}): {e}")
                     return {"order_no": order_no, "qty": qty_1st}
                 else:
                     logger.error(f"주문 실패: {result}")
@@ -129,6 +140,17 @@ class OrderManager:
                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (ticker, strategy, side, order_type, price, qty, price * qty, pnl, pnl_pct, reason, now),
                     )
+                # 체결 텔레그램 알림
+                if self._notifier:
+                    try:
+                        await self._notifier.send_execution(
+                            ticker=ticker,
+                            name=self._name_map.get(ticker, ticker),
+                            side=side, price=price, qty=qty,
+                            amount=price * qty,
+                        )
+                    except Exception as e:
+                        logger.warning(f"체결 알림 실패 ({ticker}): {e}")
                 return {"order_no": result["output"]["ODNO"], "qty": qty}
             logger.error(f"주문 실패: {result}")
             return None

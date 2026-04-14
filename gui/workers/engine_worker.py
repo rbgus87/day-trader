@@ -483,22 +483,6 @@ class EngineWorker(QThread):
 
     # ── Pipeline consumers (ported from main.py) ──
 
-    async def _notify_execution(
-        self, side: str, ticker: str, price: int, qty: int, pnl: int = 0
-    ) -> None:
-        """Phase 3 Day 12+: 체결 텔레그램 알림 (전송 실패는 로그만)."""
-        if not self._notifier:
-            return
-        try:
-            name = self._active_strategies.get(ticker, {}).get("name", ticker)
-            amount = int(price) * int(qty)
-            await self._notifier.send_execution(
-                ticker=ticker, name=name, side=side,
-                price=int(price), qty=int(qty), amount=amount,
-            )
-        except Exception as e:
-            logger.warning(f"체결 텔레그램 전송 실패 ({ticker}): {e}")
-
     async def _tick_consumer(self):
         """틱 -> 캔들 빌더 + 포지션 모니터링."""
         import time as _time
@@ -565,7 +549,6 @@ class EngineWorker(QThread):
                         "price": int(price), "qty": qty,
                         "pnl": int(pnl), "reason": reason_code,
                     })
-                    await self._notify_execution("sell", ticker, int(price), qty, int(pnl))
                     continue
                 # TP1 체크
                 if self._risk_manager.check_tp1(ticker, price):
@@ -588,7 +571,6 @@ class EngineWorker(QThread):
                         "price": int(price), "qty": sell_qty,
                         "pnl": int(pnl), "reason": "tp1_hit",
                     })
-                    await self._notify_execution("sell", ticker, int(price), sell_qty, int(pnl))
                     continue
                 # 트레일링 스톱 갱신
                 self._risk_manager.update_trailing_stop(ticker, price)
@@ -758,9 +740,6 @@ class EngineWorker(QThread):
                         "qty": result["qty"],
                         "pnl": None, "reason": signal.strategy or "entry",
                     })
-                    await self._notify_execution(
-                        "buy", signal.ticker, int(signal.price), int(result["qty"])
-                    )
             except Exception as e:
                 logger.error(f"signal_consumer 오류: {e}")
 
