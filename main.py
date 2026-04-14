@@ -189,20 +189,35 @@ async def main():
             pos = risk_manager.get_position(ticker)
             if pos is None or pos["remaining_qty"] <= 0:
                 continue
-            # 손절 체크
+            # 손절 체크 (tp1_hit 후 트리거면 trailing_stop로 구분)
             if risk_manager.check_stop_loss(ticker, price):
                 qty = pos["remaining_qty"]
-                await order_manager.execute_sell_stop(ticker=ticker, qty=qty, price=int(price))
-                pnl = (price - pos["entry_price"]) * qty
+                strategy_name = pos.get("strategy", "") or "unknown"
+                entry_p = pos["entry_price"]
+                pnl = (price - entry_p) * qty
+                pnl_pct = ((price / entry_p) - 1) * 100 if entry_p > 0 else 0
+                reason_code = "trailing_stop" if pos.get("tp1_hit") else "stop_loss"
+                await order_manager.execute_sell_stop(
+                    ticker=ticker, qty=qty, price=int(price),
+                    strategy=strategy_name, pnl=pnl, pnl_pct=pnl_pct,
+                    exit_reason=reason_code,
+                )
                 risk_manager.record_pnl(pnl)
                 risk_manager.remove_position(ticker)
-                logger.info(f"손절 실행: {ticker} {qty}주 @ {price:,} PnL={pnl:+,.0f}")
+                logger.info(f"{reason_code} 실행: {ticker} {qty}주 @ {price:,} PnL={pnl:+,.0f}")
                 continue
             # TP1 체크
             if risk_manager.check_tp1(ticker, price):
                 sell_qty = int(pos["remaining_qty"] * config.trading.tp1_sell_ratio)
-                await order_manager.execute_sell_tp1(ticker=ticker, price=int(price), remaining_qty=pos["remaining_qty"])
-                pnl = (price - pos["entry_price"]) * sell_qty
+                strategy_name = pos.get("strategy", "") or "unknown"
+                entry_p = pos["entry_price"]
+                pnl = (price - entry_p) * sell_qty
+                pnl_pct = ((price / entry_p) - 1) * 100 if entry_p > 0 else 0
+                await order_manager.execute_sell_tp1(
+                    ticker=ticker, price=int(price), remaining_qty=pos["remaining_qty"],
+                    strategy=strategy_name, pnl=pnl, pnl_pct=pnl_pct,
+                    exit_reason="tp1_hit",
+                )
                 risk_manager.record_pnl(pnl)
                 risk_manager.mark_tp1_hit(ticker, sell_qty)
                 logger.info(f"TP1 실행: {ticker} {sell_qty}주 @ {price:,} PnL={pnl:+,.0f}")
@@ -372,9 +387,12 @@ async def main():
         logger.warning("15:10 강제 청산 시작")
         for ticker, pos in list(risk_manager.get_open_positions().items()):
             if pos.get("remaining_qty", 0) > 0:
+                strategy_name = pos.get("strategy", "") or "unknown"
                 await order_manager.execute_sell_force_close(
                     ticker=ticker, qty=pos["remaining_qty"],
                     price=int(pos.get("entry_price", 0)),
+                    strategy=strategy_name,
+                    exit_reason="forced_close",
                 )
         await candle_builder.flush()
         candle_builder.reset()

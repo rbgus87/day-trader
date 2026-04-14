@@ -537,22 +537,25 @@ class EngineWorker(QThread):
                 pos = self._risk_manager.get_position(ticker)
                 if pos is None or pos["remaining_qty"] <= 0:
                     continue
-                # 손절 체크
+                # 손절 체크 (tp1_hit 후 트리거면 trailing_stop로 구분)
                 if self._risk_manager.check_stop_loss(ticker, price):
                     qty = pos["remaining_qty"]
                     entry = pos["entry_price"]
                     pnl = (price - entry) * qty
                     pnl_pct = ((price / entry) - 1) * 100 if entry > 0 else 0
+                    strategy_name = pos.get("strategy", "") or "unknown"
+                    reason_code = "trailing_stop" if pos.get("tp1_hit") else "stop_loss"
                     await self._order_manager.execute_sell_stop(
                         ticker=ticker, qty=qty, price=int(price),
-                        pnl=pnl, pnl_pct=pnl_pct,
+                        strategy=strategy_name, pnl=pnl, pnl_pct=pnl_pct,
+                        exit_reason=reason_code,
                     )
                     self._risk_manager.settle_sell(ticker, price, qty)
                     if pnl >= 0:
                         self._rt_wins += 1
                     else:
                         self._rt_losses += 1
-                    logger.info(f"손절 실행: {ticker} {qty}주 @ {price:,} PnL={pnl:+,.0f}")
+                    logger.info(f"{reason_code} 실행: {ticker} {qty}주 @ {price:,} PnL={pnl:+,.0f}")
                     strat_info = self._active_strategies.get(ticker)
                     if strat_info:
                         strat_info["strategy"].on_exit()
@@ -560,7 +563,7 @@ class EngineWorker(QThread):
                         "time": datetime.now().strftime("%H:%M:%S"),
                         "side": "sell", "ticker": ticker,
                         "price": int(price), "qty": qty,
-                        "pnl": int(pnl), "reason": "stop_loss",
+                        "pnl": int(pnl), "reason": reason_code,
                     })
                     await self._notify_execution("sell", ticker, int(price), qty, int(pnl))
                     continue
@@ -570,9 +573,11 @@ class EngineWorker(QThread):
                     entry = pos["entry_price"]
                     pnl = (price - entry) * sell_qty
                     pnl_pct = ((price / entry) - 1) * 100 if entry > 0 else 0
+                    strategy_name = pos.get("strategy", "") or "unknown"
                     await self._order_manager.execute_sell_tp1(
                         ticker=ticker, price=int(price), remaining_qty=pos["remaining_qty"],
-                        pnl=pnl, pnl_pct=pnl_pct,
+                        strategy=strategy_name, pnl=pnl, pnl_pct=pnl_pct,
+                        exit_reason="tp1_hit",
                     )
                     self._risk_manager.mark_tp1_hit(ticker, sell_qty, sell_price=price)
                     self._rt_wins += 1
@@ -581,7 +586,7 @@ class EngineWorker(QThread):
                         "time": datetime.now().strftime("%H:%M:%S"),
                         "side": "sell", "ticker": ticker,
                         "price": int(price), "qty": sell_qty,
-                        "pnl": int(pnl), "reason": "tp1",
+                        "pnl": int(pnl), "reason": "tp1_hit",
                     })
                     await self._notify_execution("sell", ticker, int(price), sell_qty, int(pnl))
                     continue
@@ -861,9 +866,11 @@ class EngineWorker(QThread):
                 entry = pos.get("entry_price", 0)
                 pnl = (close_price - entry) * qty if entry > 0 else 0
                 pnl_pct = ((close_price / entry) - 1) * 100 if entry > 0 else 0
+                strategy_name = pos.get("strategy", "") or "unknown"
                 await self._order_manager.execute_sell_force_close(
                     ticker=ticker, qty=qty, price=close_price,
-                    pnl=pnl, pnl_pct=pnl_pct,
+                    strategy=strategy_name, pnl=pnl, pnl_pct=pnl_pct,
+                    exit_reason="forced_close",
                 )
                 self._risk_manager.settle_sell(ticker, float(close_price), qty)
         await self._candle_builder.flush()
@@ -1059,6 +1066,7 @@ class EngineWorker(QThread):
         if strategy_name and strategy_name != "momentum":
             logger.warning(f"전략 변경 요청 무시: {strategy_name} — momentum만 지원")
         elif strategy_name == "momentum":
+            # 기존 인스턴스 교체 (prev_day_data 보존)
             for ticker, info in self._active_strategies.items():
                 old_strat = info["strategy"]
                 new_strat = MomentumStrategy(self._config.trading)

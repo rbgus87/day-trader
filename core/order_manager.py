@@ -86,25 +86,28 @@ class OrderManager:
     async def execute_sell_tp1(
         self, ticker: str, price: int, remaining_qty: int,
         strategy: str = "unknown", pnl: float | None = None, pnl_pct: float | None = None,
+        exit_reason: str = "tp1_hit",
     ) -> dict | None:
         if remaining_qty <= 1:
             sell_qty = remaining_qty  # 1주 보유 시 전량 매도
         else:
             sell_qty = max(1, int(remaining_qty * self._config.tp1_sell_ratio))
-        return await self._send_order(ticker, sell_qty, price, "sell", order_type="01", reason="tp1", strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
+        return await self._send_order(ticker, sell_qty, price, "sell", order_type="01", reason=exit_reason, strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
 
     async def execute_sell_stop(
         self, ticker: str, qty: int, price: int = 0,
         strategy: str = "unknown", pnl: float | None = None, pnl_pct: float | None = None,
+        exit_reason: str = "stop_loss",
     ) -> dict | None:
-        return await self._send_order(ticker, qty, price, "sell", order_type="00", reason="stop_loss", strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
+        return await self._send_order(ticker, qty, price, "sell", order_type="00", reason=exit_reason, strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
 
     async def execute_sell_force_close(
         self, ticker: str, qty: int, price: int = 0,
         strategy: str = "unknown", pnl: float | None = None, pnl_pct: float | None = None,
+        exit_reason: str = "forced_close",
     ) -> dict | None:
-        logger.warning(f"강제 청산: {ticker} {qty}주")
-        return await self._send_order(ticker, qty, price, "sell", order_type="00", reason="force_close", strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
+        logger.warning(f"강제 청산({exit_reason}): {ticker} {qty}주")
+        return await self._send_order(ticker, qty, price, "sell", order_type="00", reason=exit_reason, strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
 
     async def _send_order(
         self, ticker, qty, price, side, order_type="01", reason: str = "",

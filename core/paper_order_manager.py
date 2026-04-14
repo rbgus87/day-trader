@@ -112,28 +112,31 @@ class PaperOrderManager:
     async def execute_sell_tp1(
         self, ticker: str, price: int, remaining_qty: int,
         strategy: str = "unknown", pnl: float | None = None, pnl_pct: float | None = None,
+        exit_reason: str = "tp1_hit",
     ) -> dict | None:
         """1차 익절 시뮬레이션."""
         if remaining_qty <= 1:
             sell_qty = remaining_qty  # 1주 보유 시 전량 매도
         else:
             sell_qty = max(1, int(remaining_qty * self._config.tp1_sell_ratio))
-        return await self._simulate_order(ticker, sell_qty, price, "sell", reason="tp1", strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
+        return await self._simulate_order(ticker, sell_qty, price, "sell", reason=exit_reason, strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
 
     async def execute_sell_stop(
         self, ticker: str, qty: int, price: int = 0,
         strategy: str = "unknown", pnl: float | None = None, pnl_pct: float | None = None,
+        exit_reason: str = "stop_loss",
     ) -> dict | None:
-        """손절 시뮬레이션."""
-        return await self._simulate_order(ticker, qty, price, "sell", reason="stop_loss", strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
+        """손절 시뮬레이션 (exit_reason으로 stop_loss/trailing_stop 구분 가능)."""
+        return await self._simulate_order(ticker, qty, price, "sell", reason=exit_reason, strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
 
     async def execute_sell_force_close(
         self, ticker: str, qty: int, price: int = 0,
         strategy: str = "unknown", pnl: float | None = None, pnl_pct: float | None = None,
+        exit_reason: str = "forced_close",
     ) -> dict | None:
-        """강제 청산 시뮬레이션."""
-        logger.warning(f"[PAPER] 강제 청산: {ticker} {qty}주")
-        return await self._simulate_order(ticker, qty, price, "sell", reason="force_close", strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
+        """강제 청산 시뮬레이션 (exit_reason으로 forced_close/time_stop 구분 가능)."""
+        logger.warning(f"[PAPER] 강제 청산({exit_reason}): {ticker} {qty}주")
+        return await self._simulate_order(ticker, qty, price, "sell", reason=exit_reason, strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
 
     async def _simulate_order(
         self, ticker: str, qty: int, price: int, side: str, reason: str = "",
@@ -170,10 +173,10 @@ class PaperOrderManager:
                 emoji = "🔴" if pnl < 0 else "🔵"
                 reason_map = {
                     "stop_loss": "손절",
-                    "tp1": "1차 익절",
+                    "tp1_hit": "1차 익절",
                     "time_stop": "시간 손절",
-                    "force_close": "강제 청산",
-                    "trailing": "트레일링 스톱",
+                    "forced_close": "강제 청산",
+                    "trailing_stop": "트레일링 스톱",
                 }
                 reason_text = reason_map.get(reason, reason or "market")
                 await self._notifier.send(

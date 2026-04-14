@@ -219,8 +219,11 @@ class KiwoomWebSocketClient:
                             positions = self._risk_manager.get_open_positions()
                             for ticker, pos in positions.items():
                                 if pos.get("remaining_qty", 0) > 0:
+                                    strategy_name = pos.get("strategy", "") or "unknown"
                                     await self._order_manager.execute_sell_force_close(
                                         ticker=ticker, qty=pos["remaining_qty"],
+                                        strategy=strategy_name,
+                                        exit_reason="forced_close",
                                     )
                                     await self._notifier.send_urgent(
                                         f"WS 장애 긴급 청산: {ticker} {pos['remaining_qty']}주"
