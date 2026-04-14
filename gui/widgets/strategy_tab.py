@@ -284,14 +284,6 @@ class StrategyTab(QWidget):
         form.setContentsMargins(10, 16, 10, 10)
         form.setSpacing(8)
 
-        self._risk_stop_loss = QDoubleSpinBox()
-        self._risk_stop_loss.setRange(0.0, 10.0)
-        self._risk_stop_loss.setValue(1.5)
-        self._risk_stop_loss.setSuffix(" %")
-        self._risk_stop_loss.setDecimals(1)
-        self._risk_stop_loss.setSingleStep(0.1)
-        form.addRow("stop_loss_pct:", self._risk_stop_loss)
-
         self._risk_tp1 = QDoubleSpinBox()
         self._risk_tp1.setRange(0.0, 10.0)
         self._risk_tp1.setValue(3.0)
@@ -493,8 +485,6 @@ class StrategyTab(QWidget):
             self._bc_stop_loss.setValue(abs(float(bc["stop_loss_pct"])) * 100)
 
         # Risk / trading
-        if "stop_loss_pct" in trading_cfg:
-            self._risk_stop_loss.setValue(abs(float(trading_cfg["stop_loss_pct"])) * 100)
         if "tp1_pct" in trading_cfg:
             self._risk_tp1.setValue(float(trading_cfg["tp1_pct"]) * 100)
         if "daily_max_loss_pct" in trading_cfg:
@@ -546,7 +536,6 @@ class StrategyTab(QWidget):
                 },
             },
             "trading": {
-                "stop_loss_pct": -self._risk_stop_loss.value() / 100,
                 "tp1_pct": self._risk_tp1.value() / 100,
                 "daily_max_loss_pct": -self._risk_max_daily_loss.value() / 100,
                 "max_trades_per_day": self._risk_max_trades.value(),

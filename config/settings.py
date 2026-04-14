@@ -47,7 +47,6 @@ class TelegramConfig:
 @dataclass(frozen=True)
 class TradingConfig:
     # 리스크
-    stop_loss_pct: float = -0.015
     daily_max_loss_pct: float = -0.02
     consecutive_loss_days: int = 3
     reduced_position_pct: float = 0.5
@@ -80,18 +79,6 @@ class TradingConfig:
     force_close_time: str = "15:10"
     screening_time: str = "08:30"
     report_time: str = "15:30"
-
-    # DEPRECATED: ORB 전략 (백테스트 PF<1.0, 2026-03-30 폐기)
-    orb_range_start: str = "09:05"
-    orb_range_end: str = "09:15"
-    orb_volume_ratio: float = 0.0
-    orb_stop_loss_pct: float = -0.015
-    orb_min_range_pct: float = 0.008
-
-    # DEPRECATED: VWAP 전략 (백테스트 PF<1.0, 2026-03-30 폐기)
-    vwap_rsi_low: float = 40.0
-    vwap_rsi_high: float = 60.0
-    vwap_stop_loss_pct: float = -0.012
 
     # 모멘텀 전략
     momentum_volume_ratio: float = 2.0
@@ -126,13 +113,8 @@ class TradingConfig:
     rvol_min: float = 3.0
     vwap_enabled: bool = True
     vwap_min_above: float = 0.0
-    # DEPRECATED: 리테스트/VWAP 필터 — 4회 실험 결과 개선 효과 없음
-    momentum_retest_band_pct: float = 0.008
-    momentum_retest_timeout_min: int = 45
-    momentum_vwap_filter: bool = False
 
     # 수급추종 전략 (FlowStrategy)
-    flow_min_strength_pct: float = 120.0    # Phase 2용 (현재 미사용)
     flow_volume_surge_ratio: float = 2.5
     flow_stop_loss_pct: float = -0.015
     flow_trailing_stop_pct: float = 0.015
@@ -165,11 +147,6 @@ class TradingConfig:
     # 눌림목 전략
     pullback_min_gain_pct: float = 0.04
     pullback_stop_loss_pct: float = -0.018
-    # DEPRECATED: v2 파라미터 — 조건 완화 실험 결과 PF 악화로 롤백
-    pullback_ma_short: int = 10
-    pullback_ma_long: int = 10
-    pullback_ma_touch_band: float = 0.01
-    pullback_min_atr_pct: float = 0.025
 
 
 @dataclass(frozen=True)
@@ -229,8 +206,6 @@ class AppConfig:
         # trading 섹션 → TradingConfig
         t = cfg.get("trading", {})
         s = cfg.get("strategy", {})
-        orb = s.get("orb", {})
-        vwap = s.get("vwap", {})
         mom = s.get("momentum", {})
         pb = s.get("pullback", {})
         fl = s.get("flow", {})
@@ -239,7 +214,6 @@ class AppConfig:
         bc = s.get("big_candle", {})
 
         trading = TradingConfig(
-            stop_loss_pct=t.get("stop_loss_pct", -0.015),
             daily_max_loss_pct=t.get("daily_max_loss_pct", -0.02),
             consecutive_loss_days=t.get("consecutive_loss_days", 3),
             reduced_position_pct=t.get("reduced_position_pct", 0.5),
@@ -263,14 +237,6 @@ class AppConfig:
             force_close_time=t.get("force_close_time", "15:10"),
             screening_time=t.get("screening_time", "08:30"),
             report_time=t.get("report_time", "15:30"),
-            orb_range_start=orb.get("range_start", "09:05"),
-            orb_range_end=orb.get("range_end", "09:15"),
-            orb_volume_ratio=orb.get("volume_ratio", 0.0),
-            orb_stop_loss_pct=orb.get("stop_loss_pct", -0.015),
-            orb_min_range_pct=orb.get("min_range_pct", 0.008),
-            vwap_rsi_low=vwap.get("rsi_low", 40.0),
-            vwap_rsi_high=vwap.get("rsi_high", 60.0),
-            vwap_stop_loss_pct=vwap.get("stop_loss_pct", -0.012),
             momentum_volume_ratio=mom.get("volume_ratio", 2.0),
             momentum_stop_loss_pct=mom.get("stop_loss_pct", -0.008),
             momentum_trailing_stop_pct=mom.get("trailing_stop_pct", 0.015),
@@ -288,9 +254,6 @@ class AppConfig:
             atr_trail_multiplier=mom.get("atr_trail_multiplier", 2.5),
             atr_trail_min_pct=mom.get("atr_trail_min_pct", 0.02),
             atr_trail_max_pct=mom.get("atr_trail_max_pct", 0.10),
-            momentum_retest_band_pct=mom.get("retest_band_pct", 0.008),
-            momentum_retest_timeout_min=mom.get("retest_timeout_minutes", 45),
-            momentum_vwap_filter=mom.get("vwap_filter", True),
             adx_enabled=mom.get("adx_enabled", True),
             adx_length=mom.get("adx_length", 14),
             adx_min=mom.get("adx_min", 25.0),
@@ -301,10 +264,6 @@ class AppConfig:
             vwap_min_above=mom.get("vwap_min_above", 0.0),
             pullback_min_gain_pct=pb.get("min_gain_pct", 0.04),
             pullback_stop_loss_pct=pb.get("stop_loss_pct", -0.018),
-            pullback_ma_short=pb.get("ma_short", 10),
-            pullback_ma_long=pb.get("ma_long", 10),
-            pullback_ma_touch_band=pb.get("ma_touch_band", 0.01),
-            pullback_min_atr_pct=pb.get("min_atr_pct", 0.025),
             gap_min_gap_pct=gap.get("min_gap_pct", 0.015),
             gap_stop_loss_pct=gap.get("stop_loss_pct", -0.01),
             open_break_pct=ob.get("break_pct", 0.005),
@@ -314,7 +273,6 @@ class AppConfig:
             big_candle_atr_multiplier=bc.get("atr_multiplier", 1.5),
             big_candle_timeout_min=bc.get("timeout_minutes", 30),
             big_candle_stop_loss_pct=bc.get("stop_loss_pct", -0.01),
-            flow_min_strength_pct=fl.get("min_strength_pct", 120.0),
             flow_volume_surge_ratio=fl.get("volume_surge_ratio", 2.5),
             flow_stop_loss_pct=fl.get("stop_loss_pct", -0.015),
             flow_trailing_stop_pct=fl.get("trailing_stop_pct", 0.015),

@@ -12,7 +12,6 @@ trading:
   initial_capital: 1_000_000       # 초기 자본금 (원)
 
   # 리스크
-  stop_loss_pct: -0.015             # 손절률 -1.5%
   daily_max_loss_pct: -0.015        # Phase 3 Day 11.5: -2% → -1.5% 강화
   consecutive_loss_days: 3          # N일 연속 손실 시 포지션 축소
   reduced_position_pct: 0.5         # 연속 손실 시 포지션 50%로 축소
@@ -54,19 +53,6 @@ trading:
 # --- 전략 파라미터 ---
 strategy:
   force: "momentum"                     # 비어있으면 selector 로직, 값 있으면 해당 전략 강제 (페이퍼 테스트용)
-  # DEPRECATED: ORB — 백테스트 4종목 전부 PF<1.0 (2026-03-30 폐기)
-  # orb:
-  #   range_start: "09:05"
-  #   range_end: "09:15"
-  #   volume_ratio: 0.0
-  #   stop_loss_pct: -0.015
-  #   min_range_pct: 0.008
-
-  # DEPRECATED: VWAP — 백테스트 4종목 전부 PF<1.0 (2026-03-30 폐기)
-  # vwap:
-  #   rsi_low: 40.0
-  #   rsi_high: 60.0
-  #   stop_loss_pct: -0.012
 
   # 모멘텀 브레이크아웃 — 전일 고점 돌파 + 거래량 200%
   # Phase 1 최종 (2026-04-12): ADX20 + 시장 필터 조합 (L) 채택
@@ -111,11 +97,6 @@ strategy:
   pullback:
     min_gain_pct: 0.04              # 당일 +4% 이상
     stop_loss_pct: -0.018           # 손절 -1.8%
-    # v2 파라미터 (롤백: 조건 완화 실험 결과 PF 악화)
-    # ma_short: 10
-    # ma_long: 10
-    # ma_touch_band: 0.01
-    # min_atr_pct: 0.025
 
   # 수급추종 (FlowStrategy) — 거래량 급증 기반 Phase 1
   flow:
