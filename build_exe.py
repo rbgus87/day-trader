@@ -60,8 +60,8 @@ def build() -> None:
         "--hidden-import=data.db_manager",
         "--hidden-import=strategy.base_strategy",
         "--hidden-import=strategy.momentum_strategy",
-        # 미사용 전략(pullback/flow/gap/open_break/big_candle)은 함수 내부
-        # lazy import 로 PyInstaller 정적 분석이 자동 감지하므로 명시 불필요
+        # 5개 비활성 전략(flow/pullback/gap/open_break/big_candle)은
+        # strategy/archive/ 로 이동 — hidden_import 불필요
         "--hidden-import=screener.candidate_collector",
         "--hidden-import=screener.pre_market",
         "--hidden-import=screener.strategy_selector",

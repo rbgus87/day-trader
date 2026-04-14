@@ -1,4 +1,8 @@
-"""tests/test_strategy_selector.py — StrategySelector 단위 테스트 (3전략 체제)."""
+"""tests/test_strategy_selector.py — StrategySelector 단위 테스트 (momentum 단일 체제).
+
+2026-04-14: flow/pullback/gap/open_break/big_candle 전략을 strategy/archive/로 이동.
+StrategySelector는 이제 "항상 momentum" 반환. 본 테스트는 그 단일 계약 검증.
+"""
 
 from __future__ import annotations
 
@@ -9,120 +13,63 @@ import pytest
 from screener.strategy_selector import StrategySelector
 
 
-@pytest.fixture()
-def selector():
+def _make_selector(force: str = "", threshold_override: dict | None = None) -> StrategySelector:
     config = MagicMock()
-    config.selector = {}
-    config.force_strategy = ""
+    config.selector = threshold_override or {}
+    config.force_strategy = force
     rest_client = MagicMock()
     return StrategySelector(config=config, rest_client=rest_client)
 
 
-# ---------------------------------------------------------------------------
-# Momentum 선택
-# ---------------------------------------------------------------------------
-
 @pytest.mark.asyncio
-async def test_selects_momentum(selector):
-    """섹터 ETF >= 2.0% → Momentum."""
-    market_data = {
+async def test_selects_momentum_by_default():
+    """섹터 ETF 값과 무관하게 momentum 반환 (단일 전략 체제)."""
+    sel = _make_selector()
+    strategy, ticker = await sel.select({
         "sector_etf_change_pct": 2.5,
         "candidate_ticker": "005930",
-    }
-    strategy, ticker = await selector.select(market_data)
+    })
     assert strategy == "momentum"
+    assert ticker == "005930"
 
 
 @pytest.mark.asyncio
-async def test_momentum_threshold_exact(selector):
-    """섹터 ETF 정확히 2.0% → Momentum."""
-    market_data = {
-        "sector_etf_change_pct": 2.0,
-        "candidate_ticker": "005930",
-    }
-    strategy, _ = await selector.select(market_data)
-    assert strategy == "momentum"
-
-
-@pytest.mark.asyncio
-async def test_momentum_below_threshold(selector):
-    """섹터 ETF 1.9% → Momentum 아님."""
-    market_data = {
-        "sector_etf_change_pct": 1.9,
-        "candidate_ticker": "005930",
-    }
-    strategy, _ = await selector.select(market_data)
-    assert strategy != "momentum"
-
-
-# ---------------------------------------------------------------------------
-# Flow 선택 (Momentum 미충족 시 폴백)
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_selects_flow(selector):
-    """Momentum 미충족 + 후보 종목 → Flow."""
-    market_data = {
-        "sector_etf_change_pct": 0.5,
+async def test_selects_momentum_even_with_low_etf():
+    """섹터 ETF가 낮아도 momentum 반환 (archive 전략들 폴백 경로 제거됨)."""
+    sel = _make_selector()
+    strategy, ticker = await sel.select({
+        "sector_etf_change_pct": 0.1,
         "candidate_ticker": "042700",
-    }
-    strategy, ticker = await selector.select(market_data)
-    assert strategy == "flow"
+    })
+    assert strategy == "momentum"
     assert ticker == "042700"
 
 
-# ---------------------------------------------------------------------------
-# Pullback 선택 (ATR 기반)
-# ---------------------------------------------------------------------------
-
 @pytest.mark.asyncio
-async def test_pullback_with_high_atr(selector):
-    """ATR >= 3% + 후보 종목 → Flow 우선 (Pullback보다 우선순위 높음)."""
-    market_data = {
-        "sector_etf_change_pct": 0.0,
-        "candidate_ticker": "196170",
-        "atr_pct": 0.04,
-    }
-    strategy, _ = await selector.select(market_data)
-    # Flow가 Pullback보다 우선
-    assert strategy == "flow"
-
-
-@pytest.mark.asyncio
-async def test_pullback_blocked_by_low_atr(selector):
-    """ATR < 3% → Pullback 제외 (Flow는 통과)."""
-    market_data = {
+async def test_force_strategy_non_momentum_ignored():
+    """force_strategy='flow' 같은 archive 전략 요청은 무시하고 momentum 반환."""
+    sel = _make_selector(force="flow")
+    strategy, _ = await sel.select({
         "sector_etf_change_pct": 0.0,
         "candidate_ticker": "005930",
-        "atr_pct": 0.02,
-    }
-    strategy, _ = await selector.select(market_data)
-    # Flow가 먼저 매치됨
-    assert strategy == "flow"
+    })
+    assert strategy == "momentum"
 
-
-# ---------------------------------------------------------------------------
-# None 선택
-# ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_selects_none(selector):
-    """후보 종목 없음 → (None, None)."""
-    market_data = {
+async def test_force_strategy_empty_still_momentum():
+    """force_strategy 비었어도 momentum 반환."""
+    sel = _make_selector(force="")
+    strategy, _ = await sel.select({
         "sector_etf_change_pct": 0.0,
-        "candidate_ticker": None,
-    }
-    strategy, ticker = await selector.select(market_data)
-    assert strategy is None
-    assert ticker is None
+        "candidate_ticker": "005930",
+    })
+    assert strategy == "momentum"
 
-
-# ---------------------------------------------------------------------------
-# collect_market_data
-# ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_collect_market_data():
+    """REST 스냅샷을 market_data dict로 변환하고 candidate_ticker 주입."""
     config = MagicMock()
     config.selector = {}
     config.force_strategy = ""
@@ -140,7 +87,8 @@ async def test_collect_market_data():
 
 
 @pytest.mark.asyncio
-async def test_select_auto_collects():
+async def test_select_auto_collects_market_data_if_missing():
+    """market_data 인자가 None이면 collect_market_data 자동 호출."""
     config = MagicMock()
     config.selector = {}
     config.force_strategy = ""
@@ -155,63 +103,3 @@ async def test_select_auto_collects():
     strategy, ticker = await sel.select(candidate_ticker="005930")
     assert strategy == "momentum"
     assert ticker == "005930"
-
-
-# ---------------------------------------------------------------------------
-# Config 임계값 오버라이드
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_config_threshold_override():
-    config = MagicMock()
-    config.selector = {"momentum_etf_threshold": 3.0}
-    config.force_strategy = ""
-    rest_client = MagicMock()
-    sel = StrategySelector(config=config, rest_client=rest_client)
-
-    market_data = {
-        "sector_etf_change_pct": 2.5,
-        "candidate_ticker": "005930",
-    }
-    strategy, _ = await sel.select(market_data)
-    # 2.5 < 3.0이므로 Momentum 아님 → Flow
-    assert strategy == "flow"
-
-
-# ---------------------------------------------------------------------------
-# force_strategy 설정
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_force_strategy_flow():
-    """force_strategy='flow' → 항상 flow 반환."""
-    config = MagicMock()
-    config.selector = {}
-    config.force_strategy = "flow"
-    rest_client = MagicMock()
-    sel = StrategySelector(config=config, rest_client=rest_client)
-
-    market_data = {
-        "sector_etf_change_pct": 3.0,  # Momentum 조건 충족하지만 무시
-        "candidate_ticker": "005930",
-    }
-    strategy, ticker = await sel.select(market_data)
-    assert strategy == "flow"
-    assert ticker == "005930"
-
-
-@pytest.mark.asyncio
-async def test_force_strategy_empty_uses_selector():
-    """force_strategy='' → 기존 selector 로직 동작."""
-    config = MagicMock()
-    config.selector = {}
-    config.force_strategy = ""
-    rest_client = MagicMock()
-    sel = StrategySelector(config=config, rest_client=rest_client)
-
-    market_data = {
-        "sector_etf_change_pct": 3.0,
-        "candidate_ticker": "005930",
-    }
-    strategy, _ = await sel.select(market_data)
-    assert strategy == "momentum"

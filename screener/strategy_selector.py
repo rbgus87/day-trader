@@ -1,7 +1,7 @@
 """screener/strategy_selector.py — 시장 상황 기반 전략 자동 선택.
 
-3전략 체제: Momentum > Flow > Pullback > None
-ORB/VWAP 폐기 (2026-03-30 백테스트 결과).
+현재는 Momentum 단일 전략 체제 (2026-04-14 정리).
+Flow/Pullback/Gap/OpenBreak/BigCandle은 strategy/archive/로 이동.
 """
 
 from __future__ import annotations
@@ -13,9 +13,9 @@ from core.kiwoom_rest import KiwoomRestClient
 
 
 class StrategySelector:
-    """시장 데이터를 분석하여 당일 적용할 전략과 종목을 선택한다.
+    """시장 데이터 수집 + momentum 단일 전략 선택.
 
-    우선순위: Momentum > Flow > Pullback > None
+    force_strategy가 비어있어도 momentum을 반환 (단일 전략 체제).
     """
 
     DEFAULT_MOMENTUM_ETF_THRESHOLD: float = 2.0
@@ -50,41 +50,14 @@ class StrategySelector:
         candidate = market_data.get("candidate_ticker")
 
         force = getattr(self._config, "force_strategy", "")
-        if force:
-            logger.info(f"전략 강제 설정: {force}")
-            return force, candidate
+        if force and force != "momentum":
+            logger.warning(f"force_strategy={force} 무시 — momentum만 지원")
 
-        if self._check_momentum(market_data):
-            logger.info(
-                f"전략 선택: 모멘텀 (섹터 ETF {market_data.get('sector_etf_change_pct', 0):.2f}%)",
-            )
-            return "momentum", candidate
-
-        if self._check_flow(market_data):
-            logger.info("전략 선택: Flow (수급 감지 대기)")
-            return "flow", candidate
-
-        if self._check_pullback(market_data):
-            logger.info(f"전략 선택: 눌림목 (후보 종목: {candidate})")
-            return "pullback", candidate
-
-        logger.info("전략 선택 없음 — 당일 매매 없음")
-        return None, None
+        logger.info(
+            f"전략 선택: 모멘텀 (섹터 ETF {market_data.get('sector_etf_change_pct', 0):.2f}%)",
+        )
+        return "momentum", candidate
 
     def _check_momentum(self, market_data: dict) -> bool:
-        """섹터 ETF 등락률이 임계값 이상이면 모멘텀 전략."""
+        """섹터 ETF 등락률이 임계값 이상이면 모멘텀 전략. (참고용 — 현재 select는 항상 momentum)"""
         return float(market_data.get("sector_etf_change_pct", 0)) >= self._momentum_etf_threshold
-
-    def _check_flow(self, market_data: dict) -> bool:
-        """Flow는 장중 실시간 판단이므로 항상 선택 가능."""
-        return market_data.get("candidate_ticker") is not None
-
-    def _check_pullback(self, market_data: dict) -> bool:
-        """후보 종목이 존재하고 ATR >= 3%이면 적용 (저변동 종목 제외)."""
-        if market_data.get("candidate_ticker") is None:
-            return False
-        atr_pct = float(market_data.get("atr_pct", 0))
-        if atr_pct > 0 and atr_pct < 0.03:
-            logger.info("Pullback 제외: ATR %.2f%% < 3%%", atr_pct * 100)
-            return False
-        return True

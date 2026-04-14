@@ -307,11 +307,6 @@ class EngineWorker(QThread):
             import yaml
             from pathlib import Path
             from strategy.momentum_strategy import MomentumStrategy
-            from strategy.pullback_strategy import PullbackStrategy
-            from strategy.flow_strategy import FlowStrategy
-            from strategy.gap_strategy import GapStrategy
-            from strategy.open_break_strategy import OpenBreakStrategy
-            from strategy.big_candle_strategy import BigCandleStrategy
 
             uni_path = Path("config/universe.yaml")
             all_stocks = []
@@ -334,17 +329,11 @@ class EngineWorker(QThread):
                         f"— scripts/update_universe_market.py 실행 권장"
                     )
 
-            # 유니버스 전체에 전략 인스턴스 생성
+            # 유니버스 전체에 전략 인스턴스 생성 (momentum 단일 운영)
             force = getattr(self._config, 'force_strategy', '') or 'momentum'
-            strategy_classes = {
-                "momentum": MomentumStrategy,
-                "pullback": PullbackStrategy,
-                "flow": FlowStrategy,
-                "gap": GapStrategy,
-                "open_break": OpenBreakStrategy,
-                "big_candle": BigCandleStrategy,
-            }
-            StratClass = strategy_classes.get(force, MomentumStrategy)
+            if force != 'momentum':
+                logger.warning(f"force_strategy={force} 무시 — momentum만 지원")
+            StratClass = MomentumStrategy
 
             self._active_strategies = {}
             for s in all_stocks:
@@ -1065,46 +1054,33 @@ class EngineWorker(QThread):
             )
 
     async def _async_strategy_change(self, strategy_name: str):
-        """force_strategy 변경 + 전략 인스턴스 교체."""
+        """force_strategy 변경 — 현재는 momentum만 지원. 이외 요청은 무시."""
         from strategy.momentum_strategy import MomentumStrategy
-        from strategy.pullback_strategy import PullbackStrategy
-        from strategy.flow_strategy import FlowStrategy
-        from strategy.gap_strategy import GapStrategy
-        from strategy.open_break_strategy import OpenBreakStrategy
-        from strategy.big_candle_strategy import BigCandleStrategy
 
-        # config의 force_strategy 갱신 (frozen dataclass이므로 런타임만 반영)
         if self._config:
             object.__setattr__(self._config, "force_strategy", strategy_name)
 
-        strategies = {
-            "momentum": MomentumStrategy(self._config.trading),
-            "pullback": PullbackStrategy(self._config.trading),
-            "flow": FlowStrategy(self._config.trading),
-            "gap": GapStrategy(self._config.trading),
-            "open_break": OpenBreakStrategy(self._config.trading),
-            "big_candle": BigCandleStrategy(self._config.trading),
-        }
-
-        if strategy_name and strategy_name in strategies:
-            self._active_strategy = strategies[strategy_name]
-            # 기존 멀티 종목 전략도 교체 (prev_day_data 보존)
+        if strategy_name and strategy_name != "momentum":
+            logger.warning(f"전략 변경 요청 무시: {strategy_name} — momentum만 지원")
+        elif strategy_name == "momentum":
             for ticker, info in self._active_strategies.items():
                 old_strat = info["strategy"]
-                StratClass = type(strategies[strategy_name])
-                new_strat = StratClass(self._config.trading)
+                new_strat = MomentumStrategy(self._config.trading)
                 new_strat.configure_multi_trade(
                     max_trades=self._config.trading.max_trades_per_day,
                     cooldown_minutes=self._config.trading.cooldown_minutes,
                 )
-                # 전일 고가/거래량 복사 (Momentum 등에서 필요)
                 if hasattr(new_strat, "set_prev_day_data"):
                     prev_high = getattr(old_strat, "_prev_day_high", 0.0)
                     prev_vol = getattr(old_strat, "_prev_day_volume", 0)
                     if prev_high > 0:
                         new_strat.set_prev_day_data(prev_high, prev_vol)
                 info["strategy"] = new_strat
-            logger.info(f"전략 수동 변경: {strategy_name}")
+            self._active_strategy = (
+                list(self._active_strategies.values())[0]["strategy"]
+                if self._active_strategies else MomentumStrategy(self._config.trading)
+            )
+            logger.info("전략 수동 변경: momentum")
         elif not strategy_name:
             logger.info("전략 Auto 모드로 전환 — 다음 스크리닝에서 자동 선택")
 

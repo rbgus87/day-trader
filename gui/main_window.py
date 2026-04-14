@@ -395,11 +395,6 @@ class MainWindow(QMainWindow):
         from data.db_manager import DbManager
         from backtest.backtester import Backtester
         from strategy.momentum_strategy import MomentumStrategy
-        from strategy.pullback_strategy import PullbackStrategy
-        from strategy.flow_strategy import FlowStrategy
-        from strategy.gap_strategy import GapStrategy
-        from strategy.open_break_strategy import OpenBreakStrategy
-        from strategy.big_candle_strategy import BigCandleStrategy
 
         cfg_path = Path("config.yaml")
         raw = yaml.safe_load(open(cfg_path, encoding="utf-8")) or {}
@@ -410,17 +405,9 @@ class MainWindow(QMainWindow):
             slippage=bt_cfg.get("slippage", 0.0003),
         )
         trading_config = TradingConfig()
-        strategies = {
-            "momentum": MomentumStrategy(trading_config),
-            "pullback": PullbackStrategy(trading_config),
-            "flow": FlowStrategy(trading_config),
-            "gap": GapStrategy(trading_config),
-            "openbreak": OpenBreakStrategy(trading_config),
-            "bigcandle": BigCandleStrategy(trading_config),
-        }
-        strategy = strategies.get(strategy_name)
-        if not strategy:
-            return {"error": f"Unknown strategy: {strategy_name}"}
+        if strategy_name != "momentum":
+            return {"error": f"Unknown strategy: {strategy_name} (momentum만 지원)"}
+        strategy = MomentumStrategy(trading_config)
 
         db = DbManager("daytrader.db")
         await db.init()
@@ -494,11 +481,6 @@ class MainWindow(QMainWindow):
         from data.db_manager import DbManager
         from backtest.backtester import Backtester
         from strategy.momentum_strategy import MomentumStrategy
-        from strategy.pullback_strategy import PullbackStrategy
-        from strategy.flow_strategy import FlowStrategy
-        from strategy.gap_strategy import GapStrategy
-        from strategy.open_break_strategy import OpenBreakStrategy
-        from strategy.big_candle_strategy import BigCandleStrategy
 
         cfg_path = Path("config.yaml")
         raw = yaml.safe_load(open(cfg_path, encoding="utf-8")) or {}
@@ -511,11 +493,6 @@ class MainWindow(QMainWindow):
         tc = TradingConfig()
         strategies = {
             "Momentum": MomentumStrategy(tc),
-            "Pullback": PullbackStrategy(tc),
-            "Flow": FlowStrategy(tc),
-            "Gap": GapStrategy(tc),
-            "OpenBreak": OpenBreakStrategy(tc),
-            "BigCandle": BigCandleStrategy(tc),
         }
         db = DbManager("daytrader.db")
         await db.init()

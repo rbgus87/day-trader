@@ -533,11 +533,6 @@ async def main():
         import yaml as _yaml
         from pathlib import Path as _Path
         from strategy.momentum_strategy import MomentumStrategy
-        from strategy.pullback_strategy import PullbackStrategy
-        from strategy.flow_strategy import FlowStrategy
-        from strategy.gap_strategy import GapStrategy
-        from strategy.open_break_strategy import OpenBreakStrategy
-        from strategy.big_candle_strategy import BigCandleStrategy
 
         _uni_path = _Path("config/universe.yaml")
         _all_stocks = []
@@ -549,17 +544,11 @@ async def main():
                 await ws_client.subscribe(_all_tickers)
                 logger.info(f"유니버스 전체 WS 구독: {len(_all_tickers)}종목")
 
-        # 유니버스 전체에 전략 인스턴스 생성
+        # 유니버스 전체에 전략 인스턴스 생성 (momentum 단일 운영)
         _force = getattr(config, 'force_strategy', '') or 'momentum'
-        _strategy_classes = {
-            "momentum": MomentumStrategy,
-            "pullback": PullbackStrategy,
-            "flow": FlowStrategy,
-            "gap": GapStrategy,
-            "open_break": OpenBreakStrategy,
-            "big_candle": BigCandleStrategy,
-        }
-        _StratClass = _strategy_classes.get(_force, MomentumStrategy)
+        if _force != 'momentum':
+            logger.warning(f"force_strategy={_force} 무시 — momentum만 지원")
+        _StratClass = MomentumStrategy
 
         active_strategies = {}
         for s in _all_stocks:
