@@ -207,19 +207,6 @@ async def main():
                 risk_manager.mark_tp1_hit(ticker, sell_qty)
                 logger.info(f"TP1 실행: {ticker} {sell_qty}주 @ {price:,} PnL={pnl:+,.0f}")
                 continue
-            # 시간 손절
-            if risk_manager.check_time_stop(
-                ticker, price,
-                config.trading.time_stop_minutes,
-                config.trading.time_stop_min_profit,
-            ):
-                qty = pos["remaining_qty"]
-                await order_manager.execute_sell_force_close(ticker=ticker, qty=qty, price=int(price))
-                pnl = (price - pos["entry_price"]) * qty
-                risk_manager.record_pnl(pnl)
-                risk_manager.remove_position(ticker)
-                logger.info(f"시간 손절: {ticker} {qty}주 @ {price:,} PnL={pnl:+,.0f} ({config.trading.time_stop_minutes}분)")
-                continue
             # 트레일링 스톱 갱신
             risk_manager.update_trailing_stop(ticker, price)
 

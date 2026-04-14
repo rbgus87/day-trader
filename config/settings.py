@@ -75,10 +75,6 @@ class TradingConfig:
     screening_top_n: int = 5
     cooldown_minutes: int = 999
 
-    # 시간 손절
-    time_stop_minutes: int = 60
-    time_stop_min_profit: float = 0.005
-
     # 시간
     signal_block_until: str = "09:05"
     force_close_time: str = "15:10"
@@ -263,8 +259,6 @@ class AppConfig:
             max_positions=t.get("max_positions", 3),
             screening_top_n=t.get("screening_top_n", 5),
             cooldown_minutes=t.get("cooldown_minutes", 999),
-            time_stop_minutes=t.get("time_stop_minutes", 60),
-            time_stop_min_profit=t.get("time_stop_min_profit", 0.005),
             signal_block_until=t.get("signal_block_until", "09:05"),
             force_close_time=t.get("force_close_time", "15:10"),
             screening_time=t.get("screening_time", "08:30"),

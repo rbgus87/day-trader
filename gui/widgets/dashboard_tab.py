@@ -843,20 +843,8 @@ class DashboardTab(QWidget):
             if entry_time:
                 from datetime import datetime as _dt
                 elapsed_min = int((_dt.now() - entry_time).total_seconds() / 60)
-                time_limit = row_data.get("time_stop_minutes", 60)
-                pnl_pct = row_data.get("pnl_pct", 0.0)
-
-                if elapsed_min < time_limit:
-                    remaining = time_limit - elapsed_min
-                    elapsed_text = f"{elapsed_min}m / {time_limit}m"
-                    elapsed_color = QColor("#f9e2af") if remaining <= 10 else QColor("#6c7086")
-                else:
-                    if pnl_pct >= 0.5:
-                        elapsed_text = f"{elapsed_min}m (홀드)"
-                        elapsed_color = QColor("#a6e3a1")
-                    else:
-                        elapsed_text = f"{elapsed_min}m (청산예정)"
-                        elapsed_color = QColor("#f38ba8")
+                elapsed_text = f"{elapsed_min}m"
+                elapsed_color = QColor("#6c7086")
             else:
                 elapsed_text = "—"
                 elapsed_color = QColor("#6c7086")

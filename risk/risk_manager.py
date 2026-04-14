@@ -1,4 +1,4 @@
-"""risk/risk_manager.py — 리스크 관리 (손절, 일일한도, 강제청산, 연속손실, 시간손절)."""
+"""risk/risk_manager.py — 리스크 관리 (손절, 일일한도, 강제청산, 연속손실)."""
 
 import sqlite3
 from datetime import datetime, timedelta
@@ -104,20 +104,6 @@ class RiskManager:
         if pos["tp1_price"] and current_price >= pos["tp1_price"]:
             return True
         return False
-
-    def check_time_stop(
-        self, ticker: str, current_price: float,
-        time_stop_minutes: int = 60, min_profit: float = 0.005,
-    ) -> bool:
-        """진입 후 일정 시간 경과 + 최소 수익 미달 시 True."""
-        pos = self._positions.get(ticker)
-        if not pos or not pos.get("entry_time"):
-            return False
-        elapsed = (datetime.now() - pos["entry_time"]).total_seconds() / 60
-        if elapsed < time_stop_minutes:
-            return False
-        profit_pct = (current_price - pos["entry_price"]) / pos["entry_price"]
-        return profit_pct < min_profit
 
     def settle_sell(self, ticker: str, sell_price: float, sell_qty: int) -> float:
         """매도 정산 — 자본 복구 + PnL 반환."""

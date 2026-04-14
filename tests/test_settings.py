@@ -10,8 +10,6 @@ def test_trading_config_defaults():
     assert tc.max_trades_per_day == 1
     assert tc.max_positions == 3
     assert tc.cooldown_minutes == 999
-    assert tc.time_stop_minutes == 60
-    assert tc.time_stop_min_profit == 0.005
     assert tc.orb_volume_ratio == 0.0
     assert tc.pullback_min_gain_pct == 0.04
     assert tc.pullback_stop_loss_pct == -0.018

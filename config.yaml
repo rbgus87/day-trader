@@ -41,10 +41,6 @@ trading:
   screening_top_n: 5                # 스크리닝 상위 5종목 감시
   cooldown_minutes: 120             # 사실상 재진입 금지
 
-  # 시간 손절
-  time_stop_minutes: 60             # 진입 후 60분
-  time_stop_min_profit: 0.005       # 60분 내 +0.5% 미도달 시 청산
-
   # 시간
   signal_block_until: "09:05"       # 09:05 이전 신호 차단 (장 초반 변동성 회피)
   force_close_time: "15:10"         # 15:10 미청산 포지션 강제 청산

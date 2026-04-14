@@ -596,37 +596,6 @@ class EngineWorker(QThread):
                     })
                     await self._notify_execution("sell", ticker, int(price), sell_qty, int(pnl))
                     continue
-                # 시간 손절
-                if self._risk_manager.check_time_stop(
-                    ticker, price,
-                    self._config.trading.time_stop_minutes,
-                    self._config.trading.time_stop_min_profit,
-                ):
-                    qty = pos["remaining_qty"]
-                    entry = pos["entry_price"]
-                    pnl = (price - entry) * qty
-                    pnl_pct = ((price / entry) - 1) * 100 if entry > 0 else 0
-                    await self._order_manager.execute_sell_force_close(
-                        ticker=ticker, qty=qty, price=int(price),
-                        pnl=pnl, pnl_pct=pnl_pct,
-                    )
-                    self._risk_manager.settle_sell(ticker, price, qty)
-                    if pnl >= 0:
-                        self._rt_wins += 1
-                    else:
-                        self._rt_losses += 1
-                    logger.info(f"시간 손절: {ticker} {qty}주 @ {price:,} PnL={pnl:+,.0f}")
-                    strat_info = self._active_strategies.get(ticker)
-                    if strat_info:
-                        strat_info["strategy"].on_exit()
-                    self.signals.trade_executed.emit({
-                        "time": datetime.now().strftime("%H:%M:%S"),
-                        "side": "sell", "ticker": ticker,
-                        "price": int(price), "qty": qty,
-                        "pnl": int(pnl), "reason": "time_stop",
-                    })
-                    await self._notify_execution("sell", ticker, int(price), qty, int(pnl))
-                    continue
                 # 트레일링 스톱 갱신
                 self._risk_manager.update_trailing_stop(ticker, price)
             except asyncio.TimeoutError:
@@ -1256,7 +1225,6 @@ class EngineWorker(QThread):
                     "tp1_price": pos.get("tp1_price"),
                     "tp1_hit": pos.get("tp1_hit", False),
                     "entry_time": pos.get("entry_time"),
-                    "time_stop_minutes": self._config.trading.time_stop_minutes if self._config else 60,
                     "status": status,
                 })
             self.signals.positions_updated.emit(positions)
