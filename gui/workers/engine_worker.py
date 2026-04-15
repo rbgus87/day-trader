@@ -272,6 +272,16 @@ class EngineWorker(QThread):
             _schedule_async(self._safe_run_daily_report, "daily_report"),
             "cron", hour=15, minute=30, misfire_grace_time=300,
         )
+        # ADR-006: 자정 일일 리셋 (운영자 재시작 안전망)
+        self._scheduler.add_job(
+            _schedule_async(self._safe_daily_reset, "daily_reset"),
+            "cron", hour=0, minute=1, misfire_grace_time=600,
+        )
+        # ADR-006: 매일 08:05 전일 OHLCV 갱신 (토큰 갱신 직후)
+        self._scheduler.add_job(
+            _schedule_async(self._safe_refresh_ohlcv, "refresh_ohlcv"),
+            "cron", hour=8, minute=5, misfire_grace_time=600,
+        )
         self._scheduler.start()
         logger.debug(f"BackgroundScheduler 시작됨, running={self._scheduler.running}")
 
@@ -302,24 +312,13 @@ class EngineWorker(QThread):
         # WS connect + 유니버스 전체 구독 + 전략 등록
         try:
             await self._ws_client.connect()
-            import yaml
-            from pathlib import Path
-            from strategy.momentum_strategy import MomentumStrategy
 
-            uni_path = Path("config/universe.yaml")
-            all_stocks = []
-            if uni_path.exists():
-                uni = yaml.safe_load(open(uni_path, encoding="utf-8")) or {}
-                all_stocks = uni.get("stocks", [])
-                all_tickers = [s["ticker"] for s in all_stocks]
-                if all_tickers:
-                    await self._ws_client.subscribe(all_tickers)
-                    logger.info(f"유니버스 전체 WS 구독: {len(all_tickers)}종목")
+            all_stocks = self._load_universe()
+            all_tickers = [s["ticker"] for s in all_stocks]
+            if all_tickers:
+                await self._ws_client.subscribe(all_tickers)
+                logger.info(f"유니버스 전체 WS 구독: {len(all_tickers)}종목")
 
-                # ticker → market 매핑 구축 (Phase 1 Day 3)
-                self._ticker_markets = {
-                    s["ticker"]: s.get("market", "unknown") for s in all_stocks
-                }
                 n_unknown = sum(1 for m in self._ticker_markets.values() if m == "unknown")
                 if n_unknown:
                     logger.warning(
@@ -327,61 +326,8 @@ class EngineWorker(QThread):
                         f"— scripts/update_universe_market.py 실행 권장"
                     )
 
-            # 유니버스 전체에 전략 인스턴스 생성 (momentum 단일 운영)
-            force = getattr(self._config, 'force_strategy', '') or 'momentum'
-            if force != 'momentum':
-                logger.warning(f"force_strategy={force} 무시 — momentum만 지원")
-            StratClass = MomentumStrategy
-
-            self._active_strategies = {}
-            for s in all_stocks:
-                ticker = s["ticker"]
-                strat = StratClass(self._config.trading)
-                strat.configure_multi_trade(
-                    max_trades=self._config.trading.max_trades_per_day,
-                    cooldown_minutes=self._config.trading.cooldown_minutes,
-                )
-                # Phase 2 Day 6: ATR 손절용 ticker 주입
-                if hasattr(strat, "set_ticker"):
-                    strat.set_ticker(ticker)
-                self._active_strategies[ticker] = {
-                    "strategy": strat,
-                    "name": s.get("name", ticker),
-                    "score": 0,
-                }
-            self._active_strategy = list(self._active_strategies.values())[0]["strategy"] if self._active_strategies else None
-            logger.info(f"유니버스 전체 전략 등록: {len(self._active_strategies)}종목 ({force})")
-
-            # 전일 고가/거래량 초기화 (모멘텀 전략 등에 필요)
-            logger.info("전일 고가 초기화 시작...")
-            init_count = 0
-            for s in all_stocks:
-                ticker = s["ticker"]
-                try:
-                    daily = await self._rest_client.get_daily_ohlcv(ticker, base_dt=datetime.now().strftime('%Y%m%d'))
-                    items = (
-                        daily.get("stk_dt_pole_chart_qry")
-                        or daily.get("output2")
-                        or daily.get("output")
-                        or []
-                    )
-                    if items and len(items) >= 2:
-                        prev = items[1]
-                        prev_high = abs(float(prev.get("high_pric", 0)))
-                        prev_vol = abs(int(prev.get("acml_vol", prev.get("acml_vlmn", 0))))
-                        prev_close = abs(float(prev.get("cur_prc", prev.get("stck_clpr", 0))))
-                        if prev_high > 0 and ticker in self._active_strategies:
-                            strat = self._active_strategies[ticker]["strategy"]
-                            if hasattr(strat, "set_prev_day_data"):
-                                strat.set_prev_day_data(prev_high, prev_vol)
-                                init_count += 1
-                            self._prev_high_map[ticker] = prev_high
-                        if prev_close > 0:
-                            self._prev_close[ticker] = prev_close
-                except Exception as e:
-                    logger.debug(f"전일 고가 조회 실패 ({ticker}): {e}")
-                await asyncio.sleep(0.1)
-            logger.info(f"전일 고가 초기화 완료: {init_count}/{len(self._active_strategies)}종목")
+            self._register_active_strategies(all_stocks)
+            await self._refresh_prev_day_ohlcv(all_stocks)
 
             # 시장 필터 초기 갱신 (Phase 1 Day 3)
             if self._market_filter is not None:
@@ -895,6 +841,119 @@ class EngineWorker(QThread):
             await self._notifier.send_no_trade("당일 매매 기록 없음")
             logger.info("당일 매매 없음 -- 무거래 알림 발송")
 
+    # ── Universe/strategies/OHLCV helpers (startup + daily_reset 공용) ──
+
+    def _load_universe(self) -> list[dict]:
+        """universe.yaml 로드 + _ticker_markets 매핑 갱신."""
+        import yaml
+        from pathlib import Path
+        uni_path = Path("config/universe.yaml")
+        if not uni_path.exists():
+            logger.error(f"universe.yaml 없음: {uni_path}")
+            return []
+        uni = yaml.safe_load(open(uni_path, encoding="utf-8")) or {}
+        stocks = uni.get("stocks", [])
+        self._ticker_markets = {
+            s["ticker"]: s.get("market", "unknown") for s in stocks
+        }
+        return stocks
+
+    def _register_active_strategies(self, stocks: list[dict]) -> None:
+        """유니버스 종목에 Momentum 전략 인스턴스 등록 (기존 인스턴스 교체)."""
+        from strategy.momentum_strategy import MomentumStrategy
+
+        force = getattr(self._config, 'force_strategy', '') or 'momentum'
+        if force != 'momentum':
+            logger.warning(f"force_strategy={force} 무시 — momentum만 지원")
+
+        self._active_strategies = {}
+        for s in stocks:
+            ticker = s["ticker"]
+            strat = MomentumStrategy(self._config.trading)
+            strat.configure_multi_trade(
+                max_trades=self._config.trading.max_trades_per_day,
+                cooldown_minutes=self._config.trading.cooldown_minutes,
+            )
+            if hasattr(strat, "set_ticker"):
+                strat.set_ticker(ticker)
+            self._active_strategies[ticker] = {
+                "strategy": strat,
+                "name": s.get("name", ticker),
+                "score": 0,
+            }
+        self._active_strategy = (
+            list(self._active_strategies.values())[0]["strategy"]
+            if self._active_strategies else None
+        )
+        logger.info(f"유니버스 전체 전략 등록: {len(self._active_strategies)}종목 ({force})")
+
+    async def _refresh_prev_day_ohlcv(self, stocks: list[dict] | None = None) -> None:
+        """각 strategy에 전일 OHLCV 주입. startup + 08:05 cron + daily_reset 공용."""
+        if stocks is None:
+            stocks = self._load_universe()
+        if not stocks:
+            return
+        logger.info(f"전일 OHLCV 갱신 시작 — {len(stocks)}종목")
+        init_count = 0
+        for s in stocks:
+            ticker = s["ticker"]
+            try:
+                daily = await self._rest_client.get_daily_ohlcv(
+                    ticker, base_dt=datetime.now().strftime('%Y%m%d'),
+                )
+                items = (
+                    daily.get("stk_dt_pole_chart_qry")
+                    or daily.get("output2")
+                    or daily.get("output")
+                    or []
+                )
+                if items and len(items) >= 2:
+                    prev = items[1]
+                    prev_high = abs(float(prev.get("high_pric", 0)))
+                    prev_vol = abs(int(prev.get("acml_vol", prev.get("acml_vlmn", 0))))
+                    prev_close = abs(float(prev.get("cur_prc", prev.get("stck_clpr", 0))))
+                    if prev_high > 0 and ticker in self._active_strategies:
+                        strat = self._active_strategies[ticker]["strategy"]
+                        if hasattr(strat, "set_prev_day_data"):
+                            strat.set_prev_day_data(prev_high, prev_vol)
+                            init_count += 1
+                        self._prev_high_map[ticker] = prev_high
+                    if prev_close > 0:
+                        self._prev_close[ticker] = prev_close
+            except Exception as e:
+                logger.debug(f"전일 OHLCV 실패 ({ticker}): {e}")
+            await asyncio.sleep(0.1)
+        logger.info(f"전일 OHLCV 갱신 완료: {init_count}/{len(stocks)}")
+
+    async def _daily_reset(self) -> None:
+        """00:01 자동 일일 리셋 — 운영자 재시작 안전망 (ADR-006).
+
+        - 리스크 카운터 리셋 (포지션 보존)
+        - active_strategies 재등록 또는 기존 인스턴스 reset()
+        - 전일 OHLCV 갱신
+        """
+        logger.info("[자동] 일일 리셋 시작")
+        self._risk_manager.reset_daily_counters()
+        self._daily_halt_notified = False
+
+        stocks = self._load_universe()
+        if not self._active_strategies:
+            self._register_active_strategies(stocks)
+        else:
+            for strat_info in self._active_strategies.values():
+                strat_info["strategy"].reset()
+
+        await self._refresh_prev_day_ohlcv(stocks)
+
+        logger.info("[자동] 일일 리셋 완료")
+        if self._notifier:
+            try:
+                await self._notifier.send(
+                    f"[자동] 일일 리셋 완료 — {len(self._active_strategies)}종목, 카운터 초기화"
+                )
+            except Exception as e:
+                logger.warning(f"일일 리셋 알림 실패: {e}")
+
     # ── Scheduler safe wrappers ──
 
     async def _safe_refresh_token(self):
@@ -920,6 +979,25 @@ class EngineWorker(QThread):
             await self._run_daily_report()
         except Exception as e:
             logger.error(f"[SCHED] 일일 보고서 실패: {e}")
+
+    async def _safe_daily_reset(self):
+        try:
+            await self._daily_reset()
+        except Exception as e:
+            logger.error(f"[SCHED] 일일 리셋 실패: {e}")
+
+    async def _safe_refresh_ohlcv(self):
+        try:
+            await self._refresh_prev_day_ohlcv()
+        except Exception as e:
+            logger.error(f"[SCHED] OHLCV 갱신 실패: {e}")
+            if self._notifier:
+                try:
+                    await self._notifier.send_urgent(
+                        f"[경고] 전일 OHLCV 갱신 실패 — {type(e).__name__}: {e}"
+                    )
+                except Exception:
+                    pass
 
     # ── Health check ──
 

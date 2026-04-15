@@ -338,3 +338,13 @@ class RiskManager:
         self._daily_pnl = 0.0
         self._halted = False
         self._positions.clear()
+
+    def reset_daily_counters(self) -> None:
+        """자정 자동 리셋용 — 일일 카운터만 초기화, 포지션은 보존.
+
+        정상 흐름에선 15:10 force_close가 포지션을 이미 비웠지만,
+        프로세스 밤샘 가동 시 오버나이트 포지션이 있을 수 있으므로
+        안전을 위해 _positions.clear() 는 수행하지 않는다. (ADR-006)
+        """
+        self._daily_pnl = 0.0
+        self._halted = False
