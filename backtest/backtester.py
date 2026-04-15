@@ -10,6 +10,7 @@ import pandas as pd
 from loguru import logger
 
 from config.settings import BacktestConfig, TradingConfig
+from core.cost_model import TradeCosts, apply_buy_costs, apply_sell_costs
 from data.db_manager import DbManager
 from strategy.base_strategy import BaseStrategy, Signal
 
@@ -76,6 +77,12 @@ class Backtester:
         self._exit_fee = commission if commission is not None else bt.commission
         self._tax = tax if tax is not None else bt.tax
         self._slippage = slippage if slippage is not None else bt.slippage
+        # ADR-009: 공유 비용 모델 (PaperOrderManager와 동일 경로)
+        self._costs = TradeCosts(
+            commission_rate=self._entry_fee,
+            slippage_rate=self._slippage,
+            tax_rate=self._tax,
+        )
         # 시장 필터 (Phase 1 Day 4)
         # market_strong_by_date: {"20260410": {"kospi": True, "kosdaq": False}, ...}
         self._ticker_market = ticker_market
@@ -178,10 +185,8 @@ class Backtester:
                 if signal is not None and signal.side == "buy":
                     strategy.on_entry()
                     entry_price_raw = float(row["close"])
-                    # 슬리피지 적용 (매수 시 불리)
-                    entry_price = entry_price_raw * (1 + self._slippage)
-                    entry_fee = entry_price * self._entry_fee
-                    net_entry = entry_price + entry_fee
+                    # ADR-009: 공유 cost_model (슬리피지 + 수수료)
+                    entry_price, net_entry = apply_buy_costs(entry_price_raw, self._costs)
 
                     stop_loss = strategy.get_stop_loss(entry_price)
                     tp1 = strategy.get_take_profit(entry_price)
@@ -208,9 +213,7 @@ class Backtester:
                 if low <= position["stop_loss"]:
                     exit_price = position["stop_loss"]
                     remaining = position.get("remaining_ratio", 1.0)
-                    exit_price_slipped = exit_price * (1 - self._slippage)
-                    exit_fee = exit_price_slipped * (self._exit_fee + self._tax)
-                    net_exit = exit_price_slipped - exit_fee
+                    exit_price_slipped, net_exit = apply_sell_costs(exit_price, self._costs)
                     pnl = (net_exit - position["net_entry"]) * remaining
                     pnl_pct = (net_exit - position["net_entry"]) / position["net_entry"]
                     trades.append({
@@ -232,9 +235,7 @@ class Backtester:
                 # TP1 확인 (캔들 고가 기준) — 분할매도
                 elif not position.get("tp1_hit") and position["tp1_price"] and high >= position["tp1_price"]:
                     tp1_price = position["tp1_price"]
-                    tp1_slipped = tp1_price * (1 - self._slippage)
-                    tp1_fee = tp1_slipped * (self._exit_fee + self._tax)
-                    net_tp1 = tp1_slipped - tp1_fee
+                    tp1_slipped, net_tp1 = apply_sell_costs(tp1_price, self._costs)
                     tp1_ratio = self._config.tp1_sell_ratio  # 50%
                     pnl = (net_tp1 - position["net_entry"]) * tp1_ratio
                     pnl_pct = (net_tp1 - position["net_entry"]) / position["net_entry"]
@@ -260,9 +261,7 @@ class Backtester:
                     # 마지막 캔들에서 TP1 히트 시 나머지도 강제 청산
                     if idx == len(candles) - 1:
                         remaining = position["remaining_ratio"]
-                        fc_slipped = close * (1 - self._slippage)
-                        fc_fee = fc_slipped * (self._exit_fee + self._tax)
-                        net_fc = fc_slipped - fc_fee
+                        fc_slipped, net_fc = apply_sell_costs(close, self._costs)
                         fc_pnl = (net_fc - position["net_entry"]) * remaining
                         fc_pnl_pct = (net_fc - position["net_entry"]) / position["net_entry"]
                         trades.append({
@@ -326,9 +325,7 @@ class Backtester:
                     # 트레일링 스톱 체크
                     if low <= position["stop_loss"]:
                         exit_price = position["stop_loss"]
-                        exit_price_slipped = exit_price * (1 - self._slippage)
-                        exit_fee = exit_price_slipped * (self._exit_fee + self._tax)
-                        net_exit = exit_price_slipped - exit_fee
+                        exit_price_slipped, net_exit = apply_sell_costs(exit_price, self._costs)
                         pnl = (net_exit - position["net_entry"]) * remaining
                         pnl_pct = (net_exit - position["net_entry"]) / position["net_entry"]
                         trades.append({
@@ -348,9 +345,7 @@ class Backtester:
                         strategy.on_exit()
                     # 마지막 캔들 강제 청산 (나머지)
                     elif idx == len(candles) - 1:
-                        exit_price_slipped = close * (1 - self._slippage)
-                        exit_fee = exit_price_slipped * (self._exit_fee + self._tax)
-                        net_exit = exit_price_slipped - exit_fee
+                        exit_price_slipped, net_exit = apply_sell_costs(close, self._costs)
                         pnl = (net_exit - position["net_entry"]) * remaining
                         pnl_pct = (net_exit - position["net_entry"]) / position["net_entry"]
                         trades.append({
@@ -367,9 +362,7 @@ class Backtester:
 
                 # 마지막 캔들 강제 청산 (TP1 미히트 상태)
                 elif idx == len(candles) - 1:
-                    exit_price_slipped = close * (1 - self._slippage)
-                    exit_fee = exit_price_slipped * (self._exit_fee + self._tax)
-                    net_exit = exit_price_slipped - exit_fee
+                    exit_price_slipped, net_exit = apply_sell_costs(close, self._costs)
                     pnl = net_exit - position["net_entry"]
                     pnl_pct = pnl / position["net_entry"]
                     trades.append({
