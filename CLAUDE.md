@@ -123,17 +123,26 @@ pytest tests/ --cov=. --cov-report=term-missing
 
 ---
 
-## 재조립 진행 중 (2026-04-15 ~)
+## 재조립 진행 상태 (2026-04-15 ~)
 
 백테스트 환경을 baseline으로 라이브 운영 부속을 재조립 중.
-아래 영역은 Phase 2에서 순차 추가 예정:
 
-- 사이징 (1주 단위, 백테스트와 동일)
-- 주문 실행 (PaperOrderManager / OrderManager)
-- 리스크 관리 (daily_max_loss, blacklist 등)
-- 자본 관리 (available_capital)
-- 알림 (Telegram)
-- DB 기록 (trades, daily_pnl)
+- [x] 사이징 (ADR-002) — 1주 단위, 백테스트와 동일
+- [x] 주문 실행 — `PaperOrderManager` / `OrderManager` 정상
+- [x] 리스크 관리 (Phase 2-B) — `daily_max_loss`, `blacklist`, `consecutive_loss_rest` 일치
+- [x] 자본 관리 — `available_capital` 유지 (사이징 재검토는 후속 ADR)
+- [x] 일일 리셋 + 전일 OHLCV 자동화 (ADR-006) — 자정 `_daily_reset`, 08:05 OHLCV 갱신, 24h 안내
+- [ ] 알림 (Telegram) — Phase 3 검토 대상 (중복/누락 점검)
+- [ ] DB 기록 스펙 — Phase 3 검토 대상 (`tp2_price` 컬럼 등 잔재)
+- [ ] 라이브 수수료·슬리피지 — 후속 ADR
 
 각 영역 추가 시 이 문서와 `docs/adr/` 동시 갱신.
 검증 명령어는 `docs/verification_commands.md` 참조.
+
+## 일일 운영
+
+운영 매뉴얼: [`docs/runbook.md`](docs/runbook.md)
+
+- **정상**: 매일 08:00 `python gui.py` 시작, 15:30 이후 종료
+- **안전망** (ADR-006): 00:01 자동 리셋, 08:05 OHLCV 갱신, 24h 가동 안내
+- **검증**: `python selftest.py` → 7/7 OK + `docs/verification_commands.md`
