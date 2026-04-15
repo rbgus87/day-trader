@@ -32,11 +32,13 @@ class PaperOrderManager:
         db: DbManager | None = None,
         trading_config: TradingConfig | None = None,
         order_queue: asyncio.Queue | None = None,
+        notifications_config=None,
     ):
         self._risk_manager = risk_manager
         self._notifier = notifier
         self._db = db
         self._config = trading_config or TradingConfig()
+        self._notifications = notifications_config  # Phase 3-B ADR-008
         self._lock = asyncio.Lock()
         self._active_orders: dict[str, bool] = {}
         self._order_queue: asyncio.Queue = order_queue or asyncio.Queue()
@@ -65,6 +67,12 @@ class PaperOrderManager:
         self._order_seq += 1
         return f"PAPER-{self._order_seq:06d}"
 
+    def _trade_notify_enabled(self) -> bool:
+        """ADR-008: trade_execution 토글. notifications 없으면 기본 True."""
+        if self._notifications is None:
+            return True
+        return bool(self._notifications.trade_execution)
+
     async def execute_buy(self, ticker: str, price: int, total_qty: int, strategy: str = "unknown") -> dict | None:
         """1차 매수 시뮬레이션."""
         if ticker in self._active_orders:
@@ -92,8 +100,8 @@ class PaperOrderManager:
                         (ticker, strategy, price, qty_1st, price * qty_1st, now),
                     )
 
-                # 텔레그램 알림
-                if self._notifier:
+                # 텔레그램 알림 (ADR-008 trade_execution 토글)
+                if self._notifier and self._trade_notify_enabled():
                     await self._notifier.send(
                         f"🟢 [PAPER] 1차 매수 체결\n"
                         f"종목: {self._format_ticker(ticker)}\n"
@@ -160,7 +168,7 @@ class PaperOrderManager:
                 (ticker, strategy, side, price, qty, price * qty, pnl, pnl_pct, reason, now),
             )
 
-        if self._notifier:
+        if self._notifier and self._trade_notify_enabled():
             if side == "sell":
                 # 매도: 포지션에서 진입가 조회 → 손익 표시
                 entry_price = 0

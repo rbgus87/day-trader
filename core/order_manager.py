@@ -28,12 +28,14 @@ class OrderManager:
         db: DbManager | None = None,
         trading_config: TradingConfig | None = None,
         order_queue: asyncio.Queue | None = None,
+        notifications_config=None,
     ):
         self._rest_client = rest_client
         self._risk_manager = risk_manager
         self._notifier = notifier
         self._db = db
         self._config = trading_config or TradingConfig()
+        self._notifications = notifications_config  # Phase 3-B ADR-008
         self._lock = asyncio.Lock()
         self._active_orders: dict[str, bool] = {}
         self._order_queue: asyncio.Queue = order_queue or asyncio.Queue()
@@ -55,6 +57,12 @@ class OrderManager:
         """종목명(코드) 형식으로 변환."""
         name = self._name_map.get(ticker, "")
         return f"{name}({ticker})" if name else ticker
+
+    def _trade_notify_enabled(self) -> bool:
+        """ADR-008: trade_execution 토글. notifications 없으면 기본 True."""
+        if self._notifications is None:
+            return True
+        return bool(self._notifications.trade_execution)
 
     async def execute_buy(self, ticker: str, price: int, total_qty: int, strategy: str = "unknown") -> dict | None:
         if ticker in self._active_orders:
@@ -83,8 +91,8 @@ class OrderManager:
                             "VALUES (?, ?, 'buy', ?, ?, ?, ?, ?)",
                             (ticker, strategy, order_type, price, qty_1st, price * qty_1st, now),
                         )
-                    # 체결 텔레그램 알림
-                    if self._notifier:
+                    # 체결 텔레그램 알림 (ADR-008 trade_execution 토글)
+                    if self._notifier and self._trade_notify_enabled():
                         try:
                             await self._notifier.send_execution(
                                 ticker=ticker,
@@ -151,8 +159,8 @@ class OrderManager:
                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (ticker, strategy, side, order_type, price, qty, price * qty, pnl, pnl_pct, reason, now),
                     )
-                # 체결 텔레그램 알림
-                if self._notifier:
+                # 체결 텔레그램 알림 (ADR-008 trade_execution 토글)
+                if self._notifier and self._trade_notify_enabled():
                     try:
                         await self._notifier.send_execution(
                             ticker=ticker,

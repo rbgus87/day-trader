@@ -39,6 +39,7 @@ class KiwoomWebSocketClient:
         notifier=None,
         risk_manager=None,
         order_manager=None,
+        notifications_config=None,
     ):
         self._ws_url = ws_url
         self._token_manager = token_manager
@@ -47,11 +48,19 @@ class KiwoomWebSocketClient:
         self._notifier = notifier
         self._risk_manager = risk_manager
         self._order_manager = order_manager
+        self._notifications = notifications_config  # Phase 3-B ADR-008
         self._ws = None
         self._subscriptions: dict[str, list[str]] = {}  # {real_type: [codes]}
         self._listen_task: asyncio.Task | None = None
         self._running = False
         self._reconnect_failures = 0
+        self._last_disconnect_at: object | None = None  # 재연결 성공 알림용
+
+    def _ws_notify_enabled(self, key: str) -> bool:
+        """ADR-008: notifications 토글. 설정 없으면 기본 True."""
+        if self._notifications is None:
+            return True
+        return bool(getattr(self._notifications, key, True))
 
     async def connect(self) -> None:
         """WebSocket 연결 및 수신 루프 시작."""
@@ -199,16 +208,34 @@ class KiwoomWebSocketClient:
                     continue
 
                 logger.warning(f"WS 연결 끊김: {e}, {reconnect_delay}초 후 재연결")
+                # 끊김 시각 기록 (재연결 성공 알림용)
+                if self._last_disconnect_at is None:
+                    from datetime import datetime as _dt
+                    self._last_disconnect_at = _dt.now()
+                failure_count_before = self._reconnect_failures
                 await asyncio.sleep(reconnect_delay)
                 reconnect_delay = min(reconnect_delay * 2, self.RECONNECT_MAX_DELAY)
                 try:
                     await self._establish_connection()
                     reconnect_delay = self.RECONNECT_BASE_DELAY
                     self._reconnect_failures = 0
+                    # ADR-008: 재연결 성공 알림
+                    if (self._notifier and self._ws_notify_enabled("ws_auto_recovery")
+                            and self._last_disconnect_at is not None):
+                        try:
+                            disc_str = self._last_disconnect_at.strftime("%H:%M:%S")
+                            await self._notifier.send(
+                                f"[복구] WS 자동 재연결 성공 "
+                                f"(시도 {failure_count_before + 1}회, 끊김 {disc_str})"
+                            )
+                        except Exception:
+                            pass
+                    self._last_disconnect_at = None
                 except Exception as e2:
                     logger.error(f"재연결 실패: {e2}")
                     self._reconnect_failures += 1
-                    if self._reconnect_failures >= 3 and self._notifier:
+                    if (self._reconnect_failures >= 3 and self._notifier
+                            and self._ws_notify_enabled("ws_critical_failure")):
                         await self._notifier.send_urgent(
                             f"WS 재연결 3회 실패!\n"
                             f"마지막 오류: {e2}\n"

@@ -155,7 +155,8 @@ class EngineWorker(QThread):
 
         self._notifier = TelegramNotifier(self._config.telegram)
         mode_tag = "[PAPER] " if paper_mode else ""
-        await self._notifier.send(f"{mode_tag}단타 매매 시스템 시작 (GUI)")
+        if self._config.notifications.system_start:
+            await self._notifier.send(f"{mode_tag}단타 매매 시스템 시작 (GUI)")
 
         # ADR-006: 24시간 이상 가동 감지 안전망
         await self._check_uptime_sanity()
@@ -189,6 +190,7 @@ class EngineWorker(QThread):
             tick_queue=self._tick_queue,
             order_queue=self._order_queue,
             notifier=self._notifier,
+            notifications_config=self._config.notifications,
         )
         self._candle_builder = CandleBuilder(
             candle_queue=self._candle_queue, timeframes=["1m", "5m"],
@@ -204,6 +206,7 @@ class EngineWorker(QThread):
                 notifier=self._notifier, db=self._db,
                 trading_config=self._config.trading,
                 order_queue=self._order_queue,
+                notifications_config=self._config.notifications,
             )
             logger.info("주문 관리자: PaperOrderManager (시뮬레이션)")
         else:
@@ -213,6 +216,7 @@ class EngineWorker(QThread):
                 notifier=self._notifier, db=self._db,
                 trading_config=self._config.trading,
                 order_queue=self._order_queue,
+                notifications_config=self._config.notifications,
             )
             logger.info("주문 관리자: OrderManager (실매매)")
 
@@ -722,7 +726,7 @@ class EngineWorker(QThread):
             logger.info(f"토큰 사전 갱신 완료: {token[:10]}...")
         except Exception as e:
             logger.error(f"토큰 갱신 실패: {e}")
-            if self._notifier:
+            if self._notifier and self._config.notifications.token_refresh_failure:
                 await self._notifier.send_urgent(f"토큰 갱신 실패: {e}")
 
     async def _run_screening(self):
@@ -838,7 +842,9 @@ class EngineWorker(QThread):
         if summary is None:
             summary = await self._risk_manager.save_daily_summary()
 
-        if summary:
+        if not self._config.notifications.daily_report:
+            logger.info("일일 보고서 — 알림 비활성")
+        elif summary:
             await self._notifier.send_daily_report(
                 date=summary["date"],
                 total_trades=summary["total_trades"],
@@ -970,7 +976,7 @@ class EngineWorker(QThread):
         if elapsed >= _td(hours=24):
             hours = int(elapsed.total_seconds() / 3600)
             logger.warning(f"[SANITY] GUI {hours}시간 이상 가동 중 (마지막 시작: {prev_str})")
-            if self._notifier:
+            if self._notifier and self._config.notifications.uptime_sanity:
                 try:
                     await self._notifier.send(
                         f"[안내] GUI {hours}시간 이상 가동 중\n마지막 시작: {prev_str}"
@@ -999,7 +1005,7 @@ class EngineWorker(QThread):
         await self._refresh_prev_day_ohlcv(stocks)
 
         logger.info("[자동] 일일 리셋 완료")
-        if self._notifier:
+        if self._notifier and self._config.notifications.daily_reset:
             try:
                 await self._notifier.send(
                     f"[자동] 일일 리셋 완료 — {len(self._active_strategies)}종목, 카운터 초기화"
@@ -1042,9 +1048,17 @@ class EngineWorker(QThread):
     async def _safe_refresh_ohlcv(self):
         try:
             await self._refresh_prev_day_ohlcv()
+            # ADR-008: 성공 알림
+            if self._notifier and self._config.notifications.ohlcv_refresh:
+                try:
+                    await self._notifier.send(
+                        f"[자동] 08:05 전일 OHLCV 갱신 완료 — {len(self._active_strategies)}종목"
+                    )
+                except Exception:
+                    pass
         except Exception as e:
             logger.error(f"[SCHED] OHLCV 갱신 실패: {e}")
-            if self._notifier:
+            if self._notifier and self._config.notifications.ohlcv_refresh:
                 try:
                     await self._notifier.send_urgent(
                         f"[경고] 전일 OHLCV 갱신 실패 — {type(e).__name__}: {e}"
@@ -1471,8 +1485,9 @@ class EngineWorker(QThread):
 
         # 4. 텔레그램
         if self._notifier:
-            mode_tag = "[PAPER] " if self._mode == "paper" else ""
-            _safe_run(self._notifier.send(f"{mode_tag}시스템 종료 (GUI)"), "notify")
+            if self._config and self._config.notifications.system_stop:
+                mode_tag = "[PAPER] " if self._mode == "paper" else ""
+                _safe_run(self._notifier.send(f"{mode_tag}시스템 종료 (GUI)"), "notify")
             _safe_run(self._notifier.aclose(), "notifier_close")
 
         # 5. REST / DB
