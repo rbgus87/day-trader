@@ -131,7 +131,7 @@ class MainWindow(QMainWindow):
     def _setup_loguru_sink(self):
         self._log_signal.connect(self._dispatch_log)
 
-        # 파일 로깅 (main.py와 동일 정책)
+        # 파일 로깅
         try:
             logger.add(
                 "logs/day.log",

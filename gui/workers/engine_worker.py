@@ -1,6 +1,7 @@
 """TradingEngine을 별도 스레드에서 asyncio로 실행하는 QThread 래퍼.
 
-main.py의 파이프라인 로직을 QThread 내에서 실행.
+매매 파이프라인(tick/candle/signal/order consumer + APScheduler)을
+QThread 내 asyncio 이벤트 루프에서 실행.
 모든 cross-thread 호출은 Qt signal 또는 asyncio.run_coroutine_threadsafe로 처리.
 """
 
@@ -126,7 +127,7 @@ class EngineWorker(QThread):
     # ── Core async engine ──
 
     async def _run_engine(self):
-        """Initialize components and start pipeline (ported from main.py)."""
+        """Initialize components and start pipeline."""
         self._stop_event = asyncio.Event()
 
         # Lazy imports to avoid circular deps when GUI loads without full env
@@ -481,7 +482,7 @@ class EngineWorker(QThread):
             logger.warning("파이프라인 태스크 1초 내 미종료")
         logger.info("_run_engine 종료")
 
-    # ── Pipeline consumers (ported from main.py) ──
+    # ── Pipeline consumers ──
 
     async def _tick_consumer(self):
         """틱 -> 캔들 빌더 + 포지션 모니터링."""
@@ -756,7 +757,7 @@ class EngineWorker(QThread):
             except Exception as e:
                 logger.error(f"order_confirmation_consumer 오류: {e}")
 
-    # ── Screening & force close (ported from main.py) ──
+    # ── Screening & force close ──
 
     async def _refresh_token(self):
         """매일 08:00 토큰 사전 갱신."""

@@ -68,8 +68,7 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 
 ```
 day-trader/
-├── main.py                  # 라이브 엔트리포인트 (재조립 대상)
-├── gui.py                   # GUI 엔트리포인트 (재조립 대상)
+├── gui.py                   # 엔트리포인트 (GUI / `--selftest` / `--version`)
 ├── config.yaml              # 매매 파라미터
 ├── config/
 │   ├── settings.py          # AppConfig dataclass

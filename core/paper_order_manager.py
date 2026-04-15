@@ -1,7 +1,7 @@
 """core/paper_order_manager.py — 페이퍼 트레이딩 주문 시뮬레이터.
 
 실제 API 호출 없이 주문을 시뮬레이션한다.
-OrderManager와 동일한 인터페이스를 제공하여 main.py에서 교체 가능.
+OrderManager와 동일한 인터페이스를 제공하여 engine_worker.py에서 교체 가능.
 """
 
 from __future__ import annotations

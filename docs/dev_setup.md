@@ -129,8 +129,12 @@ asyncio.run(test())
 ## 6. 시스템 실행
 
 ```bash
-# 시스템 시작 (장 전에 실행)
-python main.py
+# GUI 실행 (장 전에 시작)
+python gui.py
+
+# 환경 검증만
+python gui.py --selftest
+python selftest.py
 ```
 
 **스케줄:**
@@ -162,7 +166,7 @@ pytest tests/ --cov=. --cov-report=term-missing
 [ ] python --version → 3.14.x
 [ ] pip list에 aiohttp, websockets 포함
 [ ] .env 파일 존재, .gitignore에 .env 포함
-[ ] main.py에 WindowsSelectorEventLoopPolicy 설정
+[ ] gui.py/engine_worker.py에 WindowsSelectorEventLoopPolicy 설정
 [ ] daytrader.db 생성 확인 (DB 초기화 후)
 [ ] 텔레그램 테스트 메시지 수신 확인
 [ ] 키움 API Token 발급 성공 확인
@@ -180,7 +184,7 @@ py -3.12 -m pip install vectorbt pandas-ta
 ```
 
 ### asyncio RuntimeError (Windows)
-main.py 상단의 WindowsSelectorEventLoopPolicy 설정 확인
+gui/workers/engine_worker.py의 WindowsSelectorEventLoopPolicy 설정 확인
 
 ### 모의투자 vs 실거래
 - 모의투자: `TTTC0802U` (매수), `TTTC0801U` (매도)

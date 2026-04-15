@@ -5,13 +5,13 @@
 
 ## 환경
 ```
-python main.py --selftest
+python gui.py --selftest
 ```
 기대: 7/7 OK
 
 ## 운영 전략
 ```
-findstr /S /C:"MomentumStrategy" gui/workers/engine_worker.py main.py
+findstr /S /C:"MomentumStrategy" gui/workers/engine_worker.py
 ```
 기대: import + strategy_classes에 momentum만 존재
 
@@ -24,7 +24,7 @@ findstr /S /C:"from strategy.flow" /C:"from strategy.pullback" /C:"from strategy
 
 ## 청산 경로
 ```
-findstr /S /C:"exit_reason=" core/ risk/ gui/workers/ main.py
+findstr /S /C:"exit_reason=" core/ risk/ gui/workers/
 ```
 기대: stop_loss, tp1_hit, trailing_stop, forced_close, rebuild_stop(일회성) 만 존재. time_stop 없음.
 
@@ -49,7 +49,7 @@ sqlite3 daytrader.db "SELECT COUNT(*) FROM positions WHERE status='open'"
 
 ## 포지션 사이징 (재조립 대상)
 ```
-findstr /S /C:"0.02" /C:"risk_amount" /C:"position_capital" main.py gui/workers/ core/
+findstr /S /C:"0.02" /C:"risk_amount" /C:"position_capital" gui/workers/ core/
 ```
 기대: 재조립 후 제거 또는 config 분리 예정
 

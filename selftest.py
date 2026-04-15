@@ -4,7 +4,7 @@
 silent fail (예: 2026-04-13 numba hidden import 누락) 을 조기 감지.
 
 사용:
-    python main.py --selftest
+    python gui.py --selftest
     python selftest.py            # 직접 실행도 동일
 """
 
@@ -178,7 +178,7 @@ def step_db_tables(db_path: str) -> tuple[str, str, str]:
         return (
             StepResult.FAIL,
             f"테이블 누락: {sorted(missing)}",
-            "main.py 1회 실행으로 스키마 초기화",
+            "gui.py 1회 실행으로 스키마 초기화",
         )
     return StepResult.OK, f"{len(found)} tables ({len(_REQUIRED_TABLES)} required)", ""
 
