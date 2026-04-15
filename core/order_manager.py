@@ -3,9 +3,18 @@
 import asyncio
 from loguru import logger
 from config.settings import TradingConfig
-from core.kiwoom_rest import KiwoomRestClient
+from core.kiwoom_rest import KiwoomRestClient, PRICE_LIMIT, PRICE_MARKET
 from data.db_manager import DbManager
 from notification.telegram_bot import TelegramNotifier
+
+# DB에 저장하는 order_type 도메인은 'limit' / 'market' (영문).
+# 키움 REST API 호출 시 _kiwoom_code() 로 '00' / '03' 변환.
+_ORDER_TYPE_TO_KIWOOM = {"limit": PRICE_LIMIT, "market": PRICE_MARKET}
+
+
+def _kiwoom_code(order_type: str) -> str:
+    """DB 도메인 값('limit'/'market')을 키움 REST 코드('00'/'03')로 변환."""
+    return _ORDER_TYPE_TO_KIWOOM.get(order_type, PRICE_LIMIT)
 
 
 class OrderManager:
@@ -56,9 +65,10 @@ class OrderManager:
             self._active_orders[ticker] = True
             try:
                 qty_1st = max(1, int(total_qty * self._config.entry_1st_ratio))
+                order_type = "limit"
                 result = await self._rest_client.send_order(
                     ticker=ticker, qty=qty_1st, price=price,
-                    side="buy", order_type="01",
+                    side="buy", order_type=_kiwoom_code(order_type),
                 )
                 if result.get("rt_cd") == "0":
                     order_no = result["output"]["ODNO"]
@@ -70,8 +80,8 @@ class OrderManager:
                         await self._db.execute_safe(
                             "INSERT INTO trades (ticker, strategy, side, order_type, "
                             "price, qty, amount, traded_at) "
-                            "VALUES (?, ?, 'buy', 'limit', ?, ?, ?, ?)",
-                            (ticker, strategy, price, qty_1st, price * qty_1st, now),
+                            "VALUES (?, ?, 'buy', ?, ?, ?, ?, ?)",
+                            (ticker, strategy, order_type, price, qty_1st, price * qty_1st, now),
                         )
                     # 체결 텔레그램 알림
                     if self._notifier:
@@ -103,14 +113,14 @@ class OrderManager:
             sell_qty = remaining_qty  # 1주 보유 시 전량 매도
         else:
             sell_qty = max(1, int(remaining_qty * self._config.tp1_sell_ratio))
-        return await self._send_order(ticker, sell_qty, price, "sell", order_type="01", reason=exit_reason, strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
+        return await self._send_order(ticker, sell_qty, price, "sell", order_type="limit", reason=exit_reason, strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
 
     async def execute_sell_stop(
         self, ticker: str, qty: int, price: int = 0,
         strategy: str = "unknown", pnl: float | None = None, pnl_pct: float | None = None,
         exit_reason: str = "stop_loss",
     ) -> dict | None:
-        return await self._send_order(ticker, qty, price, "sell", order_type="00", reason=exit_reason, strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
+        return await self._send_order(ticker, qty, price, "sell", order_type="market", reason=exit_reason, strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
 
     async def execute_sell_force_close(
         self, ticker: str, qty: int, price: int = 0,
@@ -118,16 +128,17 @@ class OrderManager:
         exit_reason: str = "forced_close",
     ) -> dict | None:
         logger.warning(f"강제 청산({exit_reason}): {ticker} {qty}주")
-        return await self._send_order(ticker, qty, price, "sell", order_type="00", reason=exit_reason, strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
+        return await self._send_order(ticker, qty, price, "sell", order_type="market", reason=exit_reason, strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
 
     async def _send_order(
-        self, ticker, qty, price, side, order_type="01", reason: str = "",
+        self, ticker, qty, price, side, order_type="limit", reason: str = "",
         strategy: str = "unknown", pnl: float | None = None, pnl_pct: float | None = None,
     ) -> dict | None:
+        """order_type: 'limit' / 'market' (DB 도메인). 키움 코드 변환은 내부."""
         try:
             result = await self._rest_client.send_order(
                 ticker=ticker, qty=qty, price=price,
-                side=side, order_type=order_type,
+                side=side, order_type=_kiwoom_code(order_type),
             )
             if result.get("rt_cd") == "0":
                 # DB 기록

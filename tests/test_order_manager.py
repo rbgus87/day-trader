@@ -57,7 +57,9 @@ async def test_sell_stop_market_order(order_mgr):
     )
     result = await order_mgr.execute_sell_stop(ticker="005930", qty=100)
     call_args = order_mgr._rest_client.send_order.call_args
-    assert call_args.kwargs["order_type"] == "00"  # 시장가
+    # 손절은 즉시 체결을 위해 시장가(PRICE_MARKET='03').
+    # 이전엔 '00'(지정가)을 잘못 넘기던 버그 — order_type 도메인 통일로 수정.
+    assert call_args.kwargs["order_type"] == "03"
 
 
 @pytest.mark.asyncio
