@@ -131,6 +131,32 @@ class ScreenerConfig:
 
 
 @dataclass(frozen=True)
+class NotificationConfig:
+    """Phase 3-B ADR-008: 알림 정책 토글 10종.
+
+    기본값 전부 True (기존 동작 유지). 운영자가 피로감 있으면 개별 off.
+    config.yaml `notifications` 섹션 또는 GUI 설정 탭에서 변경.
+    """
+    # 정기 이벤트
+    daily_reset: bool = True
+    ohlcv_refresh: bool = True
+    token_refresh_failure: bool = True
+
+    # 매매 이벤트
+    trade_execution: bool = True
+    daily_report: bool = True
+
+    # 시스템 이벤트
+    system_start: bool = True
+    system_stop: bool = True
+    uptime_sanity: bool = True
+
+    # WS 이벤트
+    ws_critical_failure: bool = True  # 3회 연속 실패
+    ws_auto_recovery: bool = True
+
+
+@dataclass(frozen=True)
 class BacktestConfig:
     commission: float = 0.00015     # 매수/매도 각 0.015%
     tax: float = 0.0018             # 증권거래세 0.18%
@@ -145,6 +171,7 @@ class AppConfig:
     trading: TradingConfig = field(default_factory=TradingConfig)
     screener: ScreenerConfig = field(default_factory=ScreenerConfig)
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
+    notifications: NotificationConfig = field(default_factory=NotificationConfig)
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
     debug: bool = field(default_factory=lambda: os.getenv("DEBUG", "false").lower() == "true")
     db_path: str = "daytrader.db"
@@ -254,12 +281,28 @@ class AppConfig:
             initial_capital=bt.get("initial_capital", 1_000_000),
         )
 
+        # notifications 섹션 (Phase 3-B / ADR-008)
+        n = cfg.get("notifications", {})
+        notifications = NotificationConfig(
+            daily_reset=n.get("daily_reset", True),
+            ohlcv_refresh=n.get("ohlcv_refresh", True),
+            token_refresh_failure=n.get("token_refresh_failure", True),
+            trade_execution=n.get("trade_execution", True),
+            daily_report=n.get("daily_report", True),
+            system_start=n.get("system_start", True),
+            system_stop=n.get("system_stop", True),
+            uptime_sanity=n.get("uptime_sanity", True),
+            ws_critical_failure=n.get("ws_critical_failure", True),
+            ws_auto_recovery=n.get("ws_auto_recovery", True),
+        )
+
         return AppConfig(
             kiwoom=kiwoom,
             telegram=telegram,
             trading=trading,
             screener=screener,
             backtest=backtest,
+            notifications=notifications,
             log_level=os.getenv("LOG_LEVEL", "INFO"),
             debug=os.getenv("DEBUG", "false").lower() == "true",
             paper_mode=cfg.get("paper_mode", True),

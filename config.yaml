@@ -118,6 +118,27 @@ backtest:
   slippage: 0.0003                  # 슬리피지 0.03% (대형주 현실적 수준)
   initial_capital: 1_000_000        # 백테스트 초기 자본금
 
+# --- 알림 정책 (Phase 3-B / ADR-008) ---
+# 각 이벤트별 텔레그램 발신 on/off. GUI 설정 탭에서도 변경 가능.
+notifications:
+  # 정기 이벤트
+  daily_reset: true                 # 00:01 자동 리셋 완료
+  ohlcv_refresh: true               # 08:05 OHLCV 갱신 (성공/실패)
+  token_refresh_failure: true       # 08:00 토큰 갱신 실패 시
+
+  # 매매 이벤트
+  trade_execution: true             # 매수/매도 체결
+  daily_report: true                # 15:30 일일 보고
+
+  # 시스템 이벤트
+  system_start: true
+  system_stop: true
+  uptime_sanity: true               # 24시간 이상 가동 감지
+
+  # WebSocket 이벤트
+  ws_critical_failure: true         # 3회 연속 재연결 실패
+  ws_auto_recovery: true            # 자동 재연결 성공
+
 # --- 스케줄러 ---
 schedule:
   screening_time: "08:30"           # 장전 스크리닝
