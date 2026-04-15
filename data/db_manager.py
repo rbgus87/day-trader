@@ -29,7 +29,6 @@ CREATE TABLE IF NOT EXISTS positions (
     remaining_qty INTEGER NOT NULL,
     stop_loss     REAL NOT NULL,
     tp1_price     REAL,
-    tp2_price     REAL,
     trailing_pct  REAL,
     status        TEXT DEFAULT 'open',
     opened_at     TEXT NOT NULL,
