@@ -157,6 +157,9 @@ class EngineWorker(QThread):
         mode_tag = "[PAPER] " if paper_mode else ""
         await self._notifier.send(f"{mode_tag}단타 매매 시스템 시작 (GUI)")
 
+        # ADR-006: 24시간 이상 가동 감지 안전망
+        await self._check_uptime_sanity()
+
         self._token_manager = TokenManager(
             app_key=self._config.kiwoom.app_key,
             secret_key=self._config.kiwoom.secret_key,
@@ -924,6 +927,46 @@ class EngineWorker(QThread):
                 logger.debug(f"전일 OHLCV 실패 ({ticker}): {e}")
             await asyncio.sleep(0.1)
         logger.info(f"전일 OHLCV 갱신 완료: {init_count}/{len(stocks)}")
+
+    async def _check_uptime_sanity(self) -> None:
+        """GUI 24시간 이상 가동 시 안내 알림 — ADR-006 안전망.
+
+        logs/.last_startup 파일에 이전 시작 시각 기록. 현재 시각과
+        비교하여 24시간 이상 경과했으면 텔레그램으로 안내. 항상 현재
+        시각을 파일에 갱신.
+        """
+        from datetime import datetime as _dt, timedelta as _td
+        from pathlib import Path as _Path
+        marker = _Path("logs/.last_startup")
+        now = _dt.now()
+        prev_str = None
+        if marker.exists():
+            try:
+                prev_str = marker.read_text(encoding="utf-8").strip()
+            except Exception:
+                pass
+        try:
+            marker.parent.mkdir(exist_ok=True)
+            marker.write_text(now.isoformat(), encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"last_startup 기록 실패: {e}")
+        if not prev_str:
+            return
+        try:
+            prev = _dt.fromisoformat(prev_str)
+        except Exception:
+            return
+        elapsed = now - prev
+        if elapsed >= _td(hours=24):
+            hours = int(elapsed.total_seconds() / 3600)
+            logger.warning(f"[SANITY] GUI {hours}시간 이상 가동 중 (마지막 시작: {prev_str})")
+            if self._notifier:
+                try:
+                    await self._notifier.send(
+                        f"[안내] GUI {hours}시간 이상 가동 중\n마지막 시작: {prev_str}"
+                    )
+                except Exception as e:
+                    logger.warning(f"uptime sanity 알림 실패: {e}")
 
     async def _daily_reset(self) -> None:
         """00:01 자동 일일 리셋 — 운영자 재시작 안전망 (ADR-006).
