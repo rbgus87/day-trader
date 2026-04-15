@@ -34,7 +34,7 @@ def test_backtest_config_defaults():
     from config.settings import BacktestConfig
     bc = BacktestConfig()
     assert bc.commission == 0.00015
-    assert bc.tax == 0.0018
+    assert bc.tax == 0.0015
     assert bc.slippage == 0.0003
     assert bc.initial_capital == 1_000_000
 

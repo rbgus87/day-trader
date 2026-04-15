@@ -159,8 +159,8 @@ class NotificationConfig:
 @dataclass(frozen=True)
 class BacktestConfig:
     commission: float = 0.00015     # 매수/매도 각 0.015%
-    tax: float = 0.0018             # 증권거래세 0.18%
-    slippage: float = 0.0003        # 슬리피지 0.03%
+    tax: float = 0.0015             # 증권거래세 0.15% (ADR-009 2024 정책 반영)
+    slippage: float = 0.0003        # 슬리피지 0.03% (추정값)
     initial_capital: int = 1_000_000
 
 
