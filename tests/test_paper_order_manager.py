@@ -19,6 +19,7 @@ def mock_db():
 def mock_notifier():
     notifier = MagicMock()
     notifier.send = AsyncMock(return_value=True)
+    notifier.send_execution = AsyncMock(return_value=True)
     return notifier
 
 
@@ -54,12 +55,13 @@ class TestPaperBuy:
 
     @pytest.mark.asyncio
     async def test_execute_buy_sends_telegram(self, paper_om, mock_notifier):
-        """매수 체결이 텔레그램으로 [PAPER] 태그와 함께 전송된다."""
+        """매수 체결이 send_execution(mode='paper')로 전송된다 (ADR-008)."""
         await paper_om.execute_buy("005930", 70000, 100)
-        mock_notifier.send.assert_called_once()
-        msg = mock_notifier.send.call_args[0][0]
-        assert "[PAPER]" in msg
-        assert "매수" in msg
+        mock_notifier.send_execution.assert_called_once()
+        kwargs = mock_notifier.send_execution.call_args.kwargs
+        assert kwargs["mode"] == "paper"
+        assert kwargs["side"] == "buy"
+        assert kwargs["ticker"] == "005930"
 
     @pytest.mark.asyncio
     async def test_blocks_duplicate_order(self, paper_om):
@@ -79,11 +81,13 @@ class TestPaperSell:
 
     @pytest.mark.asyncio
     async def test_execute_sell_force_close(self, paper_om, mock_notifier):
-        """강제 청산 시뮬레이션이 텔레그램에 기록된다."""
+        """강제 청산 시뮬레이션이 send_execution(reason='forced_close')로 기록된다."""
         await paper_om.execute_sell_force_close("005930", 100)
-        msg = mock_notifier.send.call_args[0][0]
-        assert "[PAPER]" in msg
-        assert "강제 청산" in msg
+        mock_notifier.send_execution.assert_called_once()
+        kwargs = mock_notifier.send_execution.call_args.kwargs
+        assert kwargs["mode"] == "paper"
+        assert kwargs["side"] == "sell"
+        assert kwargs["reason"] == "forced_close"
 
     @pytest.mark.asyncio
     async def test_execute_sell_tp1(self, paper_om):

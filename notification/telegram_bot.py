@@ -80,17 +80,47 @@ class TelegramNotifier:
         return await self.send(msg)
 
     async def send_execution(
-        self, ticker: str, name: str, side: str, price: int, qty: int, amount: int,
+        self,
+        ticker: str,
+        name: str,
+        side: str,
+        price: int,
+        qty: int,
+        amount: int,
+        *,
+        mode: str = "live",
+        reason: str = "",
+        pnl: int | None = None,
+        pnl_pct: float | None = None,
     ) -> bool:
+        """체결 알림 통일 포맷 (ADR-008).
+
+        mode: 'live' / 'paper'. paper면 제목에 [PAPER] 태그.
+        reason: sell 시 'stop_loss'/'tp1_hit' 등 청산 사유 (선택).
+        pnl, pnl_pct: sell 시 손익 (선택).
+        """
+        reason_map = {
+            "stop_loss": "손절",
+            "tp1_hit": "1차 익절",
+            "trailing_stop": "트레일링",
+            "forced_close": "강제 청산",
+            "rebuild_stop": "재조립 청산",
+        }
+        reason_label = reason_map.get(reason, reason or "")
         emoji = "🔵" if side == "buy" else "🔴"
         label = "매수" if side == "buy" else "매도"
-        msg = (
-            f"{emoji} <b>{label} 체결</b>\n"
-            f"종목: {name} ({ticker})\n"
-            f"가격: {price:,}원 × {qty}주\n"
-            f"금액: {amount:,}원"
-        )
-        return await self.send(msg)
+        tag = "[PAPER] " if mode == "paper" else ""
+        title_suffix = f" ({reason_label})" if reason_label else ""
+        lines = [
+            f"{emoji} <b>{tag}{label} 체결{title_suffix}</b>",
+            f"종목: {name} ({ticker})",
+            f"가격: {price:,}원 × {qty}주",
+            f"금액: {amount:,}원",
+        ]
+        if pnl is not None and side == "sell":
+            pct_str = f" ({pnl_pct:+.2f}%)" if pnl_pct is not None else ""
+            lines.append(f"손익: {pnl:+,}원{pct_str}")
+        return await self.send("\n".join(lines))
 
     async def send_stop_loss(
         self, ticker: str, name: str, entry_price: int, exit_price: int, pnl_pct: float,

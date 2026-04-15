@@ -100,14 +100,17 @@ class PaperOrderManager:
                         (ticker, strategy, price, qty_1st, price * qty_1st, now),
                     )
 
-                # 텔레그램 알림 (ADR-008 trade_execution 토글)
+                # 텔레그램 알림 (ADR-008: trade_execution 토글 + send_execution 통일)
                 if self._notifier and self._trade_notify_enabled():
-                    await self._notifier.send(
-                        f"🟢 [PAPER] 1차 매수 체결\n"
-                        f"종목: {self._format_ticker(ticker)}\n"
-                        f"가격: {price:,}원 x {qty_1st}주\n"
-                        f"금액: {price * qty_1st:,}원"
-                    )
+                    try:
+                        name = self._name_map.get(ticker, ticker)
+                        await self._notifier.send_execution(
+                            ticker=ticker, name=name, side="buy",
+                            price=price, qty=qty_1st, amount=price * qty_1st,
+                            mode="paper",
+                        )
+                    except Exception as e:
+                        logger.warning(f"체결 알림 실패 ({ticker}): {e}")
 
                 return {"order_no": order_no, "qty": qty_1st}
             finally:
@@ -169,36 +172,32 @@ class PaperOrderManager:
             )
 
         if self._notifier and self._trade_notify_enabled():
+            name = self._name_map.get(ticker, ticker)
+            # 매도: risk_manager에서 진입가 조회하여 pnl 계산
+            pnl_int = None
+            pnl_pct_f = None
             if side == "sell":
-                # 매도: 포지션에서 진입가 조회 → 손익 표시
                 entry_price = 0
                 if self._risk_manager:
                     pos = self._risk_manager.get_position(ticker)
                     if pos:
                         entry_price = pos.get("entry_price", 0)
-                pnl = (price - entry_price) * qty if entry_price > 0 else 0
-                pnl_pct = ((price / entry_price) - 1) * 100 if entry_price > 0 else 0
-                emoji = "🔴" if pnl < 0 else "🔵"
-                reason_map = {
-                    "stop_loss": "손절",
-                    "tp1_hit": "1차 익절",
-                    "forced_close": "강제 청산",
-                    "trailing_stop": "트레일링 스톱",
-                }
-                reason_text = reason_map.get(reason, reason or "market")
-                await self._notifier.send(
-                    f"{emoji} [PAPER] 매도 체결 ({reason_text})\n"
-                    f"종목: {self._format_ticker(ticker)}\n"
-                    f"가격: {price:,}원 x {qty}주\n"
-                    f"손익: {pnl:+,}원 ({pnl_pct:+.2f}%)"
+                if entry_price > 0:
+                    raw_pnl = (price - entry_price) * qty
+                    pnl_int = int(raw_pnl)
+                    pnl_pct_f = ((price / entry_price) - 1) * 100
+                else:
+                    pnl_int = 0
+                    pnl_pct_f = 0.0
+            try:
+                await self._notifier.send_execution(
+                    ticker=ticker, name=name, side=side,
+                    price=price, qty=qty, amount=price * qty,
+                    mode="paper", reason=reason,
+                    pnl=pnl_int, pnl_pct=pnl_pct_f,
                 )
-            else:
-                await self._notifier.send(
-                    f"🟢 [PAPER] 매수 체결\n"
-                    f"종목: {self._format_ticker(ticker)}\n"
-                    f"가격: {price:,}원 x {qty}주\n"
-                    f"금액: {price * qty:,}원"
-                )
+            except Exception as e:
+                logger.warning(f"체결 알림 실패 ({ticker}): {e}")
 
         return {"order_no": order_no, "qty": qty}
 
