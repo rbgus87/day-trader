@@ -52,7 +52,6 @@ class DashboardTab(QWidget):
         "tp1": "TP1",
         "stop_loss": "SL",
         "trailing": "TRL",
-        "time_stop": "TS",
         "momentum": "MOM",
         "pullback": "PB",
         "flow": "FLW",

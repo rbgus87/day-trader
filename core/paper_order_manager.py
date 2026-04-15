@@ -134,7 +134,7 @@ class PaperOrderManager:
         strategy: str = "unknown", pnl: float | None = None, pnl_pct: float | None = None,
         exit_reason: str = "forced_close",
     ) -> dict | None:
-        """강제 청산 시뮬레이션 (exit_reason으로 forced_close/time_stop 구분 가능)."""
+        """강제 청산 시뮬레이션."""
         logger.warning(f"[PAPER] 강제 청산({exit_reason}): {ticker} {qty}주")
         return await self._simulate_order(ticker, qty, price, "sell", reason=exit_reason, strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
 
@@ -174,7 +174,6 @@ class PaperOrderManager:
                 reason_map = {
                     "stop_loss": "손절",
                     "tp1_hit": "1차 익절",
-                    "time_stop": "시간 손절",
                     "forced_close": "강제 청산",
                     "trailing_stop": "트레일링 스톱",
                 }

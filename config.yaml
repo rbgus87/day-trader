@@ -92,40 +92,7 @@ strategy:
     atr_trail_min_pct: 0.02         # 하한 2%
     atr_trail_max_pct: 0.10         # 상한 10%
 
-  # 눌림목 — 당일 상승 종목의 조정 후 반등
-  pullback:
-    min_gain_pct: 0.04              # 당일 +4% 이상
-    stop_loss_pct: -0.018           # 손절 -1.8%
-
-  # 수급추종 (FlowStrategy) — 거래량 급증 기반 Phase 1
-  flow:
-    volume_surge_ratio: 2.5         # 5분 거래량 / 20분 평균
-    stop_loss_pct: -0.015           # 손절 -1.5%
-    trailing_stop_pct: 0.015        # 트레일링 -1.5% (넓게)
-    vwap_filter: true               # VWAP 방향 필터
-    signal_start: "09:30"           # 신호 활성 시작
-    signal_end: "14:30"             # 신호 활성 종료
-
-  # 갭 앤 고 (GapStrategy) — 갭업 후 첫 양봉 매수
-  gap:
-    min_gap_pct: 0.015                # 최소 갭 1.5%
-    stop_loss_pct: -0.01              # 시가 기준 -1%
-
-  # 시가 돌파 (OpenBreakStrategy) — 시가 +0.5% 돌파 + 거래량
-  open_break:
-    break_pct: 0.005                  # 시가 +0.5% 돌파
-    volume_ratio: 0.3                 # 전일 대비 30% (시간대 보정)
-    stop_loss_pct: -0.005             # 시가 -0.5%
-    signal_start: "09:15"             # 장 초반 10분 노이즈 회피
-
-  # 세력 캔들 (BigCandleStrategy) — 큰 양봉 후 되돌림 반등
-  big_candle:
-    atr_multiplier: 1.5               # ATR 대비 캔들 크기
-    timeout_minutes: 30               # 되돌림 대기 타임아웃
-    stop_loss_pct: -0.01              # 세력 캔들 저가 기준 -1%
-
-  # 전략 선택기 임계값 (StrategySelector)
-  # 3전략 체제: Momentum > Flow > Pullback
+  # 전략 선택기 임계값 (StrategySelector — 현재 항상 momentum)
   selector:
     momentum_etf_threshold: 2.0     # 섹터 ETF 등락 ≥ 2.0% → 모멘텀 전략
 

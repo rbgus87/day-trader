@@ -77,16 +77,6 @@ class TestExitReasonPaper:
         assert args[8] == "tp1_hit"
 
     @pytest.mark.asyncio
-    async def test_time_stop(self, paper_om, mock_db):
-        await paper_om.execute_sell_force_close(
-            "005930", 10, price=69500, strategy="pullback",
-            exit_reason="time_stop",
-        )
-        _, args = _last_trade_insert(mock_db)
-        assert args[1] == "pullback"
-        assert args[8] == "time_stop"
-
-    @pytest.mark.asyncio
     async def test_forced_close(self, paper_om, mock_db):
         await paper_om.execute_sell_force_close(
             "005930", 10, price=69500, strategy="momentum",
@@ -110,17 +100,6 @@ class TestExitReasonReal:
             rest_client=rest, notifier=mock_notifier, db=mock_db,
             trading_config=TradingConfig(),
         )
-
-    @pytest.mark.asyncio
-    async def test_time_stop_real(self, real_om, mock_db):
-        await real_om.execute_sell_force_close(
-            "005930", 10, price=69500, strategy="momentum",
-            exit_reason="time_stop",
-        )
-        _, args = _last_trade_insert(mock_db)
-        # INSERT: ticker, strategy, side, order_type, price, qty, amount, pnl, pnl_pct, exit_reason, now
-        assert args[1] == "momentum"
-        assert args[9] == "time_stop"
 
     @pytest.mark.asyncio
     async def test_forced_close_real(self, real_om, mock_db):
