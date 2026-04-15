@@ -33,6 +33,7 @@ class RiskManager:
         tp1_price: float | None = None, trailing_pct: float | None = None,
         strategy: str = "",
     ) -> None:
+        now = datetime.now()
         self._positions[ticker] = {
             "entry_price": entry_price,
             "stop_loss": stop_loss,
@@ -42,12 +43,30 @@ class RiskManager:
             "trailing_pct": trailing_pct or self._config.trailing_stop_pct,
             "highest_price": entry_price,
             "tp1_hit": False,
-            "entry_time": datetime.now(),
+            "entry_time": now,
             "strategy": strategy,
         }
         # 자본 차감
         cost = entry_price * qty
         self._daily_capital -= cost
+        # DB 기록 (ADR-007: positions 테이블 활성화)
+        try:
+            conn = sqlite3.connect(self._db.db_path)
+            conn.execute(
+                "INSERT INTO positions "
+                "(ticker, strategy, entry_price, qty, remaining_qty, stop_loss, "
+                " tp1_price, trailing_pct, status, opened_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)",
+                (
+                    ticker, strategy, entry_price, qty, qty, stop_loss,
+                    tp1_price, trailing_pct or self._config.trailing_stop_pct,
+                    now.isoformat(),
+                ),
+            )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.warning(f"positions INSERT 실패 ({ticker}): {e}")
 
     def remove_position(self, ticker: str) -> None:
         self._positions.pop(ticker, None)
@@ -116,8 +135,29 @@ class RiskManager:
         self._daily_capital += proceeds
         self._daily_pnl += pnl
         pos["remaining_qty"] -= sell_qty
-        if pos["remaining_qty"] <= 0:
+        remaining = pos["remaining_qty"]
+        fully_closed = remaining <= 0
+        if fully_closed:
             self._positions.pop(ticker, None)
+        # DB 갱신 (ADR-007)
+        try:
+            conn = sqlite3.connect(self._db.db_path)
+            if fully_closed:
+                conn.execute(
+                    "UPDATE positions SET remaining_qty=0, status='closed', "
+                    "closed_at=? WHERE ticker=? AND status='open'",
+                    (datetime.now().isoformat(), ticker),
+                )
+            else:
+                conn.execute(
+                    "UPDATE positions SET remaining_qty=? "
+                    "WHERE ticker=? AND status='open'",
+                    (remaining, ticker),
+                )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.warning(f"positions UPDATE 실패 ({ticker}): {e}")
         return pnl
 
     def mark_tp1_hit(self, ticker: str, sold_qty: int, sell_price: float = 0) -> None:
@@ -129,6 +169,18 @@ class RiskManager:
             if sell_price > 0:
                 self._daily_capital += sell_price * sold_qty
                 self._daily_pnl += (sell_price - pos["entry_price"]) * sold_qty
+            # DB 갱신 (ADR-007: 분할매도 후 remaining_qty + 본전 이동 반영)
+            try:
+                conn = sqlite3.connect(self._db.db_path)
+                conn.execute(
+                    "UPDATE positions SET remaining_qty=?, stop_loss=? "
+                    "WHERE ticker=? AND status='open'",
+                    (pos["remaining_qty"], pos["entry_price"], ticker),
+                )
+                conn.commit()
+                conn.close()
+            except Exception as e:
+                logger.warning(f"positions UPDATE (tp1) 실패 ({ticker}): {e}")
 
     def is_trading_halted(self) -> bool:
         if self._halted:
@@ -255,6 +307,41 @@ class RiskManager:
     def available_capital(self) -> float:
         """거래 가능 자본금. 0이면 거래 불가."""
         return self._daily_capital
+
+    async def restore_from_db(self) -> int:
+        """startup 시 DB의 status='open' 포지션을 in-memory로 복원 (ADR-007).
+
+        프로세스 재시작 후 장애 복구 경로. 복원된 포지션은 이후
+        reconcile_positions 로 키움 API 보유와 정합성 검증.
+        """
+        rows = await self._db.fetch_all(
+            "SELECT ticker, strategy, entry_price, qty, remaining_qty, "
+            "stop_loss, tp1_price, trailing_pct, opened_at "
+            "FROM positions WHERE status='open'"
+        )
+        for row in rows:
+            ticker = row["ticker"]
+            entry_time = datetime.now()
+            try:
+                if row["opened_at"]:
+                    entry_time = datetime.fromisoformat(row["opened_at"])
+            except Exception:
+                pass
+            self._positions[ticker] = {
+                "entry_price": row["entry_price"],
+                "stop_loss": row["stop_loss"],
+                "qty": row["qty"],
+                "remaining_qty": row["remaining_qty"],
+                "tp1_price": row["tp1_price"],
+                "trailing_pct": row["trailing_pct"] or self._config.trailing_stop_pct,
+                "highest_price": row["entry_price"],
+                "tp1_hit": row["remaining_qty"] < row["qty"],
+                "entry_time": entry_time,
+                "strategy": row["strategy"] or "",
+            }
+        if rows:
+            logger.warning(f"DB에서 오픈 포지션 {len(rows)}건 복원: {list(self._positions.keys())}")
+        return len(rows)
 
     async def reconcile_positions(self, api_holdings: list[dict]) -> list[str]:
         db_open = await self._db.fetch_all(

@@ -296,6 +296,16 @@ class EngineWorker(QThread):
 
         # Position reconciliation (장애 복구)
         try:
+            # ADR-007: DB 오픈 포지션을 in-memory로 복원 (프로세스 재시작 장애 대비)
+            restored = await self._risk_manager.restore_from_db()
+            if restored and self._notifier:
+                try:
+                    await self._notifier.send(
+                        f"[복구] DB에서 오픈 포지션 {restored}건 복원 — API 대조 진행"
+                    )
+                except Exception:
+                    pass
+
             api_balance = await self._rest_client.get_account_balance()
             holdings = [
                 {"ticker": h["pdno"], "qty": int(h["hldg_qty"])}
