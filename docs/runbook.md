@@ -54,6 +54,23 @@
 - **수동 권장**: 주 1회 `cp daytrader.db daytrader_manual_YYYYMMDD.db`
 - **Phase 완료 시 필수**: `cp daytrader.db daytrader_phase_N_YYYYMMDD.db`
 
+## 일일 운영 종료 후 (15:30 이후)
+
+```bash
+# 당일 DB 정합성 검증
+python scripts/check_db_integrity.py
+# 기대: [OK] 불일치 0건, WARN 있으면 내용 확인
+
+# 전체 기간 정합성
+python scripts/check_db_integrity.py --all
+```
+
+검증 항목:
+- trades.sum(pnl) == daily_pnl.total_pnl
+- 미청산 positions (status='open') 0건
+- 당일/누적 장부 정합 (buy 수량 == sell 수량)
+- exit_reason / order_type / strategy 도메인 검증
+
 ## 운영 중 점검 (주 1회 권장)
 
 ```bash
