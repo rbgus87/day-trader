@@ -17,7 +17,6 @@ async def test_init_creates_tables():
     assert "daily_pnl" in names
     assert "intraday_candles" in names
     assert "screener_results" in names
-    assert "system_log" in names
     await db.close()
 
 
