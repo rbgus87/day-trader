@@ -129,6 +129,22 @@ class DbManager:
             logger.warning(f"DB execute_safe 실패: {e}")
             return None
 
+    async def executemany_safe(self, sql: str, batch: list[tuple]) -> int:
+        """배치 INSERT/UPDATE — executemany + 단일 commit (Phase 4 최적화).
+
+        Returns:
+            처리된 row 수 (실패 시 0).
+        """
+        if not batch:
+            return 0
+        try:
+            await self._conn.executemany(sql, batch)
+            await self._conn.commit()
+            return len(batch)
+        except Exception as e:
+            logger.warning(f"DB executemany_safe 실패: {e}")
+            return 0
+
     async def fetch_all(self, sql: str, params: tuple = ()) -> list[dict]:
         cursor = await self._conn.execute(sql, params)
         rows = await cursor.fetchall()

@@ -37,8 +37,9 @@ def mock_rest():
 @pytest.fixture
 def mock_db():
     db = MagicMock()
-    # execute_safe가 호출될 때마다 1(rowid)을 반환 → 저장 성공으로 간주
+    # Phase 4: executemany_safe(batch) — batch 길이 반환
     db.execute_safe = AsyncMock(return_value=1)
+    db.executemany_safe = AsyncMock(side_effect=lambda sql, batch: len(batch))
     return db
 
 
@@ -61,7 +62,8 @@ async def test_collect_saves_candles(collector, mock_rest, mock_db):
     total = await collector.collect_minute_candles("005930", days=1)
 
     assert mock_rest.get_minute_ohlcv.call_count == 1
-    assert mock_db.execute_safe.call_count == 3
+    # Phase 4: per-row → executemany. 단일 batch 호출
+    assert mock_db.executemany_safe.call_count == 1
     assert total == 3
 
 
@@ -77,7 +79,7 @@ async def test_handles_empty_response(collector, mock_rest, mock_db):
     total = await collector.collect_minute_candles("005930", days=1)
 
     assert total == 0
-    mock_db.execute_safe.assert_not_called()
+    mock_db.executemany_safe.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -86,15 +88,18 @@ async def test_handles_empty_response(collector, mock_rest, mock_db):
 
 @pytest.mark.asyncio
 async def test_parse_and_save_correct_format(collector, mock_rest, mock_db):
-    """_parse_and_save가 올바른 SQL 파라미터로 execute_safe를 호출해야 한다."""
+    """_parse_and_save가 올바른 SQL + batch 파라미터로 executemany_safe를 호출해야 한다."""
     candle = _make_candle("20260323093000")
     candles = [candle]
 
     saved = await collector._parse_and_save("005930", candles)
 
     assert saved == 1
-    mock_db.execute_safe.assert_called_once()
-    _sql, params = mock_db.execute_safe.call_args[0]
+    mock_db.executemany_safe.assert_called_once()
+    _sql, batch = mock_db.executemany_safe.call_args[0]
+    assert isinstance(batch, list)
+    assert len(batch) == 1
+    params = batch[0]
 
     assert params[0] == "005930"                     # ticker
     assert params[1] == "1m"                         # tf
@@ -135,13 +140,20 @@ def test_parse_timestamp_invalid():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_duplicate_candle_not_counted(collector, mock_rest, mock_db):
-    """execute_safe가 None을 반환(중복)하면 저장 카운트에서 제외해야 한다."""
-    mock_db.execute_safe.return_value = None  # 중복 → IGNORE
+async def test_batch_call_for_two_candles(collector, mock_rest, mock_db):
+    """Phase 4: 2캔들도 단일 batch로 처리. 중복 여부는 SQLite INSERT OR IGNORE에 위임.
+
+    이전 테스트는 per-row 카운팅 의존이었으나 batch 모드는 시도 건수만 반환.
+    실제 중복 여부는 DB level (INSERT OR IGNORE)에서 무음 처리되므로
+    DataCollector는 시도 건수를 카운트.
+    """
     candles = [_make_candle("20260323090100"), _make_candle("20260323090200")]
     mock_rest.get_minute_ohlcv.return_value = _api_response(candles)
 
     total = await collector.collect_minute_candles("005930", days=1)
 
-    assert total == 0
-    assert mock_db.execute_safe.call_count == 2
+    # 2캔들 → 단일 executemany_safe 호출, 시도 건수 2
+    assert total == 2
+    assert mock_db.executemany_safe.call_count == 1
+    _sql, batch = mock_db.executemany_safe.call_args[0]
+    assert len(batch) == 2
