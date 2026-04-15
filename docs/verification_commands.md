@@ -59,6 +59,19 @@ findstr /S /C:"position_size" /C:"shares" /C:"capital" /C:"buy_amount" backtest/
 ```
 기대: 0건 (1주 단위 비율 시뮬, 자본 개념 없음)
 
+## main.py 폐기 확인 (ADR-003)
+```
+findstr /S /C:"main.py" /C:"from main" /C:"import main" *.py
+```
+(docs/spec/, docs/legacy/ 제외)
+기대: 0건
+
+## strategy.on_entry/on_exit 호출
+```
+findstr /S /N /C:"strategy.on_entry" /C:"strategy.on_exit" /C:"\.on_entry" /C:"\.on_exit" gui/workers/
+```
+기대: on_entry 1건 (execute_buy 후), on_exit ≥ 2건 (tick_consumer stop 경로 + _force_close 경로)
+
 ---
-마지막 검증일: 2026-04-15
-다음 갱신: Phase 2 영역별 재조립 완료 시
+마지막 검증일: 2026-04-15 (Phase 2 단계 2-B 완료)
+다음 갱신: 추가 ADR 발생 시
