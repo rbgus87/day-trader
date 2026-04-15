@@ -49,8 +49,8 @@ class BaseStrategy(ABC):
         """전략별 손절가."""
 
     @abstractmethod
-    def get_take_profit(self, entry_price: float) -> tuple[float, float]:
-        """(tp1, tp2) 익절가."""
+    def get_take_profit(self, entry_price: float) -> float:
+        """1차 익절가. (2차는 트레일링 스톱으로 관리)"""
 
     def set_backtest_time(self, t: time | None) -> None:
         """백테스트 모드에서 시뮬레이션 시각을 설정한다."""

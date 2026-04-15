@@ -22,7 +22,7 @@ def test_is_tradable_time_blocks_before_0905():
     class DummyStrategy(BaseStrategy):
         def generate_signal(self, candles, tick): return None
         def get_stop_loss(self, entry_price): return 0
-        def get_take_profit(self, entry_price): return (0, 0)
+        def get_take_profit(self, entry_price): return 0
 
     s = DummyStrategy()
     with patch("strategy.base_strategy.datetime") as mock_dt:

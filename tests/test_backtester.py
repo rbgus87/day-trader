@@ -229,8 +229,8 @@ class _MockBuyStrategy(BaseStrategy):
     def get_stop_loss(self, entry_price: float) -> float:
         return entry_price * 0.985  # -1.5%
 
-    def get_take_profit(self, entry_price: float) -> tuple[float, float]:
-        return entry_price * 1.02, entry_price * 1.04  # +2%, +4%
+    def get_take_profit(self, entry_price: float) -> float:
+        return entry_price * 1.02  # +2%
 
 
 def test_run_backtest_basic():
@@ -339,8 +339,8 @@ def test_run_backtest_no_signal():
         def get_stop_loss(self, entry_price: float) -> float:
             return entry_price * 0.985
 
-        def get_take_profit(self, entry_price: float) -> tuple[float, float]:
-            return entry_price * 1.02, entry_price * 1.04
+        def get_take_profit(self, entry_price: float) -> float:
+            return entry_price * 1.02
 
     config = TradingConfig()
     bt = Backtester(db=MagicMock(), config=config)

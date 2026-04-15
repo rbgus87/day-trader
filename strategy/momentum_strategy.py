@@ -204,15 +204,15 @@ class MomentumStrategy(BaseStrategy):
             logger.warning(f"ATR 손절 계산 실패 ({self._ticker}): {e}")
             return fallback
 
-    def get_take_profit(self, entry_price: float) -> tuple[float, float]:
+    def get_take_profit(self, entry_price: float) -> float:
         """TP1 계산.
 
         Phase 2 Day 7: atr_tp_enabled면 ticker_atr 기반 동적 TP1,
-        실패/비활성 시 고정 tp1_pct 폴백. tp2는 트레일링으로 관리하므로 0.
+        실패/비활성 시 고정 tp1_pct 폴백. 2차 목표는 트레일링 스톱으로 관리.
         """
         fallback = entry_price * (1 + self._config.tp1_pct)
         if not getattr(self._config, "atr_tp_enabled", False) or not self._ticker:
-            return fallback, 0
+            return fallback
         try:
             from core.indicators import calculate_atr_tp1, get_latest_atr
 
@@ -220,18 +220,17 @@ class MomentumStrategy(BaseStrategy):
                 "daytrader.db", self._ticker, self._last_signal_date or None
             )
             if atr_pct is None:
-                return fallback, 0
-            tp1 = calculate_atr_tp1(
+                return fallback
+            return calculate_atr_tp1(
                 entry_price=entry_price,
                 atr_pct=atr_pct,
                 multiplier=self._config.atr_tp_multiplier,
                 min_pct=self._config.atr_tp_min_pct,
                 max_pct=self._config.atr_tp_max_pct,
             )
-            return tp1, 0
         except Exception as e:
             logger.warning(f"ATR TP1 계산 실패 ({self._ticker}): {e}")
-            return fallback, 0
+            return fallback
 
     def reset(self) -> None:
         """일별 리셋 (기준값은 유지)."""

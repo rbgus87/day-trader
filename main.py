@@ -292,7 +292,7 @@ async def main():
 
             strategy = active_strategies[signal.ticker]["strategy"]
             sl = strategy.get_stop_loss(signal.price)
-            tp1, tp2 = strategy.get_take_profit(signal.price)
+            tp1 = strategy.get_take_profit(signal.price)
 
             # 자본 분배
             capital = risk_manager.available_capital

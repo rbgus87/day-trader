@@ -694,7 +694,7 @@ class EngineWorker(QThread):
 
                 strategy = self._active_strategies[signal.ticker]["strategy"]
                 sl = strategy.get_stop_loss(signal.price)
-                tp1, tp2 = strategy.get_take_profit(signal.price)
+                tp1 = strategy.get_take_profit(signal.price)
 
                 capital = self._risk_manager.available_capital
                 if capital <= 0:

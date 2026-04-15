@@ -9,17 +9,9 @@ from typing import Any
 import pandas as pd
 from loguru import logger
 
-from config.settings import TradingConfig
+from config.settings import BacktestConfig, TradingConfig
 from data.db_manager import DbManager
 from strategy.base_strategy import BaseStrategy, Signal
-
-# DEPRECATED: BacktestConfig 사용 권장
-ENTRY_FEE_RATE: float = 0.00015   # 0.015%
-EXIT_FEE_RATE: float = 0.00015    # 0.015%
-SELL_TAX_RATE: float = 0.0018     # 0.18% (증권거래세)
-SLIPPAGE_RATE: float = 0.00005    # 0.005% (슬리피지 가정) — config.yaml은 0.03%
-
-from config.settings import BacktestConfig
 
 
 def build_market_strong_by_date(
@@ -160,9 +152,6 @@ class Backtester:
 
         trades: list[dict] = []
         position: dict | None = None          # 현재 보유 포지션
-        accumulated: list[dict] = []          # 전략에 전달할 과거 캔들 누적
-        _has_5m = hasattr(strategy, "on_candle_5m")
-        _min1_buffer: list = []
 
         for idx, row in candles.iterrows():
             ts = row["ts"]
@@ -183,22 +172,6 @@ class Backtester:
                 else candles.loc[:idx]
             )
 
-            # 5분봉 빌딩 (FlowStrategy 등 on_candle_5m 지원)
-            if _has_5m:
-                _min1_buffer.append(row)
-                if len(_min1_buffer) >= 5:
-                    candle_5m = {
-                        "ticker": "BACKTEST",
-                        "tf": "5m",
-                        "open": float(_min1_buffer[0]["open"]),
-                        "high": max(float(r["high"]) for r in _min1_buffer),
-                        "low": min(float(r["low"]) for r in _min1_buffer),
-                        "close": float(_min1_buffer[-1]["close"]),
-                        "volume": sum(int(r.get("volume", 0)) for r in _min1_buffer),
-                    }
-                    strategy.on_candle_5m(candle_5m)
-                    _min1_buffer = []
-
             # ── 포지션 없음 → 진입 신호 탐색 ──────────────────────────
             if position is None:
                 signal: Signal | None = strategy.generate_signal(candles_so_far, tick)
@@ -211,7 +184,7 @@ class Backtester:
                     net_entry = entry_price + entry_fee
 
                     stop_loss = strategy.get_stop_loss(entry_price)
-                    tp1, tp2 = strategy.get_take_profit(entry_price)
+                    tp1 = strategy.get_take_profit(entry_price)
 
                     position = {
                         "entry_ts": row["ts"],
