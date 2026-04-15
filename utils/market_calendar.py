@@ -15,6 +15,30 @@ MARKET_CLOSE = time(15, 30)
 WS_DATA_START = time(8, 50)
 WS_DATA_END = time(15, 40)
 
+# 2025년 한국 공휴일
+KR_HOLIDAYS_2025 = {
+    date(2025, 1, 1),   # 신정
+    date(2025, 1, 27),  # 임시공휴일 (설 연휴)
+    date(2025, 1, 28),  # 설날 연휴
+    date(2025, 1, 29),  # 설날
+    date(2025, 1, 30),  # 설날 연휴
+    date(2025, 3, 1),   # 삼일절 (토) — 휴장 아님 (주말)
+    date(2025, 3, 3),   # 삼일절 대체 (월)
+    date(2025, 5, 1),   # 근로자의 날
+    date(2025, 5, 5),   # 어린이날
+    date(2025, 5, 6),   # 어린이날 대체
+    date(2025, 6, 3),   # 대선 (제21대 대통령 선거)
+    date(2025, 6, 6),   # 현충일
+    date(2025, 8, 15),  # 광복절
+    date(2025, 10, 3),  # 개천절
+    date(2025, 10, 6),  # 추석 연휴
+    date(2025, 10, 7),  # 추석
+    date(2025, 10, 8),  # 추석 연휴
+    date(2025, 10, 9),  # 한글날
+    date(2025, 12, 25), # 크리스마스
+    date(2025, 12, 31), # 연말 휴장일
+}
+
 # 2026년 한국 공휴일 (수동 관리)
 KR_HOLIDAYS_2026 = {
     date(2026, 1, 1),   # 신정
@@ -53,7 +77,7 @@ KR_HOLIDAYS_2027 = {
     date(2027, 12, 25), # 크리스마스
 }
 
-KR_HOLIDAYS = KR_HOLIDAYS_2026 | KR_HOLIDAYS_2027
+KR_HOLIDAYS = KR_HOLIDAYS_2025 | KR_HOLIDAYS_2026 | KR_HOLIDAYS_2027
 
 
 def now_local() -> datetime:
