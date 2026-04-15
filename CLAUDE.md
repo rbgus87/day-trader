@@ -55,12 +55,14 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 
 ---
 
-## 백테스트 결과 (baseline)
+## 백테스트 결과 (baseline, 2026-04-15 갱신)
 
-- **Profit Factor 2.91**
-- 연 거래 건수 약 185건
-- PF > 1 종목 수: 31 / 60
-- 기준 커밋: `85242f5` — "α 후보 확정 — 60종목 + buy_time 12:00 + 시장필터 (PnL +288k, PF 2.91)"
+- **Profit Factor 2.99** (ADR-009 tax 0.18→0.15 정정 후)
+- 연 거래 건수 185건
+- 총 PnL +294,842 (1주 단위, 거래세 0.15% 반영)
+- PF > 1 종목 수: 33 / 60
+- 청산 분포: forced_close 168 / stop_loss 14 / tp1_hit 3 / trailing_stop 0
+- 이전 값 (tax 0.18% 기준): PF 2.91 / PnL +288,812 (`85242f5`)
 
 ---
 
@@ -134,7 +136,7 @@ pytest tests/ --cov=. --cov-report=term-missing
 - [x] 일일 리셋 + 전일 OHLCV 자동화 (ADR-006) — 자정 `_daily_reset`, 08:05 OHLCV 갱신, 24h 안내
 - [x] DB 기록 스펙 (Phase 3-A-2) — `positions` 활성화 (ADR-007), `tp2_price`/`system_log` 제거, `order_type` 도메인 통일, 정합 검증 도구
 - [x] 알림 정책 (ADR-008) — 10종 토글, 포맷 통일, WS 재연결 성공 알림
-- [ ] 라이브 수수료·슬리피지 — 후속 ADR
+- [x] 비용 모델 통일 (ADR-009) — tax 0.15% 정정, core/cost_model 공유, PaperOrderManager PnL 비용 반영
 
 각 영역 추가 시 이 문서와 `docs/adr/` 동시 갱신.
 검증 명령어는 `docs/verification_commands.md` 참조.
