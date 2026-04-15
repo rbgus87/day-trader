@@ -11,7 +11,8 @@ from datetime import datetime
 
 from loguru import logger
 
-from config.settings import TradingConfig
+from config.settings import BacktestConfig, TradingConfig
+from core.cost_model import TradeCosts, apply_buy_costs, apply_sell_costs
 from data.db_manager import DbManager
 from notification.telegram_bot import TelegramNotifier
 
@@ -33,12 +34,17 @@ class PaperOrderManager:
         trading_config: TradingConfig | None = None,
         order_queue: asyncio.Queue | None = None,
         notifications_config=None,
+        backtest_config: BacktestConfig | None = None,
     ):
         self._risk_manager = risk_manager
         self._notifier = notifier
         self._db = db
         self._config = trading_config or TradingConfig()
         self._notifications = notifications_config  # Phase 3-B ADR-008
+        # ADR-009: backtester와 동일한 비용 모델 (paper 시뮬 PnL 정합)
+        self._costs = TradeCosts.from_backtest_config(backtest_config or BacktestConfig())
+        # ticker별 가장 최근 net_entry 단가 (PnL 계산용)
+        self._net_entry_map: dict[str, float] = {}
         self._lock = asyncio.Lock()
         self._active_orders: dict[str, bool] = {}
         self._order_queue: asyncio.Queue = order_queue or asyncio.Queue()
@@ -85,19 +91,25 @@ class PaperOrderManager:
                 qty_1st = max(1, int(total_qty * self._config.entry_1st_ratio))
                 order_no = self._next_order_no()
 
+                # ADR-009: 슬리피지 + 수수료 반영 (backtester와 동일 경로)
+                slipped, net_entry_per_share = apply_buy_costs(price, self._costs)
+                slipped_int = int(round(slipped))
+                self._net_entry_map[ticker] = net_entry_per_share
+
                 logger.info(
-                    f"[PAPER] 1차 매수 체결: {ticker} {qty_1st}주 @ {price:,}원 "
-                    f"(주문번호: {order_no})"
+                    f"[PAPER] 1차 매수 체결: {ticker} {qty_1st}주 @ {slipped_int:,}원 "
+                    f"(raw={price:,}, 주문번호: {order_no})"
                 )
 
-                # DB 기록
+                # DB 기록 (slipped 가격)
                 if self._db:
                     now = datetime.now().isoformat()
                     await self._db.execute_safe(
                         "INSERT INTO trades (ticker, strategy, side, order_type, "
                         "price, qty, amount, traded_at) "
                         "VALUES (?, ?, 'buy', 'market', ?, ?, ?, ?)",
-                        (ticker, strategy, price, qty_1st, price * qty_1st, now),
+                        (ticker, strategy, slipped_int, qty_1st,
+                         slipped_int * qty_1st, now),
                     )
 
                 # 텔레그램 알림 (ADR-008: trade_execution 토글 + send_execution 통일)
@@ -106,7 +118,8 @@ class PaperOrderManager:
                         name = self._name_map.get(ticker, ticker)
                         await self._notifier.send_execution(
                             ticker=ticker, name=name, side="buy",
-                            price=price, qty=qty_1st, amount=price * qty_1st,
+                            price=slipped_int, qty=qty_1st,
+                            amount=slipped_int * qty_1st,
                             mode="paper",
                         )
                     except Exception as e:
@@ -153,13 +166,36 @@ class PaperOrderManager:
         self, ticker: str, qty: int, price: int, side: str, reason: str = "",
         strategy: str = "unknown", pnl: float | None = None, pnl_pct: float | None = None,
     ) -> dict | None:
-        """주문 시뮬레이션 공통 로직."""
+        """주문 시뮬레이션 공통 로직 (ADR-009: 비용 반영)."""
         order_no = self._next_order_no()
         label = "매수" if side == "buy" else "매도"
 
+        # ADR-009: 비용 적용
+        if side == "buy":
+            slipped_f, net_per_share = apply_buy_costs(price, self._costs)
+            slipped_int = int(round(slipped_f))
+            self._net_entry_map[ticker] = net_per_share
+            computed_pnl = None
+            computed_pnl_pct = None
+        else:  # sell
+            slipped_f, net_exit_per_share = apply_sell_costs(price, self._costs)
+            slipped_int = int(round(slipped_f))
+            net_entry = self._net_entry_map.get(ticker)
+            if net_entry is not None:
+                computed_pnl = (net_exit_per_share - net_entry) * qty
+                computed_pnl_pct = (net_exit_per_share - net_entry) / net_entry
+            else:
+                # 장부 없이 매도 (테스트/복구 시나리오) — 호출자 pnl 사용
+                computed_pnl = pnl
+                computed_pnl_pct = pnl_pct
+
+        # 호출자가 pnl 명시 안 했으면 cost model 기반 값 사용
+        pnl_final = pnl if pnl is not None else computed_pnl
+        pnl_pct_final = pnl_pct if pnl_pct is not None else computed_pnl_pct
+
         logger.info(
-            f"[PAPER] {label} 체결: {ticker} {qty}주 @ {price:,}원 "
-            f"({reason or 'market'}) 주문번호: {order_no}"
+            f"[PAPER] {label} 체결: {ticker} {qty}주 @ {slipped_int:,}원 "
+            f"(raw={price:,}, {reason or 'market'}, 주문번호: {order_no})"
         )
 
         if self._db:
@@ -168,31 +204,18 @@ class PaperOrderManager:
                 "INSERT INTO trades (ticker, strategy, side, order_type, "
                 "price, qty, amount, pnl, pnl_pct, exit_reason, traded_at) "
                 "VALUES (?, ?, ?, 'market', ?, ?, ?, ?, ?, ?, ?)",
-                (ticker, strategy, side, price, qty, price * qty, pnl, pnl_pct, reason, now),
+                (ticker, strategy, side, slipped_int, qty, slipped_int * qty,
+                 pnl_final, pnl_pct_final, reason, now),
             )
 
         if self._notifier and self._trade_notify_enabled():
             name = self._name_map.get(ticker, ticker)
-            # 매도: risk_manager에서 진입가 조회하여 pnl 계산
-            pnl_int = None
-            pnl_pct_f = None
-            if side == "sell":
-                entry_price = 0
-                if self._risk_manager:
-                    pos = self._risk_manager.get_position(ticker)
-                    if pos:
-                        entry_price = pos.get("entry_price", 0)
-                if entry_price > 0:
-                    raw_pnl = (price - entry_price) * qty
-                    pnl_int = int(raw_pnl)
-                    pnl_pct_f = ((price / entry_price) - 1) * 100
-                else:
-                    pnl_int = 0
-                    pnl_pct_f = 0.0
+            pnl_int = int(pnl_final) if pnl_final is not None else None
+            pnl_pct_f = (pnl_pct_final * 100) if pnl_pct_final is not None else None
             try:
                 await self._notifier.send_execution(
                     ticker=ticker, name=name, side=side,
-                    price=price, qty=qty, amount=price * qty,
+                    price=slipped_int, qty=qty, amount=slipped_int * qty,
                     mode="paper", reason=reason,
                     pnl=pnl_int, pnl_pct=pnl_pct_f,
                 )

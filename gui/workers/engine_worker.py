@@ -207,6 +207,7 @@ class EngineWorker(QThread):
                 trading_config=self._config.trading,
                 order_queue=self._order_queue,
                 notifications_config=self._config.notifications,
+                backtest_config=self._config.backtest,  # ADR-009 공유 비용 모델
             )
             logger.info("주문 관리자: PaperOrderManager (시뮬레이션)")
         else:
