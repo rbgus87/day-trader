@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
     QTableWidgetItem,
     QHeaderView,
     QAbstractItemView,
+    QCheckBox,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
@@ -49,6 +50,7 @@ class StrategyTab(QWidget):
 
         root.addWidget(self._build_momentum_page())
         root.addWidget(self._build_risk_settings())
+        root.addWidget(self._build_notifications_settings())
         root.addWidget(self._build_universe_editor())
         root.addLayout(self._build_save_button())
 
@@ -135,6 +137,33 @@ class StrategyTab(QWidget):
         self._risk_screening_top_n.setValue(5)
         form.addRow("screening_top_n:", self._risk_screening_top_n)
 
+        return group
+
+    # ADR-008: 알림 정책 토글 (10종)
+    _NOTIFICATION_FIELDS = [
+        ("daily_reset", "일일 리셋 (00:01)"),
+        ("ohlcv_refresh", "OHLCV 갱신 (08:05)"),
+        ("token_refresh_failure", "토큰 갱신 실패"),
+        ("trade_execution", "매수/매도 체결"),
+        ("daily_report", "일일 보고 (15:30)"),
+        ("system_start", "시스템 시작"),
+        ("system_stop", "시스템 종료"),
+        ("uptime_sanity", "24시간 가동 안내"),
+        ("ws_critical_failure", "WS 긴급 실패 (3회)"),
+        ("ws_auto_recovery", "WS 자동 재연결 성공"),
+    ]
+
+    def _build_notifications_settings(self) -> QGroupBox:
+        group = QGroupBox("알림 정책 (ADR-008)")
+        form = QFormLayout(group)
+        form.setContentsMargins(10, 16, 10, 10)
+        form.setSpacing(6)
+        self._notif_checkboxes: dict = {}
+        for key, label in self._NOTIFICATION_FIELDS:
+            cb = QCheckBox(label)
+            cb.setChecked(True)  # 기본 ON
+            self._notif_checkboxes[key] = cb
+            form.addRow(cb)
         return group
 
     def _build_universe_editor(self) -> QGroupBox:
@@ -246,6 +275,12 @@ class StrategyTab(QWidget):
         if "screening_top_n" in trading_cfg:
             self._risk_screening_top_n.setValue(int(trading_cfg["screening_top_n"]))
 
+        # ADR-008: notifications 토글 로드
+        notif_cfg = config.get("notifications", {}) or {}
+        for key, _ in self._NOTIFICATION_FIELDS:
+            if key in notif_cfg:
+                self._notif_checkboxes[key].setChecked(bool(notif_cfg[key]))
+
     def get_config(self) -> dict:
         """Gather all field values into config dict matching config.yaml structure."""
         return {
@@ -263,6 +298,10 @@ class StrategyTab(QWidget):
                 "entry_1st_ratio": self._risk_first_leg.value(),
                 "max_positions": self._risk_max_positions.value(),
                 "screening_top_n": self._risk_screening_top_n.value(),
+            },
+            "notifications": {
+                key: self._notif_checkboxes[key].isChecked()
+                for key, _ in self._NOTIFICATION_FIELDS
             },
         }
 

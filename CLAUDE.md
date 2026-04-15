@@ -132,8 +132,8 @@ pytest tests/ --cov=. --cov-report=term-missing
 - [x] 리스크 관리 (Phase 2-B) — `daily_max_loss`, `blacklist`, `consecutive_loss_rest` 일치
 - [x] 자본 관리 — `available_capital` 유지 (사이징 재검토는 후속 ADR)
 - [x] 일일 리셋 + 전일 OHLCV 자동화 (ADR-006) — 자정 `_daily_reset`, 08:05 OHLCV 갱신, 24h 안내
-- [ ] 알림 (Telegram) — Phase 3 검토 대상 (중복/누락 점검)
-- [ ] DB 기록 스펙 — Phase 3 검토 대상 (`tp2_price` 컬럼 등 잔재)
+- [x] DB 기록 스펙 (Phase 3-A-2) — `positions` 활성화 (ADR-007), `tp2_price`/`system_log` 제거, `order_type` 도메인 통일, 정합 검증 도구
+- [x] 알림 정책 (ADR-008) — 10종 토글, 포맷 통일, WS 재연결 성공 알림
 - [ ] 라이브 수수료·슬리피지 — 후속 ADR
 
 각 영역 추가 시 이 문서와 `docs/adr/` 동시 갱신.
