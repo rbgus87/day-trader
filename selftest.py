@@ -28,7 +28,7 @@ _RESET = "\x1b[0m"
 _NETWORK_TIMEOUT = 5.0
 _REQUIRED_TABLES = {
     "trades", "positions", "intraday_candles", "daily_pnl",
-    "screener_results", "system_log", "index_candles", "ticker_atr",
+    "screener_results", "index_candles", "ticker_atr",
 }
 _REQUIRED_MODULES = [
     "pandas", "numpy", "pandas_ta", "numba",

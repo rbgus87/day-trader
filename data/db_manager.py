@@ -72,14 +72,6 @@ CREATE TABLE IF NOT EXISTS screener_results (
     created_at    TEXT DEFAULT (datetime('now','localtime'))
 );
 
-CREATE TABLE IF NOT EXISTS system_log (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    level      TEXT NOT NULL,
-    event      TEXT NOT NULL,
-    detail     TEXT,
-    created_at TEXT DEFAULT (datetime('now','localtime'))
-);
-
 CREATE TABLE IF NOT EXISTS index_candles (
     index_code TEXT NOT NULL,
     dt         TEXT NOT NULL,
