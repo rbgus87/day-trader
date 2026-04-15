@@ -42,7 +42,6 @@ class EngineWorker(QThread):
         # Screener components
         self._candidate_collector = None
         self._pre_market_screener = None
-        self._strategy_selector = None
 
         # Market filter (Phase 1 Day 3) — 코스피/코스닥 지수 MA 기반 매수 차단
         self._market_filter = None
@@ -144,7 +143,6 @@ class EngineWorker(QThread):
         from risk.risk_manager import RiskManager
         from screener.candidate_collector import CandidateCollector
         from screener.pre_market import PreMarketScreener
-        from screener.strategy_selector import StrategySelector
         from apscheduler.schedulers.background import BackgroundScheduler
 
         # 1. Config
@@ -224,7 +222,6 @@ class EngineWorker(QThread):
         self._pre_market_screener = PreMarketScreener(
             self._rest_client, self._db, self._config.screener,
         )
-        self._strategy_selector = StrategySelector(self._config, self._rest_client)
 
         # Market filter (Phase 1 Day 3)
         if self._config.trading.market_filter_enabled:
@@ -853,6 +850,9 @@ class EngineWorker(QThread):
                     exit_reason="forced_close",
                 )
                 self._risk_manager.settle_sell(ticker, float(close_price), qty)
+                strat_info = self._active_strategies.get(ticker)
+                if strat_info:
+                    strat_info["strategy"].on_exit()
         await self._candle_builder.flush()
         self._candle_builder.reset()
         await self._risk_manager.save_daily_summary()
