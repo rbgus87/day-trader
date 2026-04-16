@@ -48,11 +48,12 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 
 ## 유니버스
 
-- **60종목** (KOSDAQ 40 + KOSPI 20, ATR ≥ 6% 필터)
+- **41종목** (KOSDAQ 32 + KOSPI 9, ATR ≥ 6% 필터)
 - `config/universe.yaml`에 기록
-- 생성: `scripts/generate_universe.py --min-atr 0.06` (KRX Open API)
-- 필터: 시총 상위 + 거래대금 ≥ 50억 + ATR(14) ≥ 6% + max_total 60
+- 생성: `scripts/generate_universe.py --min-atr 0.06 --max-stocks 40` (KRX Open API)
+- 필터: 시총 상위 + 거래대금 ≥ 50억 + ATR(14) ≥ 6% + 코스닥 우선 보충
 - **주간 자동 갱신** (월 07:30, ADR-012)
+- 60종목 테스트 결과 PF 2.73 (41종목 3.41 대비 −20%), ATR 상위 40종목은 PF 1.92
 
 ---
 
@@ -107,7 +108,7 @@ day-trader/
 ├── config.yaml              # 매매 파라미터
 ├── config/
 │   ├── settings.py          # AppConfig dataclass
-│   └── universe.yaml        # 유니버스 60종목
+│   └── universe.yaml        # 유니버스 41종목
 ├── strategy/
 │   ├── base_strategy.py
 │   ├── momentum_strategy.py # 운영 전략

@@ -1,134 +1,128 @@
 # ============================================================================
-# universe.yaml — 단타 유니버스 (자동 생성)
-# ============================================================================
-# 생성일: 20260415
-# 기준: 코스닥+코스피 시가총액 상위 + 거래대금/ATR 필터
-# 생성: python scripts/generate_universe.py
-# 데이터: KRX Open API (https://openapi.krx.co.kr)
-# 주기: 분기 1회 재생성 권장
+# universe.yaml - ATR >= 6% 필터 적용 (ADR-010, 2026-04-16)
 # ============================================================================
 
 stocks:
-  # === 코스닥 (거래대금/ATR 필터) ===
-  - ticker: "000250"
-    name: "삼천당제약"  # 거래대금 324.8억, ATR 7.10%
-  - ticker: "277810"
-    name: "레인보우로보틱스"  # 거래대금 63.9억, ATR 9.66%
-  - ticker: "298380"
-    name: "에이비엘바이오"  # 거래대금 68.8억, ATR 6.41%
-  - ticker: "950160"
-    name: "코오롱티슈진"  # 거래대금 62.4억, ATR 7.65%
-  - ticker: "058470"
-    name: "리노공업"  # 거래대금 95.5억, ATR 6.89%
-  - ticker: "141080"
-    name: "리가켐바이오"  # 거래대금 108.1억, ATR 8.66%
-  - ticker: "240810"
-    name: "원익IPS"  # 거래대금 83.8억, ATR 7.91%
-  - ticker: "039030"
-    name: "이오테크닉스"  # 거래대금 62.7억, ATR 7.95%
-  - ticker: "095340"
-    name: "ISC"  # 거래대금 67.5억, ATR 8.66%
-  - ticker: "032820"
-    name: "우리기술"  # 거래대금 381.4억, ATR 13.87%
-  - ticker: "043260"
-    name: "성호전자"  # 거래대금 130.1억, ATR 12.59%
-  - ticker: "403870"
-    name: "HPSP"  # 거래대금 113.9억, ATR 8.07%
-  - ticker: "347850"
-    name: "디앤디파마텍"  # 거래대금 75.6억, ATR 7.98%
-  - ticker: "036930"
-    name: "주성엔지니어링"  # 거래대금 204.2억, ATR 10.05%
-  - ticker: "010170"
-    name: "대한광통신"  # 거래대금 522.9억, ATR 11.24%
-  - ticker: "440110"
-    name: "파두"  # 거래대금 85.9억, ATR 13.69%
-  - ticker: "178320"
-    name: "서진시스템"  # 거래대금 201.4억, ATR 8.39%
-  - ticker: "005290"
-    name: "동진쎄미켐"  # 거래대금 122.6억, ATR 6.80%
-  - ticker: "476830"
-    name: "알지노믹스"  # 거래대금 63.6억, ATR 8.34%
-  - ticker: "222800"
-    name: "심텍"  # 거래대금 119.3억, ATR 7.87%
-  - ticker: "218410"
-    name: "RFHIC"  # 거래대금 52.6억, ATR 11.12%
-  - ticker: "319660"
-    name: "피에스케이"  # 거래대금 62.0억, ATR 9.00%
-  - ticker: "082920"
-    name: "비츠로셀"  # 거래대금 80.5억, ATR 9.80%
-  - ticker: "347700"
-    name: "스피어"  # 거래대금 57.9억, ATR 10.41%
-  - ticker: "067310"
-    name: "하나마이크론"  # 거래대금 54.2억, ATR 8.42%
-  - ticker: "089030"
-    name: "테크윙"  # 거래대금 252.5억, ATR 9.29%
-  - ticker: "078600"
-    name: "대주전자재료"  # 거래대금 119.5억, ATR 7.37%
-  - ticker: "100790"
-    name: "미래에셋벤처투자"  # 거래대금 473.3억, ATR 8.14%
-  - ticker: "098460"
-    name: "고영"  # 거래대금 50.7억, ATR 7.22%
-  - ticker: "038500"
-    name: "삼표시멘트"  # 거래대금 75.3억, ATR 10.55%
-  - ticker: "095610"
-    name: "테스"  # 거래대금 57.2억, ATR 7.80%
-  - ticker: "417200"
-    name: "LS머트리얼즈"  # 거래대금 73.3억, ATR 12.16%
-  - ticker: "027360"
-    name: "아주IB투자"  # 거래대금 437.3억, ATR 10.67%
-  - ticker: "080220"
-    name: "제주반도체"  # 거래대금 59.4억, ATR 7.83%
-  - ticker: "032500"
-    name: "케이엠더블유"  # 거래대금 89.6억, ATR 12.97%
-  - ticker: "090710"
-    name: "휴림로봇"  # 거래대금 74.0억, ATR 9.15%
-  - ticker: "490470"
-    name: "세미파이브"  # 거래대금 77.7억, ATR 10.99%
-  - ticker: "089970"
-    name: "브이엠"  # 거래대금 51.1억, ATR 8.10%
-  - ticker: "050890"
-    name: "쏠리드"  # 거래대금 647.7억, ATR 10.03%
-  - ticker: "187660"
-    name: "페니트리움바이오"  # 거래대금 81.0억, ATR 28.64%
-
-  # === 코스피 (거래대금/ATR 필터) ===
-  - ticker: "000660"
-    name: "SK하이닉스"  # 거래대금 4730.6억, ATR 6.83%
-  - ticker: "047040"
-    name: "대우건설"  # 거래대금 2523.5억, ATR 12.73%
-  - ticker: "001440"
-    name: "대한전선"  # 거래대금 1616.6억, ATR 6.06%
-  - ticker: "005935"
-    name: "삼성전자우"  # 거래대금 470.9억, ATR 6.11%
-  - ticker: "006360"
-    name: "GS건설"  # 거래대금 442.2억, ATR 10.15%
-  - ticker: "009150"
-    name: "삼성전기"  # 거래대금 440.0억, ATR 6.42%
-  - ticker: "402340"
-    name: "SK스퀘어"  # 거래대금 407.4억, ATR 7.83%
-  - ticker: "079550"
-    name: "LIG디펜스앤에어로스페이스"  # 거래대금 359.4억, ATR 7.45%
-  - ticker: "006800"
-    name: "미래에셋증권"  # 거래대금 332.0억, ATR 7.70%
-  - ticker: "000720"
-    name: "현대건설"  # 거래대금 332.0억, ATR 8.25%
-  - ticker: "042700"
-    name: "한미반도체"  # 거래대금 264.0억, ATR 6.86%
-  - ticker: "375500"
-    name: "DL이앤씨"  # 거래대금 242.6억, ATR 9.19%
-  - ticker: "012450"
-    name: "한화에어로스페이스"  # 거래대금 233.0억, ATR 6.27%
-  - ticker: "010060"
-    name: "OCI홀딩스"  # 거래대금 231.4억, ATR 9.79%
-  - ticker: "298040"
-    name: "효성중공업"  # 거래대금 225.9억, ATR 6.21%
-  - ticker: "010120"
-    name: "LS ELECTRIC"  # 거래대금 195.4억, ATR 6.55%
-  - ticker: "278470"
-    name: "에이피알"  # 거래대금 167.5억, ATR 7.63%
-  - ticker: "028050"
-    name: "삼성E&A"  # 거래대금 156.2억, ATR 7.84%
-  - ticker: "353200"
-    name: "대덕전자"  # 거래대금 151.0억, ATR 7.84%
-  - ticker: "066970"
-    name: "엘앤에프"  # 거래대금 141.9억, ATR 6.24%
+- ticker: '000250'
+  name: 삼천당제약
+  market: kosdaq
+- ticker: '277810'
+  name: 레인보우로보틱스
+  market: kosdaq
+- ticker: '950160'
+  name: 코오롱티슈진
+  market: kosdaq
+- ticker: '298380'
+  name: 에이비엘바이오
+  market: kosdaq
+- ticker: '141080'
+  name: 리가켐바이오
+  market: kosdaq
+- ticker: '240810'
+  name: 원익IPS
+  market: kosdaq
+- ticker: 095340
+  name: ISC
+  market: kosdaq
+- ticker: 039030
+  name: 이오테크닉스
+  market: kosdaq
+- ticker: '263750'
+  name: 펄어비스
+  market: kosdaq
+- ticker: '226950'
+  name: 올릭스
+  market: kosdaq
+- ticker: 032820
+  name: 우리기술
+  market: kosdaq
+- ticker: '403870'
+  name: HPSP
+  market: kosdaq
+- ticker: '476830'
+  name: 알지노믹스
+  market: kosdaq
+- ticker: 036930
+  name: 주성엔지니어링
+  market: kosdaq
+- ticker: 083650
+  name: 비에이치아이
+  market: kosdaq
+- ticker: '140410'
+  name: 메지온
+  market: kosdaq
+- ticker: '440110'
+  name: 파두
+  market: kosdaq
+- ticker: '178320'
+  name: 서진시스템
+  market: kosdaq
+- ticker: '376900'
+  name: 로킷헬스케어
+  market: kosdaq
+- ticker: '475830'
+  name: 오름테라퓨틱
+  market: kosdaq
+- ticker: 078600
+  name: 대주전자재료
+  market: kosdaq
+- ticker: '131970'
+  name: 두산테스나
+  market: kosdaq
+- ticker: 089030
+  name: 테크윙
+  market: kosdaq
+- ticker: 082920
+  name: 비츠로셀
+  market: kosdaq
+- ticker: '100790'
+  name: 미래에셋벤처투자
+  market: kosdaq
+- ticker: 090710
+  name: 휴림로봇
+  market: kosdaq
+- ticker: '174900'
+  name: 앱클론
+  market: kosdaq
+- ticker: '010170'
+  name: 대한광통신
+  market: kosdaq
+- ticker: 080220
+  name: 제주반도체
+  market: kosdaq
+- ticker: '027360'
+  name: 아주IB투자
+  market: kosdaq
+- ticker: '490470'
+  name: 세미파이브
+  market: kosdaq
+- ticker: 050890
+  name: 쏠리드
+  market: kosdaq
+- ticker: '047040'
+  name: 대우건설
+  market: kospi
+- ticker: '402340'
+  name: SK스퀘어
+  market: kospi
+- ticker: 066970
+  name: 엘앤에프
+  market: kospi
+- ticker: 009830
+  name: 한화솔루션
+  market: kospi
+- ticker: '475150'
+  name: SK이터닉스
+  market: kospi
+- ticker: 079550
+  name: LIG넥스원
+  market: kospi
+- ticker: '042700'
+  name: 한미반도체
+  market: kospi
+- ticker: '298040'
+  name: 효성중공업
+  market: kospi
+- ticker: '000720'
+  name: 현대건설
+  market: kospi

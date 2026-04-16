@@ -169,6 +169,7 @@ def generate_universe(
     min_amount_billion: float = 50.0,
     min_atr_pct: float = 0.02,
     max_total: int = 60,
+    max_stocks: int = 40,
     dry_run: bool = False,
 ) -> list[dict]:
     """코스닥+코스피에서 단타 유니버스를 생성한다."""
@@ -259,19 +260,24 @@ def generate_universe(
     kospi_passed = [u for u in universe if u["market"] == "KOSPI"]
     print(f"\n  ATR 필터 통과: 코스닥 {len(kosdaq_passed)} + 코스피 {len(kospi_passed)} = {len(universe)}종목 (ATR {min_atr_pct:.1%}+)")
 
-    # 5. 총 종목 수 제한 (코스닥 우선 보존 + 코스피 보충)
-    if len(universe) > max_total:
-        if len(kosdaq_passed) >= max_total:
-            # 코스닥만으로 초과 → 코스닥 내 거래대금 상위
-            universe = sorted(kosdaq_passed, key=lambda x: x["amount_billion"], reverse=True)[:max_total]
+    if len(universe) < 20:
+        print(f"  ⚠ ATR 통과 종목 {len(universe)}개 — 20개 미만 경고")
+
+    # 5. 총 종목 수 제한 (코스닥 우선 보존 + 코스피 거래대금 보충)
+    effective_max = min(max_total, max_stocks)
+    if len(universe) > effective_max:
+        if len(kosdaq_passed) >= effective_max:
+            universe = sorted(kosdaq_passed, key=lambda x: x["amount_billion"], reverse=True)[:effective_max]
         else:
-            # 코스닥 전량 유지 + 남은 자리를 코스피 거래대금 상위로
-            remaining = max_total - len(kosdaq_passed)
+            remaining = effective_max - len(kosdaq_passed)
             kospi_top_n = sorted(kospi_passed, key=lambda x: x["amount_billion"], reverse=True)[:remaining]
             universe = kosdaq_passed + kospi_top_n
-        kosdaq_passed = [u for u in universe if u["market"] == "KOSDAQ"]
-        kospi_passed = [u for u in universe if u["market"] == "KOSPI"]
-        print(f"  종목 수 제한 적용: {max_total}종목 (코스닥 {len(kosdaq_passed)} 전량 + 코스피 {len(kospi_passed)} 보충)")
+        print(f"  종목 수 제한 적용: {effective_max}종목 (코스닥 우선 + 코스피 거래대금 보충)")
+    else:
+        print(f"  ATR 통과 {len(universe)}종목 ≤ max_stocks={effective_max} → 전부 포함")
+
+    kosdaq_passed = [u for u in universe if u["market"] == "KOSDAQ"]
+    kospi_passed = [u for u in universe if u["market"] == "KOSPI"]
 
     # 6. 결과 요약
     print(f"\n{'=' * 70}")
@@ -335,7 +341,8 @@ def main():
     parser.add_argument("--top-kospi", type=int, default=200, help="코스피 시총 상위 N종목 (기본: 200)")
     parser.add_argument("--min-amount", type=float, default=50.0, help="최소 거래대금 (억원, 기본: 50)")
     parser.add_argument("--min-atr", type=float, default=0.02, help="최소 ATR%% (기본: 2%%)")
-    parser.add_argument("--max-total", type=int, default=60, help="최대 총 종목 수 (기본: 60)")
+    parser.add_argument("--max-total", type=int, default=60, help="시총/거래대금 필터 후 최대 후보 수 (기본: 60)")
+    parser.add_argument("--max-stocks", type=int, default=40, help="ATR 상위 최종 종목 수 (기본: 40)")
     parser.add_argument("--dry-run", action="store_true", help="파일 생성 없이 미리보기")
 
     args = parser.parse_args()
@@ -346,6 +353,7 @@ def main():
         min_amount_billion=args.min_amount,
         min_atr_pct=args.min_atr,
         max_total=args.max_total,
+        max_stocks=args.max_stocks,
         dry_run=args.dry_run,
     )
 

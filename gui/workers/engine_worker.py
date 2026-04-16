@@ -1112,7 +1112,7 @@ class EngineWorker(QThread):
 
         # 2. generate_universe.py subprocess 실행
         result = subprocess.run(
-            ["python", "scripts/generate_universe.py", "--min-atr", "0.06"],
+            ["python", "scripts/generate_universe.py", "--min-atr", "0.06", "--max-stocks", "40"],
             capture_output=True, text=True, timeout=300, encoding="utf-8",
         )
         if result.returncode != 0:
