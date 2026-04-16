@@ -13,7 +13,32 @@
 | 09:05~12:00 | 매수 가능 시간 (signal_block_until / buy_time_end) | 시스템 |
 | 15:10 | 미청산 포지션 강제청산 (자동 cron) | 시스템 |
 | 15:30 | 일일 보고서 텔레그램 (자동 cron) | 시스템 |
+| **15:35** | **분봉 자동 수집** (자동 cron, ADR-014) | 시스템 |
 | 15:30 이후 | GUI 종료 | **운영자** |
+
+## 주간 자동 갱신 (ADR-012)
+
+| 시각 | 동작 |
+|---|---|
+| **월요일 07:30** | 유니버스 자동 갱신 |
+
+갱신 내용:
+1. `generate_universe.py --min-atr 0.06` 실행
+2. 변경 종목 식별 (추가/제거)
+3. 신규 종목 분봉 30일치 수집
+4. 전략 재등록 + WS 재구독
+5. 텔레그램 알림 (변경 매트릭스)
+
+실패 시: 기존 universe.yaml 유지 + 경고 알림.
+
+## 분봉 자동 수집 (ADR-014)
+
+| 시각 | 동작 |
+|---|---|
+| **평일 15:35** | 유니버스 전체 당일 분봉 수집 |
+
+소요: 약 3분 (60종목 × ~2.8초).
+공휴일: 빈 응답 → 자연 skip.
 
 ## 자동 안전망 (운영자 재시작 못 했을 때) — ADR-006
 
@@ -27,6 +52,8 @@
 - `[자동] 일일 리셋 완료 — 60종목, 카운터 초기화`
 - `[안내] GUI 26시간 이상 가동 중\n마지막 시작: 2026-04-14T13:51:59`
 - `[경고] 전일 OHLCV 갱신 실패 — TimeoutError`
+- `[UNIVERSE] 주간 갱신 완료\n종목 수: 60 → 58\n추가: 2 / 제거: 4`
+- `[CANDLE] 분봉 수집 완료\n성공: 60/60종목\n캔들: 25,200개`
 
 ## 시작 전 체크리스트
 
@@ -76,11 +103,21 @@ python scripts/check_db_integrity.py --all
 ```bash
 # 백테스트 baseline 재확인
 python scripts/backtest_single.py
-# 기대: PF 2.91 / 185건 / 60종목
+# 기대: PF ~3.28 / ~279건 / 41종목 (ADR-010 Pure trailing)
 
 # 검증 명령어 전체 실행
 # docs/verification_commands.md 참조
 ```
+
+## 1주차 회고 체크리스트
+
+- [ ] 페이퍼 PF vs 백테스트 PF 비교 (갭 > 30% 시 원인 조사)
+- [ ] 슬리피지 실측 (체결가 vs 신호가)
+- [ ] 일 평균 거래 건수 vs 백테스트 기대치 (1~2건/일)
+- [ ] 강제 청산 비율 vs baseline (74.6%)
+- [ ] 유니버스 자동 갱신 정상 작동 확인
+- [ ] 분봉 자동 수집 정상 작동 확인
+- [ ] 텔레그램 알림 누락 여부
 
 ## 긴급 상황 대응
 
@@ -90,11 +127,13 @@ python scripts/backtest_single.py
 | WS 연결 끊김 | `_health_check`가 30초마다 자동 재연결 시도. 계속 실패 시 GUI 재시작 |
 | 텔레그램 알림 중단 | 봇 토큰 확인 후 `gui.py` 재시작 |
 | 매매 의도치 않은 작동 | GUI "일시정지" 버튼 (is_trading_halted 플래그) |
+| 유니버스 갱신 실패 | 기존 universe.yaml 유지. 수동: `python scripts/generate_universe.py --min-atr 0.06` |
+| 분봉 수집 실패 | 수동: `python -m backtest.batch_collector --days 1` |
 
 ## 아키텍처 문서
 
 - `CLAUDE.md` — 프로젝트 개요 + 전략
 - `docs/spec/backtester_behavior.md` — 백테스터 명세 (baseline 진실)
 - `docs/spec/live_baseline_comparison.md` — 라이브 대조 매트릭스
-- `docs/adr/` — 주요 아키텍처 결정
+- `docs/adr/` — ADR-001 ~ ADR-014
 - `docs/verification_commands.md` — 검증 명령어 모음

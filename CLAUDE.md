@@ -1,8 +1,7 @@
 # CLAUDE.md — day-trader
 
-> **최종 수정**: 2026-04-15 (재조립 착수 시점)
+> **최종 수정**: 2026-04-17 (페이퍼 시작 준비 완결)
 > 이 문서는 **백테스트에서 검증된 사실만** 기재한다.
-> 라이브 전용 부속(사이징/자본관리/리스크/알림 등)은 Phase 2에서 순차 추가.
 
 ---
 
@@ -11,12 +10,20 @@
 day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 당일 전일 고가 돌파 + ADX 추세 + 시장 필터를 충족하는 종목을 09:05 ~ 12:00 사이에 진입하고, 당일 15:10에 강제 청산한다.
 
+**페이퍼 시작**: 2026-04-17 (금), 자본 300만원.
+
 ---
 
 ## 전략
 
 - **MomentumStrategy 단일 운영.**
 - Flow / Pullback / Gap / OpenBreak / BigCandle 등은 `strategy/archive/`에 격리되어 있으며 운영 경로에 포함되지 않는다.
+
+### 시스템 엣지 TOP 3
+
+1. **거래량 비율 2.0** — PF 영향 1.89 (비활성 시 PF 1.38)
+2. **오전 매수 제한 12:00** — PF 영향 2.03 (비활성 시 PF 1.24)
+3. **시장 필터 MA5** — PF 영향 1.08 (비활성 시 PF 2.19)
 
 ### 진입 조건
 
@@ -26,43 +33,69 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 - 거래 시각 09:05 ≤ now ≤ 12:00
 - 동시 보유 포지션 `max_positions = 3` 이하
 
-### 청산 경로 (4종)
+### 청산 경로 (3종, ADR-010)
 
 | reason | 트리거 |
 |------|------|
-| `stop_loss` | ATR(14) × 1.5 기반 손절선, 하한 1.5% / 상한 8.0% |
-| `tp1_hit` | ATR(14) × 3.0 기반 1차 익절, 하한 3% / 상한 25% |
-| `trailing_stop` | TP1 이후 Chandelier (최고가 − ATR × 2.5), 하한 2% / 상한 10% |
+| `stop_loss` | 고정 -8% 손절 (`stop_loss_pct: -0.080`) |
+| `trailing_stop` | 진입 즉시 Chandelier (최고가 − ATR × 1.0), 하한 2% / 상한 10% |
 | `forced_close` | 15:10 미청산 포지션 일괄 청산 |
+
+> TP1 분할매도(`tp1_hit`)는 ADR-010에서 폐기. `atr_tp_enabled: false`.
+> ATR 기반 손절(`atr_stop_enabled`)도 ADR-010에서 폐기 (고정 -8%로 단순화).
 
 ---
 
 ## 유니버스
 
-- **60종목** (KOSPI 24 + KOSDAQ 36)
+- **60종목** (KOSDAQ 40 + KOSPI 20, ATR ≥ 6% 필터)
 - `config/universe.yaml`에 기록
-- 생성: `scripts/generate_universe.py` (KRX Open API)
-- 필터: 시총 상위 + 거래대금 ≥ 50억 + ATR(14) ≥ 2% + max_total 60
-- **분기 1회 재생성 권장**
+- 생성: `scripts/generate_universe.py --min-atr 0.06` (KRX Open API)
+- 필터: 시총 상위 + 거래대금 ≥ 50억 + ATR(14) ≥ 6% + max_total 60
+- **주간 자동 갱신** (월 07:30, ADR-012)
 
 ---
 
 ## 사이징
 
 - **1주 단위 비율 시뮬레이션** (백테스트 기준).
-- 자본금·리스크·분할매수 등 정교한 사이징은 **Phase 2 재조립 대상**. 현재 라이브 코드의 리스크 2% / 자본 분배 로직은 baseline과 일치하지 않으므로 재구성 전에 의존하지 않는다.
-- 판단 근거: `backtest/backtester.py`에 `position_size` / `shares` / `capital` / `buy_amount` / `entry_capital` / `trade_size` 키워드가 존재하지 않는다 (검증 명령어 참조).
+- 자본금·리스크·분할매수 등 정교한 사이징은 후속 검토 대상.
+- 페이퍼 자본 300만원, 포지션당 100만원 (max_positions=3).
 
 ---
 
-## 백테스트 결과 (baseline, 2026-04-15 갱신)
+## 백테스트 결과 (baseline, 2026-04-16 ADR-010 청산 튜닝 완결)
 
-- **Profit Factor 2.99** (ADR-009 tax 0.18→0.15 정정 후)
-- 연 거래 건수 185건
-- 총 PnL +294,842 (1주 단위, 거래세 0.15% 반영)
-- PF > 1 종목 수: 33 / 60
-- 청산 분포: forced_close 168 / stop_loss 14 / tp1_hit 3 / trailing_stop 0
-- 이전 값 (tax 0.18% 기준): PF 2.91 / PnL +288,812 (`85242f5`)
+- **Profit Factor 3.28** (1주 가중, 41종목, Pure trailing + 고정 -8% 손절)
+- 연 거래 건수 279건
+- 총 PnL +285,588 (1주 단위, 거래세 0.15% 반영)
+- PF > 1 종목 수: 29 / 41
+- 청산 분포: forced_close 208 (74.6%) / stop_loss 65 (23.3%) / trailing_stop 6 (2.2%)
+- **Walk-Forward 검증** (ADR-011): 학습 PF 5.11 → 검증 PF 4.05 (-21%, 통과)
+
+---
+
+## 페이퍼 자본 시뮬 (ADR-013)
+
+- max_positions 3, 자본 300만원
+- PF 3.24, 수익률 86.5%, Max DD 14.6%
+
+---
+
+## 자동화 정책
+
+| 잡 | 주기 | 시각 | ADR |
+|----|------|------|-----|
+| 토큰 갱신 | 매일 | 08:00 | — |
+| 전일 OHLCV | 매일 | 08:05 | ADR-006 |
+| 스크리닝 | 매일 | 08:30 | — |
+| 매수 차단 해제 | 매일 | 09:05 | — |
+| 매수 차단 | 매일 | 12:00 | — |
+| 강제 청산 | 매일 | 15:10 | — |
+| 일일 보고서 | 매일 | 15:30 | — |
+| 분봉 수집 | 평일 | 15:35 | ADR-014 |
+| 일일 리셋 | 매일 | 00:01 | ADR-006 |
+| 유니버스 갱신 | 월요일 | 07:30 | ADR-012 |
 
 ---
 
@@ -80,15 +113,17 @@ day-trader/
 │   ├── momentum_strategy.py # 운영 전략
 │   └── archive/             # 격리된 과거 전략 5개
 ├── backtest/
-│   └── backtester.py        # baseline — 1주 단위 비율 시뮬
+│   ├── backtester.py        # baseline — 1주 단위 비율 시뮬
+│   ├── batch_collector.py   # 분봉 배치 수집
+│   └── data_collector.py    # 분봉 수집기
 ├── screener/                # 후보 수집 + 08:30 스크리닝
-├── core/                    # 주문 실행 (재조립 대상)
-├── risk/                    # 리스크 관리 (재조립 대상)
+├── core/                    # 주문 실행
+├── risk/                    # 리스크 관리
 ├── data/                    # 캔들 빌더 + DB
-├── notification/            # 텔레그램 (재조립 대상)
+├── notification/            # 텔레그램
 ├── tests/                   # pytest
 └── docs/
-    ├── adr/                 # Architecture Decision Records
+    ├── adr/                 # ADR-001 ~ ADR-014
     ├── legacy/              # 재조립 전 문서 보존
     └── verification_commands.md
 ```
@@ -125,21 +160,24 @@ pytest tests/ --cov=. --cov-report=term-missing
 
 ---
 
-## 재조립 진행 상태 (2026-04-15 ~)
-
-백테스트 환경을 baseline으로 라이브 운영 부속을 재조립 중.
+## 재조립 진행 상태 — 전 Phase 완결
 
 - [x] 사이징 (ADR-002) — 1주 단위, 백테스트와 동일
 - [x] 주문 실행 — `PaperOrderManager` / `OrderManager` 정상
 - [x] 리스크 관리 (Phase 2-B) — `daily_max_loss`, `blacklist`, `consecutive_loss_rest` 일치
-- [x] 자본 관리 — `available_capital` 유지 (사이징 재검토는 후속 ADR)
-- [x] 일일 리셋 + 전일 OHLCV 자동화 (ADR-006) — 자정 `_daily_reset`, 08:05 OHLCV 갱신, 24h 안내
-- [x] DB 기록 스펙 (Phase 3-A-2) — `positions` 활성화 (ADR-007), `tp2_price`/`system_log` 제거, `order_type` 도메인 통일, 정합 검증 도구
-- [x] 알림 정책 (ADR-008) — 10종 토글, 포맷 통일, WS 재연결 성공 알림
-- [x] 비용 모델 통일 (ADR-009) — tax 0.15% 정정, core/cost_model 공유, PaperOrderManager PnL 비용 반영
+- [x] 자본 관리 — `available_capital` 유지
+- [x] 일일 리셋 + 전일 OHLCV 자동화 (ADR-006)
+- [x] DB 기록 스펙 (ADR-007) — `positions` 활성화, `tp2_price`/`system_log` 제거
+- [x] 알림 정책 (ADR-008) — 12종 토글, 포맷 통일
+- [x] 비용 모델 통일 (ADR-009) — tax 0.15%, PaperOrderManager PnL 비용 반영
+- [x] Pure trailing + ATR 6% (ADR-010)
+- [x] Walk-Forward 검증 (ADR-011)
+- [x] 유니버스 주간 자동 갱신 (ADR-012)
+- [x] max_positions + 페이퍼 자본 확정 (ADR-013)
+- [x] 분봉 자동 수집 (ADR-014)
 
-각 영역 추가 시 이 문서와 `docs/adr/` 동시 갱신.
-검증 명령어는 `docs/verification_commands.md` 참조.
+검증 명령어: `docs/verification_commands.md`
+후속 작업: [`docs/phase_followup_todo.md`](docs/phase_followup_todo.md)
 
 ## 일일 운영
 
@@ -147,4 +185,5 @@ pytest tests/ --cov=. --cov-report=term-missing
 
 - **정상**: 매일 08:00 `python gui.py` 시작, 15:30 이후 종료
 - **안전망** (ADR-006): 00:01 자동 리셋, 08:05 OHLCV 갱신, 24h 가동 안내
+- **자동화**: 월 07:30 유니버스 갱신, 평일 15:35 분봉 수집
 - **검증**: `python selftest.py` → 7/7 OK + `docs/verification_commands.md`
