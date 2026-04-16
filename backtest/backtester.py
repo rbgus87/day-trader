@@ -191,16 +191,22 @@ class Backtester:
                     stop_loss = strategy.get_stop_loss(entry_price)
                     tp1 = strategy.get_take_profit(entry_price)
 
+                    # ADR-010: atr_tp_enabled=false → Pure trailing (TP1 우회)
+                    pure_trail = not getattr(self._config, "atr_tp_enabled", True)
                     position = {
                         "entry_ts": row["ts"],
                         "entry_price": entry_price,
                         "net_entry": net_entry,
                         "stop_loss": stop_loss,
-                        "tp1_price": tp1,
+                        "tp1_price": None if pure_trail else tp1,
                     }
+                    if pure_trail:
+                        position["tp1_hit"] = True
+                        position["remaining_ratio"] = 1.0
+                        position["highest_price"] = float(row["high"])
                     logger.debug(
                         f"[BT] 진입 ts={row['ts']} price={entry_price:.1f} "
-                        f"sl={stop_loss:.1f} tp1={tp1:.1f}"
+                        f"sl={stop_loss:.1f} tp1={'off' if pure_trail else f'{tp1:.1f}'}"
                     )
 
             # ── 포지션 보유 중 → 청산 조건 확인 ──────────────────────

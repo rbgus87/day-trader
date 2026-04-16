@@ -3,10 +3,20 @@
 > **이 문서가 라이브 재조립의 유일한 설계 진실(source of truth).**
 > 라이브 코드는 이 명세를 구현해야 하며, 명세에 없는 동작은 라이브에도 없어야 함.
 >
-> **조사 시점**: 2026-04-15, 커밋 `1914077` 기준
+> **조사 시점**: 2026-04-15, 커밋 `1914077` 기준 (ADR-010 반영: 2026-04-16)
 > **조사 대상**: `backtest/backtester.py`, `strategy/momentum_strategy.py`, `strategy/base_strategy.py`, `scripts/backtest_single.py`, `core/indicators.py`, `config/settings.py`, `config.yaml`
 >
 > 각 항목의 파일:라인 인용은 위 시점 기준이며 코드 수정 시 재조사 필요.
+
+## ADR-010 변경 사항 (2026-04-16)
+
+**TP1 분할매도 폐기, Pure trailing 채택:**
+- `atr_tp_enabled: false` → TP1 시스템 비활성
+- 진입 즉시 `tp1_hit=True` + `remaining_ratio=1.0` 설정 → trailing 즉시 활성
+- `atr_trail_multiplier: 2.5 → 1.0`
+- 유니버스 60종목 → 41종목 (ATR ≥ 6%)
+- 청산 경로: `stop_loss` → `trailing_stop` → `forced_close` (3종, `tp1_hit` 폐기)
+- 아래 본문의 §3.4, §4.2~4.3, §4.6은 dead path (atr_tp_enabled=false 시 미실행)
 
 ---
 

@@ -234,12 +234,11 @@ class _MockBuyStrategy(BaseStrategy):
 
 
 def test_run_backtest_basic():
-    """TP1 도달로 분할매도되는 기본 시나리오."""
-    config = TradingConfig()
+    """ADR-010: Pure trailing — 진입 즉시 trailing 활성, TP1 분할매도 없음."""
+    config = TradingConfig()  # atr_tp_enabled=False → Pure trailing
     bt = Backtester(db=MagicMock(), config=config)
     strategy = _MockBuyStrategy(config)
 
-    # 첫 캔들 매수 → 3번째 캔들 TP1(+2%) 도달 → 분할매도
     entry_close = 100_000.0
 
     candle_rows = [
@@ -252,20 +251,13 @@ def test_run_backtest_basic():
     result = bt.run_backtest(candles, strategy)
 
     assert "trades" in result
-    # TP1 분할매도(50%) + 나머지 강제청산 = 2건
-    assert len(result["trades"]) == 2, "TP1 분할매도 + 나머지 청산 = 2건"
-
-    tp1_trade = result["trades"][0]
-    assert tp1_trade["exit_reason"] == "tp1_hit"
-    assert tp1_trade["entry_price"] > 0
-    assert tp1_trade["exit_price"] > 0
-    assert tp1_trade["pnl"] > 0
-
-    remaining_trade = result["trades"][1]
-    assert remaining_trade["exit_reason"] == "forced_close"
-
-    assert result["total_trades"] == 2
-    assert result["wins"] >= 1
+    # Pure trailing: TP1 분할매도 없음 → trailing_stop 또는 forced_close 1건
+    assert len(result["trades"]) >= 1
+    trade = result["trades"][0]
+    assert trade["exit_reason"] in ("trailing_stop", "forced_close")
+    assert trade["entry_price"] > 0
+    assert trade["exit_price"] > 0
+    assert result["total_trades"] >= 1
 
 
 def test_run_backtest_stop_loss():
@@ -311,7 +303,8 @@ def test_run_backtest_forced_close():
 
     assert len(result["trades"]) == 1
     trade = result["trades"][0]
-    assert trade["exit_reason"] == "forced_close"
+    # ADR-010: Pure trailing 모드에서는 trailing_stop도 가능
+    assert trade["exit_reason"] in ("forced_close", "trailing_stop")
 
 
 def test_run_backtest_empty_candles():
@@ -370,10 +363,9 @@ def test_fee_and_slippage_reduce_pnl():
     candles = _make_candles(candle_rows)
     result = bt.run_backtest(candles, strategy)
 
-    # TP1 분할매도(50%) trade
-    tp1_trade = result["trades"][0]
-    assert tp1_trade["exit_reason"] == "tp1_hit"
-    # 수수료/슬리피지 없이 계산한 raw 수익 (50% 비율)
-    raw_gain_50pct = (entry_close * 1.02 - entry_close) * 0.5  # 1,000
-    # 실제 PnL은 raw보다 작아야 함 (수수료 차감)
-    assert tp1_trade["pnl"] < raw_gain_50pct
+    assert len(result["trades"]) >= 1
+    trade = result["trades"][0]
+    # 수수료/슬리피지 없이 계산한 raw 수익
+    raw_gain = 102_500 - entry_close  # 2,500 (close 기준 근사)
+    # 실제 PnL은 비용 차감으로 raw보다 작아야 함
+    assert trade["pnl"] < raw_gain

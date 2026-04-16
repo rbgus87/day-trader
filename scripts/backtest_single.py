@@ -81,9 +81,9 @@ async def main(start: str, end: str) -> int:
     print(f"  필터      : ADX={base_config.adx_enabled}({base_config.adx_min}) "
           f"market={base_config.market_filter_enabled} "
           f"buy_end={base_config.buy_time_end if base_config.buy_time_limit_enabled else 'off'}")
-    print(f"  ATR       : stop={base_config.atr_stop_multiplier} "
-          f"tp={base_config.atr_tp_multiplier} "
-          f"trail={base_config.atr_trail_multiplier}")
+    stop_status = f"fixed {base_config.momentum_stop_loss_pct*100:.0f}%" if not base_config.atr_stop_enabled else f"ATR x{base_config.atr_stop_multiplier}"
+    tp_status = "off" if not getattr(base_config, "atr_tp_enabled", False) else f"{getattr(base_config, 'atr_tp_multiplier', '?')}"
+    print(f"  청산      : stop={stop_status} tp={tp_status} trail=x{base_config.atr_trail_multiplier}")
     print(f"  비용      : 수수료 {backtest_config.commission*100:.3f}% / "
           f"세금 {backtest_config.tax*100:.2f}% / "
           f"슬리피지 {backtest_config.slippage*100:.3f}%")

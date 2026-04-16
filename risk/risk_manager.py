@@ -86,7 +86,10 @@ class RiskManager:
 
     def update_trailing_stop(self, ticker: str, current_price: float) -> None:
         pos = self._positions.get(ticker)
-        if not pos or not pos.get("tp1_hit"):
+        if not pos:
+            return
+        # ADR-010: atr_tp_enabled=false → Pure trailing (tp1_hit 없이도 trailing 활성)
+        if not pos.get("tp1_hit") and getattr(self._config, "atr_tp_enabled", True):
             return
         if current_price > pos["highest_price"]:
             pos["highest_price"] = current_price
