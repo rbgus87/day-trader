@@ -62,10 +62,10 @@ class TradingConfig:
     consecutive_loss_threshold: int = 3
     consecutive_loss_rest_days: int = 1
 
-    # 익절
-    tp1_pct: float = 0.03
-    tp1_sell_ratio: float = 0.5
-    trailing_stop_pct: float = 0.01
+    # ADR-010: TP1 폐기됨 — 아래 3개는 dead config (코드 호환용 잔존)
+    tp1_pct: float = 0.99            # 사실상 미도달 (fallback path)
+    tp1_sell_ratio: float = 0.5      # 미사용 (TP1 비활성)
+    trailing_stop_pct: float = 0.005  # ATR trail fallback (atr_trail_enabled=true 시 미사용)
 
     # 진입
     entry_1st_ratio: float = 0.55
@@ -82,26 +82,24 @@ class TradingConfig:
 
     # 모멘텀 전략
     momentum_volume_ratio: float = 2.0
-    momentum_stop_loss_pct: float = -0.008
-    # Phase 3 Day 11.5: 오전 매수 제한
+    momentum_stop_loss_pct: float = -0.080  # ADR-010: 고정 -8%
+    # 오전 매수 제한
     buy_time_limit_enabled: bool = True
     buy_time_end: str = "11:30"
 
-    # Phase 2: ATR 기반 동적 손절 (Chandelier 준비)
-    atr_stop_enabled: bool = True
+    # ADR-010: ATR stop 비활성 (41종목 전부 max 클램핑 → 고정 -8%와 동일)
+    atr_stop_enabled: bool = False
+    # dead params (코드 호환용 잔존, atr_stop_enabled=false 시 미참조)
     atr_stop_multiplier: float = 1.5
     atr_stop_min_pct: float = 0.015
     atr_stop_max_pct: float = 0.080
 
-    # Phase 2 Day 7: ATR 기반 TP1
-    atr_tp_enabled: bool = True
-    atr_tp_multiplier: float = 3.0
-    atr_tp_min_pct: float = 0.03
-    atr_tp_max_pct: float = 0.25
+    # ADR-010: TP1 폐기 (Pure trailing)
+    atr_tp_enabled: bool = False
 
-    # Phase 2 Day 7: Chandelier 트레일링 스톱
+    # ADR-010: Chandelier 트레일링 스톱 (진입 즉시 활성)
     atr_trail_enabled: bool = True
-    atr_trail_multiplier: float = 2.5
+    atr_trail_multiplier: float = 1.0
     atr_trail_min_pct: float = 0.02
     atr_trail_max_pct: float = 0.10
     adx_enabled: bool = True
@@ -127,7 +125,7 @@ class ScreenerConfig:
     min_avg_volume_amount: int = 10_000_000_000
     ma20_ascending: bool = True
     volume_surge_ratio: float = 1.5
-    min_atr_pct: float = 0.03
+    min_atr_pct: float = 0.06  # ADR-010: 3% → 6%
 
 
 @dataclass(frozen=True)
@@ -150,6 +148,10 @@ class NotificationConfig:
     system_start: bool = True
     system_stop: bool = True
     uptime_sanity: bool = True
+
+    # 자동화 이벤트
+    universe_refresh: bool = True     # 주간 유니버스 갱신 결과
+    candle_collection: bool = True    # 일일 분봉 수집 결과
 
     # WS 이벤트
     ws_critical_failure: bool = True  # 3회 연속 실패
@@ -219,9 +221,9 @@ class AppConfig:
             consecutive_loss_rest_enabled=t.get("consecutive_loss_rest_enabled", True),
             consecutive_loss_threshold=t.get("consecutive_loss_threshold", 3),
             consecutive_loss_rest_days=t.get("consecutive_loss_rest_days", 1),
-            tp1_pct=t.get("tp1_pct", 0.03),
+            tp1_pct=t.get("tp1_pct", 0.99),
             tp1_sell_ratio=t.get("tp1_sell_ratio", 0.5),
-            trailing_stop_pct=t.get("trailing_stop_pct", 0.01),
+            trailing_stop_pct=t.get("trailing_stop_pct", 0.005),
             entry_1st_ratio=t.get("entry_1st_ratio", 0.55),
             max_trades_per_day=t.get("max_trades_per_day", 1),
             max_positions=t.get("max_positions", 3),
@@ -232,19 +234,16 @@ class AppConfig:
             screening_time=t.get("screening_time", "08:30"),
             report_time=t.get("report_time", "15:30"),
             momentum_volume_ratio=mom.get("volume_ratio", 2.0),
-            momentum_stop_loss_pct=mom.get("stop_loss_pct", -0.008),
+            momentum_stop_loss_pct=mom.get("stop_loss_pct", -0.080),
             buy_time_limit_enabled=mom.get("buy_time_limit_enabled", True),
             buy_time_end=mom.get("buy_time_end", "11:30"),
-            atr_stop_enabled=mom.get("atr_stop_enabled", True),
+            atr_stop_enabled=mom.get("atr_stop_enabled", False),
             atr_stop_multiplier=mom.get("atr_stop_multiplier", 1.5),
             atr_stop_min_pct=mom.get("atr_stop_min_pct", 0.015),
             atr_stop_max_pct=mom.get("atr_stop_max_pct", 0.080),
-            atr_tp_enabled=mom.get("atr_tp_enabled", True),
-            atr_tp_multiplier=mom.get("atr_tp_multiplier", 3.0),
-            atr_tp_min_pct=mom.get("atr_tp_min_pct", 0.03),
-            atr_tp_max_pct=mom.get("atr_tp_max_pct", 0.25),
+            atr_tp_enabled=mom.get("atr_tp_enabled", False),
             atr_trail_enabled=mom.get("atr_trail_enabled", True),
-            atr_trail_multiplier=mom.get("atr_trail_multiplier", 2.5),
+            atr_trail_multiplier=mom.get("atr_trail_multiplier", 1.0),
             atr_trail_min_pct=mom.get("atr_trail_min_pct", 0.02),
             atr_trail_max_pct=mom.get("atr_trail_max_pct", 0.10),
             adx_enabled=mom.get("adx_enabled", True),
@@ -266,7 +265,7 @@ class AppConfig:
             min_market_cap=sc.get("min_market_cap", 300_000_000_000),
             min_avg_volume_amount=sc.get("min_avg_volume_amount", 5_000_000_000),
             volume_surge_ratio=sc.get("volume_surge_ratio", 1.5),
-            min_atr_pct=sc.get("min_atr_pct", 0.02),
+            min_atr_pct=sc.get("min_atr_pct", 0.06),
         )
 
         # 전략 선택기 임계값
@@ -292,6 +291,8 @@ class AppConfig:
             system_start=n.get("system_start", True),
             system_stop=n.get("system_stop", True),
             uptime_sanity=n.get("uptime_sanity", True),
+            universe_refresh=n.get("universe_refresh", True),
+            candle_collection=n.get("candle_collection", True),
             ws_critical_failure=n.get("ws_critical_failure", True),
             ws_auto_recovery=n.get("ws_auto_recovery", True),
         )

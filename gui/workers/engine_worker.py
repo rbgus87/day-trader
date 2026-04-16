@@ -290,6 +290,16 @@ class EngineWorker(QThread):
             _schedule_async(self._safe_refresh_ohlcv, "refresh_ohlcv"),
             "cron", hour=8, minute=5, misfire_grace_time=600,
         )
+        # ADR-012: 주간 유니버스 자동 갱신 (월요일 07:30)
+        self._scheduler.add_job(
+            _schedule_async(self._safe_refresh_universe, "universe_refresh"),
+            "cron", day_of_week="mon", hour=7, minute=30, misfire_grace_time=600,
+        )
+        # ADR-014: 일일 분봉 자동 수집 (평일 15:35)
+        self._scheduler.add_job(
+            _schedule_async(self._safe_collect_candles, "candle_collection"),
+            "cron", day_of_week="mon-fri", hour=15, minute=35, misfire_grace_time=600,
+        )
         self._scheduler.start()
         logger.debug(f"BackgroundScheduler 시작됨, running={self._scheduler.running}")
 
@@ -490,7 +500,10 @@ class EngineWorker(QThread):
                     pnl = (price - entry) * qty
                     pnl_pct = ((price / entry) - 1) * 100 if entry > 0 else 0
                     strategy_name = pos.get("strategy", "") or "unknown"
-                    reason_code = "trailing_stop" if pos.get("tp1_hit") else "stop_loss"
+                    # ADR-010: Pure trailing 모드 시 tp1_hit 없이도 trailing 활성
+                    pure_trail = not getattr(self._config.trading, "atr_tp_enabled", True)
+                    is_trailing = pos.get("tp1_hit") or pure_trail
+                    reason_code = "trailing_stop" if is_trailing and price > entry * 0.975 else "stop_loss"
                     await self._order_manager.execute_sell_stop(
                         ticker=ticker, qty=qty, price=int(price),
                         strategy=strategy_name, pnl=pnl, pnl_pct=pnl_pct,
@@ -1066,6 +1079,164 @@ class EngineWorker(QThread):
                     )
                 except Exception:
                     pass
+
+    async def _safe_refresh_universe(self):
+        """ADR-012: 주간 유니버스 자동 갱신 (월 07:30)."""
+        try:
+            await self._refresh_universe()
+        except Exception as e:
+            logger.error(f"[SCHED] 유니버스 갱신 실패: {e}")
+            if self._notifier and self._config.notifications.universe_refresh:
+                try:
+                    await self._notifier.send_urgent(
+                        f"[경고] 유니버스 갱신 실패 — {type(e).__name__}: {e}"
+                    )
+                except Exception:
+                    pass
+
+    async def _refresh_universe(self):
+        """유니버스 재생성 + 전략 재등록 + 신규 종목 분봉 수집."""
+        import subprocess
+        import yaml
+        from pathlib import Path
+
+        logger.info("[UNIVERSE] 주간 유니버스 갱신 시작")
+
+        # 1. 기존 유니버스 백업
+        uni_path = Path("config/universe.yaml")
+        old_stocks = []
+        if uni_path.exists():
+            old_data = yaml.safe_load(open(uni_path, encoding="utf-8")) or {}
+            old_stocks = old_data.get("stocks", [])
+        old_tickers = {s["ticker"] for s in old_stocks}
+
+        # 2. generate_universe.py subprocess 실행
+        result = subprocess.run(
+            ["python", "scripts/generate_universe.py", "--min-atr", "0.06"],
+            capture_output=True, text=True, timeout=300, encoding="utf-8",
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"generate_universe.py 실패: {result.stderr[-500:]}")
+
+        # 3. 새 유니버스 로드 + 변경 종목 식별
+        new_stocks = self._load_universe()
+        new_tickers = {s["ticker"] for s in new_stocks}
+        added = new_tickers - old_tickers
+        removed = old_tickers - new_tickers
+
+        # 4. 신규 종목 분봉 수집 (batch_collector)
+        collected_count = 0
+        if added:
+            try:
+                from backtest.data_collector import DataCollector
+                collector = DataCollector(self._rest_client, self._db)
+                for ticker in added:
+                    try:
+                        saved = await collector.collect_minute_candles(ticker, days=30)
+                        collected_count += saved
+                    except Exception as e:
+                        logger.warning(f"[UNIVERSE] 분봉 수집 실패 ({ticker}): {e}")
+            except Exception as e:
+                logger.error(f"[UNIVERSE] batch 분봉 수집 실패: {e}")
+
+        # 5. 전략 재등록 + WS 재구독
+        self._register_active_strategies(new_stocks)
+        all_tickers = [s["ticker"] for s in new_stocks]
+        if self._ws_client and all_tickers:
+            try:
+                await self._ws_client.subscribe(all_tickers)
+            except Exception as e:
+                logger.warning(f"[UNIVERSE] WS 재구독 실패: {e}")
+
+        # 6. 전일 OHLCV 갱신
+        await self._refresh_prev_day_ohlcv(new_stocks)
+
+        # 7. 텔레그램 알림
+        logger.info(
+            f"[UNIVERSE] 갱신 완료: {len(new_stocks)}종목 "
+            f"(+{len(added)} -{len(removed)})"
+        )
+        if self._notifier and self._config.notifications.universe_refresh:
+            added_names = []
+            new_map = {s["ticker"]: s.get("name", s["ticker"]) for s in new_stocks}
+            for t in sorted(added):
+                added_names.append(f"  +{new_map.get(t, t)}")
+            removed_names = []
+            old_map = {s["ticker"]: s.get("name", s["ticker"]) for s in old_stocks}
+            for t in sorted(removed):
+                removed_names.append(f"  -{old_map.get(t, t)}")
+
+            msg_lines = [
+                f"[UNIVERSE] 주간 갱신 완료",
+                f"종목 수: {len(old_stocks)} → {len(new_stocks)}",
+                f"추가: {len(added)} / 제거: {len(removed)}",
+            ]
+            if added_names:
+                msg_lines.extend(added_names[:10])
+            if removed_names:
+                msg_lines.extend(removed_names[:10])
+            if collected_count > 0:
+                msg_lines.append(f"신규 분봉: {collected_count:,}개 수집")
+            try:
+                await self._notifier.send("\n".join(msg_lines))
+            except Exception:
+                pass
+
+    async def _safe_collect_candles(self):
+        """ADR-014: 일일 분봉 자동 수집 (평일 15:35)."""
+        try:
+            await self._collect_daily_candles()
+        except Exception as e:
+            logger.error(f"[SCHED] 분봉 수집 실패: {e}")
+            if self._notifier and self._config.notifications.candle_collection:
+                try:
+                    await self._notifier.send_urgent(
+                        f"[경고] 분봉 수집 실패 — {type(e).__name__}: {e}"
+                    )
+                except Exception:
+                    pass
+
+    async def _collect_daily_candles(self):
+        """유니버스 전체 당일 분봉 수집."""
+        from backtest.data_collector import DataCollector
+
+        logger.info("[CANDLE] 일일 분봉 수집 시작")
+
+        stocks = self._load_universe()
+        if not stocks:
+            logger.warning("[CANDLE] 유니버스 비어 있음")
+            return
+
+        collector = DataCollector(self._rest_client, self._db)
+        success = 0
+        failed = 0
+        total_saved = 0
+
+        for s in stocks:
+            ticker = s["ticker"]
+            try:
+                saved = await collector.collect_minute_candles(ticker, days=1)
+                total_saved += saved
+                success += 1
+            except Exception as e:
+                logger.warning(f"[CANDLE] {ticker} 수집 실패: {e}")
+                failed += 1
+
+        logger.info(
+            f"[CANDLE] 수집 완료: {success}/{len(stocks)}종목, "
+            f"{total_saved:,}개 캔들, 실패 {failed}"
+        )
+
+        if self._notifier and self._config.notifications.candle_collection:
+            try:
+                await self._notifier.send(
+                    f"[CANDLE] 분봉 수집 완료\n"
+                    f"성공: {success}/{len(stocks)}종목\n"
+                    f"캔들: {total_saved:,}개\n"
+                    f"실패: {failed}종목"
+                )
+            except Exception:
+                pass
 
     # ── Health check ──
 

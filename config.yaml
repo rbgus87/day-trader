@@ -3,13 +3,14 @@
 # ============================================================================
 # 민감 정보(API키, 계좌번호 등)는 .env 파일에서 관리합니다.
 # 이 파일은 git에 커밋되므로 비밀번호/토큰을 절대 포함하지 마세요.
+# 최신 baseline 및 동작 상세: docs/spec/backtester_behavior.md 참조.
 
 # --- 모드 ---
 paper_mode: true                    # true=주문 시뮬레이션(페이퍼), false=실매매(라이브)
 
 # --- 매매 기본 설정 ---
 trading:
-  initial_capital: 1_000_000       # 초기 자본금 (원)
+  initial_capital: 3_000_000       # 페이퍼 자본 (시뮬 결과: 수익률 86.5%, PF 3.24)
 
   # 리스크
   daily_max_loss_pct: -0.015        # Phase 3 Day 11.5: -2% → -1.5% 강화
@@ -28,16 +29,11 @@ trading:
   consecutive_loss_threshold: 3     # 3일 연속 손실 시
   consecutive_loss_rest_days: 1     # 1일 휴식
 
-  # 익절
-  tp1_pct: 0.16                     # 1차 익절 +16% (사실상 전량 트레일링, 백테스트 최적: PF 1.22)
-  tp1_sell_ratio: 0.5               # 1차 익절 시 50% 매도
-  trailing_stop_pct: 0.005
-
   # 진입 (멀티 종목 모델)
-  entry_1st_ratio: 0.55             # 1차 매수 비율 55%
+  entry_1st_ratio: 1.0              # 100% 1차 매수 (2차 매수 미구현, ADR-010)
   max_trades_per_day: 2             # 종목당 1회
   max_positions: 3                  # 동시 포지션 최대 3개
-  screening_top_n: 5                # 스크리닝 상위 5종목 감시
+  screening_top_n: 5                # dead: UI 알림 범위 제한용, 진입 게이팅에 영향 X
   cooldown_minutes: 120             # 사실상 재진입 금지
 
   # 시간
@@ -52,43 +48,35 @@ trading:
 
 # --- 전략 파라미터 ---
 strategy:
-  force: "momentum"                     # 비어있으면 selector 로직, 값 있으면 해당 전략 강제 (페이퍼 테스트용)
+  force: "momentum"                     # 비어있으면 selector 로직, 값 있으면 해당 전략 강제
 
   # 모멘텀 브레이크아웃 — 전일 고점 돌파 + 거래량 200%
-  # Phase 1 최종 (2026-04-12): ADX20 + 시장 필터 조합 (L) 채택
-  #   그리드 결과: 거래 501건 / PF 1.46 / PnL +208,303 / PF>1 35종목
   momentum:
     volume_ratio: 2.0               # 전일 대비 거래량 200%
-    stop_loss_pct: -0.030           # 손절 -3.0% (백테스트 최적: PF 1.00 손익분기)
     adx_enabled: true               # ADX 추세 필터
     adx_length: 14                  # ADX 계산 기간
-    adx_min: 20                     # Phase 1: 25 → 20 (거래수 유지 + 가짜 돌파 차단)
-    rvol_enabled: false             # Phase 1: true → false (RVol 단독은 PnL 감소)
+    adx_min: 20                     # ADX 최소값
+    rvol_enabled: false
     rvol_window: 5
     rvol_min: 3.0
-    vwap_enabled: false             # Phase 1: true → false (효과 무의미, D=C)
+    vwap_enabled: false
     vwap_min_above: 0.0
 
-    # Phase 3 Day 11.5: 오전 매수 제한 (오후 진입 차단)
-    # 60종목 × buy_time 그리드 결과: 12:00이 PnL 최적 (+288k / PF 2.91)
+    # 오전 매수 제한 (오후 진입 차단)
     buy_time_limit_enabled: true
     buy_time_end: "12:00"
 
-    # Phase 2 Day 6: ATR 기반 동적 손절
-    atr_stop_enabled: true          # ticker_atr 기반 종목별 손절
-    atr_stop_multiplier: 1.5        # 손절 = 진입가 - ATR% × N
-    atr_stop_min_pct: 0.015         # 하한 1.5% (너무 타이트 방지)
-    atr_stop_max_pct: 0.080         # 상한 8.0% (너무 여유 방지)
+    # ADR-010: 고정 -8% 손절 (이전 ATR max와 동일, 41종목 전부 클램핑이었으므로 동작 동일)
+    atr_stop_enabled: false
+    stop_loss_pct: -0.080
 
-    # Phase 2 Day 7: ATR 기반 TP1 (분할익절 1차 목표가)
-    atr_tp_enabled: true            # ATR 기반 TP1 계산
-    atr_tp_multiplier: 3.0          # TP1 = 진입가 + ATR% × N
-    atr_tp_min_pct: 0.03            # 하한 3% (너무 가까움 방지)
-    atr_tp_max_pct: 0.25            # 상한 25% (너무 멀리 방지)
+    # ADR-010: TP1 시스템 폐기 (Pure trailing 채택)
+    # TP1 분할매도 비활성 — 진입 즉시 trailing 활성
+    atr_tp_enabled: false
 
-    # Phase 2 Day 7: Chandelier 트레일링 스톱 (TP1 후 남은 포지션)
+    # ADR-010: Chandelier 트레일링 스톱 (진입 즉시 활성)
     atr_trail_enabled: true         # 최고가 - ATR × N 방식
-    atr_trail_multiplier: 2.5       # 트레일 거리 배수
+    atr_trail_multiplier: 1.0       # ADR-010: 2.5 → 1.0 (시뮬 최적)
     atr_trail_min_pct: 0.02         # 하한 2%
     atr_trail_max_pct: 0.10         # 상한 10%
 
@@ -97,12 +85,11 @@ strategy:
     momentum_etf_threshold: 2.0     # 섹터 ETF 등락 ≥ 2.0% → 모멘텀 전략
 
 # --- 스크리닝 필터 ---
-# 코스닥 중대형 포함을 위해 시가총액 하한 완화, ATR 하한 상향
 screener:
   min_market_cap: 200_000_000_000   # 시가총액 2,000억원 이상 (코스닥 대형 포함)
   min_avg_volume_amount: 10_000_000_000 # 일평균 거래대금 100억원 이상 (유동성 강화)
   volume_surge_ratio: 1.5           # 전일 거래량 +50% 이상
-  min_atr_pct: 0.03                 # ATR(14) / 종가 3% 이상 (변동성 하한 상향)
+  min_atr_pct: 0.06                 # ADR-010: ATR(14) / 종가 6% 이상 (3% → 6%)
 
 # --- 브로커 연결 (키움 REST API) ---
 broker:
@@ -114,30 +101,24 @@ broker:
 # --- 백테스트 비용 모델 ---
 backtest:
   commission: 0.00015               # 수수료 0.015% (매수/매도 각각)
-  tax: 0.0015                       # 거래세 0.15% (2024 정책: 코스피 농특세 + 코스닥 시장거래세 통일)
-  slippage: 0.0003                  # 슬리피지 0.03% (추정값, 회고 후 ADR 검토 예정)
+  tax: 0.0015                       # 거래세 0.15% (2024 정책)
+  slippage: 0.0003                  # 슬리피지 0.03% (추정값)
   initial_capital: 1_000_000        # 백테스트 초기 자본금
 
 # --- 알림 정책 (Phase 3-B / ADR-008) ---
-# 각 이벤트별 텔레그램 발신 on/off. GUI 설정 탭에서도 변경 가능.
 notifications:
-  # 정기 이벤트
-  daily_reset: true                 # 00:01 자동 리셋 완료
-  ohlcv_refresh: true               # 08:05 OHLCV 갱신 (성공/실패)
-  token_refresh_failure: true       # 08:00 토큰 갱신 실패 시
-
-  # 매매 이벤트
-  trade_execution: true             # 매수/매도 체결
-  daily_report: true                # 15:30 일일 보고
-
-  # 시스템 이벤트
+  daily_reset: true
+  ohlcv_refresh: true
+  token_refresh_failure: true
+  trade_execution: true
+  daily_report: true
   system_start: true
   system_stop: true
-  uptime_sanity: true               # 24시간 이상 가동 감지
-
-  # WebSocket 이벤트
-  ws_critical_failure: true         # 3회 연속 재연결 실패
-  ws_auto_recovery: true            # 자동 재연결 성공
+  uptime_sanity: true
+  universe_refresh: true
+  candle_collection: true
+  ws_critical_failure: true
+  ws_auto_recovery: true
 
 # --- 스케줄러 ---
 schedule:
