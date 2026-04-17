@@ -513,10 +513,15 @@ class DashboardTab(QWidget):
         self._positions_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._positions_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._positions_table.verticalHeader().setVisible(False)
-        # 헤더 + max_positions(3) 행 고정 높이
-        row_h = self._positions_table.verticalHeader().defaultSectionSize()  # 보통 30
+        # 헤더 + max_positions 행 고정 높이
+        # ticker 셀이 "종목명\n(코드)" 2줄이므로 row_h는 44 이상 필요.
+        # 기본값 30 그대로 쓰면 3행이 스크롤 영역에 잘려 보유 포지션이 가려짐.
+        row_h = max(self._positions_table.verticalHeader().defaultSectionSize(), 44)
+        self._positions_table.verticalHeader().setDefaultSectionSize(row_h)
         header_h = self._positions_table.horizontalHeader().sizeHint().height()
-        self._positions_table.setFixedHeight(header_h + row_h * 3 + 4)
+        visible_rows = max(self._max_positions, 3)
+        # row_h × visible_rows + header + frame/scrollbar 여유
+        self._positions_table.setFixedHeight(header_h + row_h * visible_rows + 10)
         # 리사이즈 이벤트 감지해 비례 폭 재계산
         self._positions_table.installEventFilter(self)
         # 최초 1회 (viewport 초기 폭이 잡힌 뒤)
