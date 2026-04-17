@@ -675,12 +675,8 @@ class EngineWorker(QThread):
                 if capital <= 0:
                     capital = self._config.trading.initial_capital
                 position_capital = capital / self._config.trading.max_positions
-                stop_dist = abs(signal.price - sl)
-                if stop_dist > 0:
-                    risk_amount = position_capital * 0.02
-                    max_qty = int(risk_amount / stop_dist)
-                else:
-                    max_qty = int(position_capital * 0.3 / signal.price)
+                # ADR-013 페이퍼 시뮬(grid_maxpos_capital.py)과 동일한 전량 투자 사이징
+                max_qty = int(position_capital / signal.price)
                 total_qty = int(max_qty * self._risk_manager.position_scale)
                 total_qty = max(total_qty, 1)
 
