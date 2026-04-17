@@ -27,7 +27,8 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 
 ### 진입 조건
 
-- 전일 고가 돌파
+- 전일 고가 돌파 (**ADR-016**: 돌파폭 ≥ 3%, `min_breakout_pct: 0.03`)
+- 당일 누적 거래량 ≥ 전일 거래량 × 2.0
 - ADX(14) ≥ 20
 - 시장 필터 통과 (KOSPI 종목은 KOSPI MA5, KOSDAQ 종목은 KOSDAQ MA5 이상)
 - 거래 시각 09:05 ≤ now ≤ 12:00
@@ -65,14 +66,17 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 
 ---
 
-## 백테스트 결과 (baseline, 2026-04-16 ADR-010 청산 튜닝 완결)
+## 백테스트 결과 (baseline, 2026-04-17 ADR-016 돌파폭 3% 반영)
 
-- **Profit Factor 3.28** (1주 가중, 41종목, Pure trailing + 고정 -8% 손절)
-- 연 거래 건수 279건
-- 총 PnL +285,588 (1주 단위, 거래세 0.15% 반영)
-- PF > 1 종목 수: 29 / 41
-- 청산 분포: forced_close 208 (74.6%) / stop_loss 65 (23.3%) / trailing_stop 6 (2.2%)
-- **Walk-Forward 검증** (ADR-011): 학습 PF 5.11 → 검증 PF 4.05 (-21%, 통과)
+- **Profit Factor 3.88** (1주 가중, 41종목, Pure trailing + 고정 -8% 손절 + 돌파폭 ≥ 3%)
+- 연 거래 건수 240건
+- 총 PnL +296,187
+- 거래당 PnL +1,234
+- PF > 1 종목 수: 31 / 41
+- 청산 분포: forced_close 178 (74.2%) / stop_loss 56 (23.3%) / trailing_stop 6 (2.5%)
+- 시장 국면별 PF (ADR-016): 강세 4.95 / 횡보 2.76 / 약세 2.16
+- **이전 baseline** (ADR-010, min_breakout 0%): PF 3.28 ~ 3.41 / 거래 273~279건
+- **Walk-Forward 검증** (ADR-011, ADR-016 이전): 학습 PF 5.11 → 검증 PF 4.05 (-21%, 통과)
 
 ---
 
@@ -176,6 +180,7 @@ pytest tests/ --cov=. --cov-report=term-missing
 - [x] 유니버스 주간 자동 갱신 (ADR-012)
 - [x] max_positions + 페이퍼 자본 확정 (ADR-013)
 - [x] 분봉 자동 수집 (ADR-014)
+- [x] 돌파 폭 하한 3% (ADR-016) — PF 3.41 → 3.88, 약세 PF 1.55 → 2.16
 
 검증 명령어: `docs/verification_commands.md`
 후속 작업: [`docs/phase_followup_todo.md`](docs/phase_followup_todo.md)
