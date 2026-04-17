@@ -109,7 +109,7 @@ backtest:
   commission: 0.00015               # 수수료 0.015% (매수/매도 각각)
   tax: 0.0015                       # 거래세 0.15% (2024 정책)
   slippage: 0.0003                  # 슬리피지 0.03% (추정값)
-  initial_capital: 1_000_000        # 백테스트 초기 자본금
+  initial_capital: 1_000_000        # (dead: 참조 코드 없음, ADR-013 baseline 비교용 상수)
 
 # --- 알림 정책 (Phase 3-B / ADR-008) ---
 notifications:

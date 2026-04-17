@@ -169,7 +169,7 @@ class BacktestConfig:
     commission: float = 0.00015     # 매수/매도 각 0.015%
     tax: float = 0.0015             # 증권거래세 0.15% (ADR-009 2024 정책 반영)
     slippage: float = 0.0003        # 슬리피지 0.03% (추정값)
-    initial_capital: int = 1_000_000
+    initial_capital: int = 1_000_000  # (dead: 참조 경로 없음, ADR-013 baseline 비교용)
 
 
 @dataclass(frozen=True)
