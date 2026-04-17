@@ -1135,6 +1135,23 @@ class EngineWorker(QThread):
             except Exception as e:
                 logger.error(f"[UNIVERSE] batch 분봉 수집 실패: {e}")
 
+        # 4.5 ticker_atr 갱신 — universe 변경 시 필수
+        # generate_universe(KRX API)와 ticker_atr(intraday_candles)의 소스 차이가
+        # 있으나 계산식은 동일(Wilder, core.indicators.calculate_atr).
+        try:
+            atr_result = subprocess.run(
+                ["python", "scripts/calculate_atr.py"],
+                capture_output=True, text=True, timeout=600, encoding="utf-8",
+            )
+            if atr_result.returncode != 0:
+                logger.warning(
+                    f"[UNIVERSE] calculate_atr.py 실패: {atr_result.stderr[-300:]}"
+                )
+            else:
+                logger.info("[UNIVERSE] ticker_atr 갱신 완료")
+        except Exception as e:
+            logger.warning(f"[UNIVERSE] ticker_atr 갱신 오류: {e}")
+
         # 5. 전략 재등록 + WS 재구독
         self._register_active_strategies(new_stocks)
         all_tickers = [s["ticker"] for s in new_stocks]
