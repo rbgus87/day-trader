@@ -34,12 +34,13 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 - 거래 시각 09:05 ≤ now ≤ 12:00
 - 동시 보유 포지션 `max_positions = 3` 이하
 
-### 청산 경로 (3종, ADR-010)
+### 청산 경로 (4종, ADR-010/017)
 
 | reason | 트리거 |
 |------|------|
 | `stop_loss` | 고정 -8% 손절 (`stop_loss_pct: -0.080`) |
 | `trailing_stop` | 진입 즉시 Chandelier (최고가 − ATR × 1.0), 하한 2% / 상한 10% |
+| `breakeven_stop` | **ADR-017**: peak_return ≥ 3% 도달 시 stop을 entry+1%로 상향, 이후 되돌림 |
 | `forced_close` | 15:10 미청산 포지션 일괄 청산 |
 
 > TP1 분할매도(`tp1_hit`)는 ADR-010에서 폐기. `atr_tp_enabled: false`.
@@ -66,17 +67,19 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 
 ---
 
-## 백테스트 결과 (baseline, 2026-04-17 ADR-016 돌파폭 3% 반영)
+## 백테스트 결과 (baseline, 2026-04-17 ADR-017 Breakeven Stop 반영)
 
-- **Profit Factor 3.88** (1주 가중, 41종목, Pure trailing + 고정 -8% 손절 + 돌파폭 ≥ 3%)
-- 연 거래 건수 240건
-- 총 PnL +296,187
-- 거래당 PnL +1,234
-- PF > 1 종목 수: 31 / 41
-- 청산 분포: forced_close 178 (74.2%) / stop_loss 56 (23.3%) / trailing_stop 6 (2.5%)
-- 시장 국면별 PF (ADR-016): 강세 4.95 / 횡보 2.76 / 약세 2.16
-- **이전 baseline** (ADR-010, min_breakout 0%): PF 3.28 ~ 3.41 / 거래 273~279건
-- **Walk-Forward 검증** (ADR-011, ADR-016 이전): 학습 PF 5.11 → 검증 PF 4.05 (-21%, 통과)
+- **Profit Factor 4.28** (1주 가중, 41종목, Pure trailing + 고정 -8% 손절 + 돌파폭 ≥ 3% + BE3)
+- 연 거래 건수 254건
+- 총 PnL +290,869
+- 거래당 PnL +1,145
+- PF > 1 종목 수: 30 / 41
+- 청산 분포: forced_close 152 (59.8%) / breakeven_stop 72 (28.3%) / stop_loss 26 (10.2%) / trailing_stop 4 (1.6%)
+- 시장 국면별 PF (ADR-017): 강세 5.88 / 횡보 2.45 / 약세 3.11
+- **이전 baseline**
+  - ADR-016 (돌파폭 3%): PF 3.88 / 240건 / 약세 2.16
+  - ADR-010 (base): PF 3.28 ~ 3.41 / 거래 273~279건
+- **Walk-Forward 검증** (ADR-011, ADR-017 이전): 학습 PF 5.11 → 검증 PF 4.05 (-21%, 통과)
 
 ---
 
@@ -181,6 +184,7 @@ pytest tests/ --cov=. --cov-report=term-missing
 - [x] max_positions + 페이퍼 자본 확정 (ADR-013)
 - [x] 분봉 자동 수집 (ADR-014)
 - [x] 돌파 폭 하한 3% (ADR-016) — PF 3.41 → 3.88, 약세 PF 1.55 → 2.16
+- [x] Breakeven Stop BE3 (ADR-017) — PF 3.88 → 4.28, 약세 PF 2.16 → 3.11
 
 검증 명령어: `docs/verification_commands.md`
 후속 작업: [`docs/phase_followup_todo.md`](docs/phase_followup_todo.md)
