@@ -20,14 +20,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import requests
 from dotenv import load_dotenv
-
-# core.indicators 재사용 위해 프로젝트 루트를 sys.path에 추가
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from core.indicators import calculate_atr  # noqa: E402
 
 # .env 로드
 load_dotenv(Path(__file__).parent.parent / ".env")
@@ -100,27 +94,31 @@ def get_recent_trading_date(api: KrxAPI) -> str:
 def calc_atr_pct(daily_data: list[dict], period: int = 14) -> float:
     """여러 날의 OHLCV로 ATR(14)/종가 비율 계산.
 
-    core.indicators.calculate_atr 재사용 → pandas_ta.atr (Wilder smoothing).
-    ticker_atr 테이블 및 실매매 판단과 동일한 계산식을 사용해 경계 일치.
+    SMA 방식: 최근 14일 TR의 단순 평균 / 종가.
+    2026-04-17 Wilder(pandas_ta) 통일 시도했으나 신규 편입 종목 품질 저하로
+    백테스트 PF 3.41 → 2.24까지 악화되어 SMA로 롤백.
+    ticker_atr 테이블(Wilder)과의 경계 편차는 설계적으로 허용.
     """
     if len(daily_data) < period + 1:
         return 0.0
 
-    df = pd.DataFrame(daily_data)
-    if not {"high", "low", "close"}.issubset(df.columns):
+    high = np.array([d["high"] for d in daily_data])
+    low = np.array([d["low"] for d in daily_data])
+    close = np.array([d["close"] for d in daily_data])
+
+    tr = np.maximum(
+        high[1:] - low[1:],
+        np.maximum(
+            np.abs(high[1:] - close[:-1]),
+            np.abs(low[1:] - close[:-1]),
+        ),
+    )
+    if len(tr) < period:
         return 0.0
 
-    atr_series = calculate_atr(df, length=period)
-    if atr_series is None or len(atr_series) == 0:
-        return 0.0
-
-    atr_valid = atr_series.dropna()
-    if atr_valid.empty:
-        return 0.0
-
-    last_atr = float(atr_valid.iloc[-1])
-    last_close = float(df["close"].iloc[-1])
-    return last_atr / last_close if last_close > 0 else 0.0
+    atr = np.mean(tr[-period:])
+    last_close = close[-1]
+    return atr / last_close if last_close > 0 else 0.0
 
 
 def calc_trend(daily_data: list[dict], ma_period: int = 20) -> tuple[float, float, float]:
