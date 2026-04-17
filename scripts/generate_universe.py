@@ -123,6 +123,22 @@ def calc_atr_pct(daily_data: list[dict], period: int = 14) -> float:
     return last_atr / last_close if last_close > 0 else 0.0
 
 
+def calc_trend(daily_data: list[dict], ma_period: int = 20) -> tuple[float, float, float]:
+    """상승추세/수익률 체크용 지표.
+
+    Returns: (close_last, ma20, ret_20d)
+    데이터 부족 시 (0, 0, 0).
+    """
+    if len(daily_data) < ma_period + 1:
+        return (0.0, 0.0, 0.0)
+    closes = np.array([d["close"] for d in daily_data], dtype=float)
+    last = float(closes[-1])
+    ma = float(np.mean(closes[-ma_period:]))
+    base = float(closes[-ma_period])
+    ret = (last - base) / base if base > 0 else 0.0
+    return (last, ma, ret)
+
+
 def collect_daily_ohlcv(
     api: KrxAPI, date: str, days: int = 25,
 ) -> dict[str, list[dict]]:
@@ -179,8 +195,11 @@ def generate_universe(
     max_total: int = 60,
     max_stocks: int = 40,
     dry_run: bool = False,
+    trend_filter: bool = True,
+    max_market_cap_trillion: float = 10.0,
 ) -> list[dict]:
     """코스닥+코스피에서 단타 유니버스를 생성한다."""
+    max_market_cap = int(max_market_cap_trillion * 1_000_000_000_000)
 
     api_key = os.getenv("KRX_API_KEY", "")
     if not api_key:
@@ -218,17 +237,26 @@ def generate_universe(
     print(f"  코스닥: {len(kosdaq_records)}종목 → 시총 상위 {len(kosdaq_top)}종목")
     print(f"  코스피: {len(kospi_records)}종목 → 시총 상위 {len(kospi_top)}종목")
 
-    # 3. 기본 필터 (거래대금 + 제외 키워드)
+    # 3. 기본 필터 (거래대금 + 시총 상한 + 제외 키워드)
+    basic_stats = {"excluded_kw": 0, "below_amount": 0, "above_mcap": 0, "passed": 0}
+
     def _filter_basic(records: list[dict], market_tag: str) -> list[dict]:
         result = []
         for r in records:
             name = r.get("ISU_ABBRV") or r.get("ISU_NM", "")
             ticker = r.get("ISU_SRT_CD") or r.get("ISU_CD", "")
             if any(kw in name for kw in EXCLUDE_KEYWORDS):
+                basic_stats["excluded_kw"] += 1
                 continue
             amount_billion = r["_amount"] / 1e9
             if amount_billion < min_amount_billion:
+                basic_stats["below_amount"] += 1
                 continue
+            # 시총 상한 (대형주 제외)
+            if max_market_cap > 0 and r["_mcap"] > max_market_cap:
+                basic_stats["above_mcap"] += 1
+                continue
+            basic_stats["passed"] += 1
             result.append({
                 "ticker": ticker,
                 "name": name,
@@ -242,34 +270,84 @@ def generate_universe(
     kospi_candidates = _filter_basic(kospi_top, "KOSPI")
     all_candidates = kosdaq_candidates + kospi_candidates
 
-    print(f"  기본 필터 통과: 코스닥 {len(kosdaq_candidates)} + 코스피 {len(kospi_candidates)} = {len(all_candidates)}종목 (거래대금 {min_amount_billion}억+)")
+    mcap_desc = f"시총<{max_market_cap_trillion}조" if max_market_cap > 0 else "시총상한off"
+    print(f"  기본 필터 통과: 코스닥 {len(kosdaq_candidates)} + 코스피 {len(kospi_candidates)} = {len(all_candidates)}종목 (거래대금 {min_amount_billion}억+, {mcap_desc})")
+    print(f"    탈락 상세: 키워드 {basic_stats['excluded_kw']}, 거래대금부족 {basic_stats['below_amount']}, 시총초과 {basic_stats['above_mcap']}")
 
-    # 4. ATR 필터
+    # 4. ATR + 추세 필터
     daily_data = collect_daily_ohlcv(api, date, days=25)
 
     universe = []
+    trend_stats = {
+        "atr_passed": 0, "atr_failed": 0,
+        "ma20_passed": 0, "ma20_failed": 0,
+        "ret_passed": 0, "ret_failed": 0,
+    }
+
     for idx, c in enumerate(all_candidates):
         ohlcv = daily_data.get(c["ticker"], [])
         atr = calc_atr_pct(ohlcv)
         c["atr_pct"] = round(atr, 4)
 
-        if atr >= min_atr_pct:
-            universe.append(c)
-            status = "OK"
-        else:
-            status = "--"
+        # ATR 필터
+        if atr < min_atr_pct:
+            trend_stats["atr_failed"] += 1
+            status = "-- atr"
+            print(
+                f"    [{idx+1}/{len(all_candidates)}] {c['ticker']} {c['name']:<12} "
+                f"[{c['market']}] 거래대금:{c['amount_billion']:>7.1f}억 ATR:{atr:.2%} {status}"
+            )
+            continue
+        trend_stats["atr_passed"] += 1
 
+        # 추세 필터
+        if trend_filter:
+            close_last, ma20, ret_20d = calc_trend(ohlcv, ma_period=20)
+            c["ma20"] = round(ma20, 0)
+            c["ret_20d"] = round(ret_20d, 4)
+
+            ma_ok = close_last > ma20 > 0
+            ret_ok = ret_20d > 0
+            if ma_ok:
+                trend_stats["ma20_passed"] += 1
+            else:
+                trend_stats["ma20_failed"] += 1
+            if ret_ok:
+                trend_stats["ret_passed"] += 1
+            else:
+                trend_stats["ret_failed"] += 1
+
+            if not (ma_ok and ret_ok):
+                reason = "ma20" if not ma_ok else "ret"
+                status = f"-- {reason}"
+                print(
+                    f"    [{idx+1}/{len(all_candidates)}] {c['ticker']} {c['name']:<12} "
+                    f"[{c['market']}] 거래대금:{c['amount_billion']:>7.1f}억 "
+                    f"ATR:{atr:.2%} ret20:{ret_20d:+.1%} {status}"
+                )
+                continue
+
+        universe.append(c)
+        extra = (
+            f" ret20:{c.get('ret_20d',0):+.1%}"
+            if trend_filter else ""
+        )
         print(
             f"    [{idx+1}/{len(all_candidates)}] {c['ticker']} {c['name']:<12} "
-            f"[{c['market']}] 거래대금:{c['amount_billion']:>7.1f}억 ATR:{atr:.2%} {status}"
+            f"[{c['market']}] 거래대금:{c['amount_billion']:>7.1f}억 ATR:{atr:.2%}{extra} OK"
         )
 
     kosdaq_passed = [u for u in universe if u["market"] == "KOSDAQ"]
     kospi_passed = [u for u in universe if u["market"] == "KOSPI"]
-    print(f"\n  ATR 필터 통과: 코스닥 {len(kosdaq_passed)} + 코스피 {len(kospi_passed)} = {len(universe)}종목 (ATR {min_atr_pct:.1%}+)")
+    print(f"\n  === 필터 파이프라인 ===")
+    print(f"  ATR ≥ {min_atr_pct:.1%}: 통과 {trend_stats['atr_passed']}, 탈락 {trend_stats['atr_failed']}")
+    if trend_filter:
+        print(f"  close > MA20  : 통과 {trend_stats['ma20_passed']}, 탈락 {trend_stats['ma20_failed']}")
+        print(f"  20일 수익률>0 : 통과 {trend_stats['ret_passed']}, 탈락 {trend_stats['ret_failed']}")
+    print(f"  최종 통과: 코스닥 {len(kosdaq_passed)} + 코스피 {len(kospi_passed)} = {len(universe)}종목")
 
     if len(universe) < 20:
-        print(f"  ⚠ ATR 통과 종목 {len(universe)}개 — 20개 미만 경고")
+        print(f"  ⚠ 통과 종목 {len(universe)}개 — 20개 미만 경고")
 
     # 5. 총 종목 수 제한 (코스닥 우선 보존 + 코스피 거래대금 보충)
     effective_max = min(max_total, max_stocks)
@@ -352,6 +430,12 @@ def main():
     parser.add_argument("--max-total", type=int, default=60, help="시총/거래대금 필터 후 최대 후보 수 (기본: 60)")
     parser.add_argument("--max-stocks", type=int, default=40, help="ATR 상위 최종 종목 수 (기본: 40)")
     parser.add_argument("--dry-run", action="store_true", help="파일 생성 없이 미리보기")
+    parser.add_argument("--trend-filter", dest="trend_filter", action="store_true", default=True,
+                        help="상승추세 필터 활성화 (close>MA20 and 20d 수익률>0, 기본 ON)")
+    parser.add_argument("--no-trend-filter", dest="trend_filter", action="store_false",
+                        help="상승추세 필터 비활성화")
+    parser.add_argument("--max-market-cap", type=float, default=10.0,
+                        help="시총 상한 (조원 단위, 기본 10조, 0이면 해제)")
 
     args = parser.parse_args()
 
@@ -363,6 +447,8 @@ def main():
         max_total=args.max_total,
         max_stocks=args.max_stocks,
         dry_run=args.dry_run,
+        trend_filter=args.trend_filter,
+        max_market_cap_trillion=args.max_market_cap,
     )
 
 
