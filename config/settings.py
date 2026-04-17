@@ -83,6 +83,7 @@ class TradingConfig:
     # 모멘텀 전략
     momentum_volume_ratio: float = 2.0
     momentum_stop_loss_pct: float = -0.080  # ADR-010: 고정 -8%
+    min_breakout_pct: float = 0.03          # ADR-016: 전일 고가 대비 최소 돌파폭 (3%)
     # 오전 매수 제한
     buy_time_limit_enabled: bool = True
     buy_time_end: str = "11:30"
@@ -235,6 +236,7 @@ class AppConfig:
             report_time=t.get("report_time", "15:30"),
             momentum_volume_ratio=mom.get("volume_ratio", 2.0),
             momentum_stop_loss_pct=mom.get("stop_loss_pct", -0.080),
+            min_breakout_pct=mom.get("min_breakout_pct", 0.03),
             buy_time_limit_enabled=mom.get("buy_time_limit_enabled", True),
             buy_time_end=mom.get("buy_time_end", "11:30"),
             atr_stop_enabled=mom.get("atr_stop_enabled", False),

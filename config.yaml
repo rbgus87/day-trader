@@ -53,6 +53,7 @@ strategy:
   # 모멘텀 브레이크아웃 — 전일 고점 돌파 + 거래량 200%
   momentum:
     volume_ratio: 2.0               # 전일 대비 거래량 200%
+    min_breakout_pct: 0.03          # ADR-016: 전일 고가 대비 최소 돌파폭 3% (미세 돌파 노이즈 제거)
     adx_enabled: true               # ADX 추세 필터
     adx_length: 14                  # ADX 계산 기간
     adx_min: 20                     # ADX 최소값

@@ -67,8 +67,10 @@ class MomentumStrategy(BaseStrategy):
         if self._prev_day_high <= 0:
             return None
 
-        # 1) 가격 돌파 확인
-        if current_price <= self._prev_day_high:
+        # 1) 가격 돌파 확인 (ADR-016: 최소 돌파폭 적용)
+        min_bp = getattr(self._config, "min_breakout_pct", 0.0)
+        breakout_pct = (current_price - self._prev_day_high) / self._prev_day_high
+        if breakout_pct < min_bp:
             return None
 
         # 2) 거래량 필터
@@ -80,9 +82,10 @@ class MomentumStrategy(BaseStrategy):
         if cum_volume < required_volume:
             return None
 
-        # 3) 마지막 캔들 종가 > 전일 고점
+        # 3) 마지막 캔들 종가 돌파 재확정 (ADR-016: 최소 돌파폭 적용)
         last_close = candles.iloc[-1]["close"]
-        if last_close <= self._prev_day_high:
+        last_breakout_pct = (last_close - self._prev_day_high) / self._prev_day_high
+        if last_breakout_pct < min_bp:
             return None
 
         # 4) ADX 추세 필터

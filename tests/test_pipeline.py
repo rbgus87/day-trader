@@ -36,7 +36,7 @@ async def test_pipeline_candle_to_strategy():
     from config.settings import TradingConfig
     from datetime import time
 
-    strat = MomentumStrategy(TradingConfig(adx_enabled=False, rvol_enabled=False, vwap_enabled=False))
+    strat = MomentumStrategy(TradingConfig(adx_enabled=False, rvol_enabled=False, vwap_enabled=False, min_breakout_pct=0.0))
     strat.set_prev_day_data(high=70000, volume=100_000)
     strat.configure_multi_trade(max_trades=5, cooldown_minutes=0)
     strat.set_backtest_time(time(10, 0))
