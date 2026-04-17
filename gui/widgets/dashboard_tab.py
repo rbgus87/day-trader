@@ -43,21 +43,19 @@ class DashboardTab(QWidget):
         "MKT": "시장 약세",
     }
 
-    # 보유 포지션 컬럼 비율 (종목/진입가/수량/현재가/수익률/경과/손절가/TP1/상태)
-    POSITIONS_COLUMN_RATIOS = [18, 10, 6, 10, 9, 13, 10, 10, 14]
+    # 보유 포지션 컬럼 비율 (ADR-016/010: TP1 폐기, 투입액·미실현PnL·손절/트레일 추가)
+    # (종목/진입가/수량/투입액/현재가/수익률/미실현PnL/경과/손절/트레일/상태)
+    POSITIONS_COLUMN_RATIOS = [14, 9, 6, 11, 9, 8, 12, 8, 11, 12]
 
     # 매도 사유 + 전략명 → 짧은 코드 매핑 (툴팁에 원본)
+    # ADR-010: TP1 시스템 폐기 → 매핑 제거
     REASON_CODES = {
         "force_close": "FC",
-        "tp1": "TP1",
+        "forced_close": "FC",
         "stop_loss": "SL",
+        "trailing_stop": "TRL",
         "trailing": "TRL",
         "momentum": "MOM",
-        "pullback": "PB",
-        "flow": "FLW",
-        "gap": "GAP",
-        "openbreak": "OB",
-        "bigcandle": "BC",
         "paper": "?",
         "unknown": "?",
         "": "?",
@@ -502,7 +500,7 @@ class DashboardTab(QWidget):
         self._positions_card = Card(title="보유 포지션  0 / 3")
 
         self._positions_table = QTableWidget()
-        columns = ["종목", "진입가", "수량", "현재가", "수익률", "경과", "손절가", "TP1", "상태"]
+        columns = ["종목", "진입가", "수량", "투입액", "현재가", "수익률", "미실현PnL", "경과", "손절/트레일", "상태"]
         assert len(columns) == len(self.POSITIONS_COLUMN_RATIOS), \
             "positions columns/ratios mismatch"
         self._positions_table.setColumnCount(len(columns))
@@ -615,7 +613,7 @@ class DashboardTab(QWidget):
         self._trades_card = Card(title="당일 체결")
 
         self._trades_table = QTableWidget()
-        columns = ["시간", "종목", "매매", "가격", "수량", "손익", "사유"]
+        columns = ["시간", "종목", "매매", "가격", "수량", "투입액", "손익", "사유"]
         self._trades_table.setColumnCount(len(columns))
         self._trades_table.setHorizontalHeaderLabels(columns)
         self._trades_table.setAlternatingRowColors(True)
@@ -676,9 +674,38 @@ class DashboardTab(QWidget):
         self._pnl_fig.tight_layout(pad=0.5)
         self._pnl_canvas.draw_idle()
 
+    def _compute_today_from_db(self) -> tuple[float, int, int]:
+        """오늘자 매매 DB 집계로 (실현PnL, buy수, sell수) 반환.
+
+        engine_worker가 emit하는 trades_count/daily_pnl이 다종목 환경에서
+        단일 strategy._trade_count만 참조하는 버그를 우회하기 위한 독립 경로.
+        실운영 로직(engine_worker, strategy)은 건드리지 않음.
+        """
+        try:
+            from datetime import date as _date
+            conn = sqlite3.connect("daytrader.db")
+            today = _date.today().isoformat()
+            row = conn.execute(
+                "SELECT "
+                " COALESCE(SUM(CASE WHEN side='sell' THEN COALESCE(pnl,0) ELSE 0 END), 0) AS pnl, "
+                " COALESCE(SUM(CASE WHEN side='buy'  THEN 1 ELSE 0 END), 0) AS buys, "
+                " COALESCE(SUM(CASE WHEN side='sell' THEN 1 ELSE 0 END), 0) AS sells "
+                "FROM trades WHERE date(traded_at) = ?",
+                (today,),
+            ).fetchone()
+            conn.close()
+            return float(row[0] or 0.0), int(row[1] or 0), int(row[2] or 0)
+        except Exception:
+            return 0.0, 0, 0
+
     def update_summary(self, data: dict) -> None:
         """Update summary bar."""
-        pnl = data.get("daily_pnl", 0.0)
+        # DB 기반 실제 값 계산 (engine_worker 카운터 버그 우회)
+        db_pnl, db_buys, db_sells = self._compute_today_from_db()
+
+        data_pnl = float(data.get("daily_pnl", 0.0) or 0.0)
+        # engine_worker 값이 0이거나 DB가 절대값 기준 더 크면 DB 우선
+        pnl = db_pnl if (abs(db_pnl) > abs(data_pnl)) else data_pnl
         pnl_pct = data.get("daily_pnl_pct", 0.0)
         capital = data.get("available_capital", 0)
         initial = data.get("initial_capital", 0)
@@ -697,11 +724,15 @@ class DashboardTab(QWidget):
             f"QProgressBar::chunk {{ background-color: {pnl_color}; border-radius: 2px; }}"
         )
 
-        trades_count = data.get("trades_count", 0)
-        open_count = data.get("open_positions_count", 0)
+        # engine_worker 카운터 버그 우회: DB 기반 buys/sells 사용
+        open_count = int(data.get("open_positions_count", 0) or 0)
+        data_trades = int(data.get("trades_count", 0) or 0)
+        trades_count = max(db_sells, data_trades)  # 청산 건수
+        buys_count = max(db_buys, data_trades)      # 진입 건수
         wins = data.get("wins", 0)
         losses = data.get("losses", 0)
-        self._trades_value.setText(f"{trades_count + open_count}")
+        # "당일 거래"는 당일 진입 횟수
+        self._trades_value.setText(f"{buys_count}")
         self._trades_subtitle.setText(f"청산 {trades_count} / 보유 {open_count}")
 
         win_rate = data.get("win_rate", 0.0)
@@ -747,12 +778,15 @@ class DashboardTab(QWidget):
             # 등락% 색상
             change_color = QColor("#a6e3a1") if change_pct >= 0 else QColor("#f38ba8")
 
-            # 돌파% 색상
-            if breakout_pct >= 0:
-                breakout_color = QColor("#a6e3a1")  # 돌파 완료
+            # 돌파% 색상 (ADR-016: min_breakout_pct 3% 경계 반영)
+            if breakout_pct >= 3:
+                breakout_color = QColor("#a6e3a1")  # 진입 조건 충족 (3%+)
+                breakout_text = f"+{breakout_pct:.2f}% ✓"
+            elif breakout_pct >= 0:
+                breakout_color = QColor("#6c7086")  # 돌파했으나 3% 미만 → 진입 차단
                 breakout_text = f"+{breakout_pct:.2f}%"
             elif breakout_pct >= -1:
-                breakout_color = QColor("#f9e2af")  # 임박
+                breakout_color = QColor("#f9e2af")  # 임박 (전일고가 -1% 이내)
                 breakout_text = f"{breakout_pct:.2f}%"
             else:
                 breakout_color = QColor("#6c7086")
@@ -855,15 +889,40 @@ class DashboardTab(QWidget):
             else:
                 qty_text = f"{qty_total}"
 
+            # 투입액 / 미실현 PnL 계산 (ADR-013 전량 투자 대응, ADR-010 TP1 폐기)
+            entry_price = float(row_data.get("entry_price", 0) or 0)
+            current_price = float(row_data.get("current_price", 0) or 0)
+            qty_for_calc = qty_remaining if qty_remaining else qty_total
+            cost_amount = entry_price * qty_for_calc
+            unrealized_pnl = (current_price - entry_price) * qty_for_calc if current_price > 0 else 0.0
+            unrealized_color = (
+                QColor("#a6e3a1") if unrealized_pnl >= 0 else QColor("#f38ba8")
+            )
+            unrealized_text = (
+                f"{'+' if unrealized_pnl >= 0 else ''}{unrealized_pnl:,.0f}"
+                if current_price > 0
+                else "—"
+            )
+
+            # 손절/트레일: stop_loss가 진입가 × 0.92보다 높으면 trailing 활성 표시
+            stop_loss_val = float(row_data.get("stop_loss", 0) or 0)
+            if stop_loss_val > entry_price * 0.93 and entry_price > 0:
+                stop_text = f"{stop_loss_val:,.0f} ↑"  # trailing 당김 중
+                stop_color = QColor("#f9e2af")
+            else:
+                stop_text = f"{stop_loss_val:,.0f}"
+                stop_color = None
+
             cells = [
                 (ticker_text, QColor("#89b4fa")),
-                (f"{row_data.get('entry_price', 0):,.0f}", None),
+                (f"{entry_price:,.0f}", None),
                 (qty_text, None),
-                (f"{row_data.get('current_price', 0):,.0f}", None),
+                (f"{cost_amount:,.0f}", None),
+                (f"{current_price:,.0f}", None),
                 (f"{'+' if pnl_pct >= 0 else ''}{pnl_pct:.2f}%", pnl_color),
+                (unrealized_text, unrealized_color),
                 (elapsed_text, elapsed_color),
-                (f"{row_data.get('stop_loss', 0):,.0f}", None),
-                (f"{row_data.get('tp1_price', 0) or 0:,.0f}", None),
+                (stop_text, stop_color),
                 (row_data.get("status", ""), None),
             ]
 
@@ -927,17 +986,23 @@ class DashboardTab(QWidget):
             name = str(row_data.get("name", ""))
             ticker_text = f"{name} ({ticker})" if name else ticker
 
+            # 투입액 (가격 × 수량)
+            price_int = int(row_data.get("price", 0) or 0)
+            qty_int = int(row_data.get("qty", 0) or 0)
+            cost_amt = price_int * qty_int
+
             cells = [
                 (time_text, None, None),
                 (ticker_text, QColor("#89b4fa"), None),
                 ("", None, None),  # 매매 컬럼은 setCellWidget 으로 컬러 칩 삽입
-                (f"{int(row_data.get('price', 0) or 0):,}", None, None),
-                (str(row_data.get("qty", 0) or 0), None, None),
+                (f"{price_int:,}", None, None),
+                (str(qty_int), None, None),
+                (f"{cost_amt:,}", None, None),
                 (pnl_text, pnl_color, None),
                 (reason_code, None, reason_tooltip),
             ]
 
-            align_right_cols = {3, 4, 5}  # 가격, 수량, 손익
+            align_right_cols = {3, 4, 5, 6}  # 가격, 수량, 투입액, 손익
             for col, (text, color, tooltip) in enumerate(cells):
                 item = QTableWidgetItem(str(text))
                 if col in align_right_cols:
