@@ -1077,7 +1077,25 @@ class EngineWorker(QThread):
                     pass
 
     async def _safe_refresh_universe(self):
-        """ADR-012: 주간 유니버스 자동 갱신 (월 07:30)."""
+        """ADR-012: 주간 유니버스 자동 갱신 (월 07:30).
+
+        임시 비활성화 (2026-04-17): 추세 필터 검증 대기.
+        Wilder ATR만으로 갱신 시 PF 3.41 → 2.24로 악화 확인.
+        추세 필터 + 시총 상한 백테스트 PF ≥ 3.0 확인 후 재활성화.
+        """
+        logger.warning(
+            "[UNIVERSE] 주간 자동 갱신 건너뜀 — 추세 필터 구현/검증 대기"
+        )
+        if self._notifier and self._config.notifications.universe_refresh:
+            try:
+                await self._notifier.send_urgent(
+                    "[알림] 주간 유니버스 갱신 건너뜀\n"
+                    "사유: 추세 필터 구현/검증 대기 (PF 유효성 확인 후 재활성화)"
+                )
+            except Exception:
+                pass
+        return
+
         try:
             await self._refresh_universe()
         except Exception as e:
