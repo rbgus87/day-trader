@@ -103,6 +103,11 @@ class TradingConfig:
     atr_trail_multiplier: float = 1.0
     atr_trail_min_pct: float = 0.02
     atr_trail_max_pct: float = 0.10
+
+    # ADR-017: Breakeven Stop (BE3) — peak 3% 도달 시 stop을 entry+1%로
+    breakeven_enabled: bool = True
+    breakeven_trigger_pct: float = 0.03
+    breakeven_offset_pct: float = 0.01
     adx_enabled: bool = True
     adx_length: int = 14
     adx_min: float = 25.0
@@ -248,6 +253,9 @@ class AppConfig:
             atr_trail_multiplier=mom.get("atr_trail_multiplier", 1.0),
             atr_trail_min_pct=mom.get("atr_trail_min_pct", 0.02),
             atr_trail_max_pct=mom.get("atr_trail_max_pct", 0.10),
+            breakeven_enabled=mom.get("breakeven_enabled", True),
+            breakeven_trigger_pct=mom.get("breakeven_trigger_pct", 0.03),
+            breakeven_offset_pct=mom.get("breakeven_offset_pct", 0.01),
             adx_enabled=mom.get("adx_enabled", True),
             adx_length=mom.get("adx_length", 14),
             adx_min=mom.get("adx_min", 25.0),

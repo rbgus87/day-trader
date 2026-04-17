@@ -1532,6 +1532,8 @@ class EngineWorker(QThread):
                     "stop_loss": pos["stop_loss"],
                     "tp1_price": pos.get("tp1_price"),
                     "tp1_hit": pos.get("tp1_hit", False),
+                    "breakeven_active": pos.get("breakeven_active", False),
+                    "highest_price": pos.get("highest_price", entry),
                     "entry_time": pos.get("entry_time"),
                     "status": status,
                 })

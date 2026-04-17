@@ -119,6 +119,18 @@ class RiskManager:
             # 트레일링은 위로만 (기존 stop_loss 아래로 내려가지 않음)
             pos["stop_loss"] = max(pos["stop_loss"], new_stop)
 
+        # ADR-017: Breakeven Stop (BE3) — peak_return ≥ trigger 도달 시
+        # stop을 entry × (1 + offset)로 상향. 기존 trailing과 max 비교로 공존.
+        if getattr(self._config, "breakeven_enabled", False) and not pos.get("breakeven_active", False):
+            entry = pos["entry_price"]
+            peak = pos["highest_price"]
+            trigger = getattr(self._config, "breakeven_trigger_pct", 0.03)
+            if entry > 0 and (peak - entry) / entry >= trigger:
+                offset = getattr(self._config, "breakeven_offset_pct", 0.01)
+                be_stop = entry * (1.0 + offset)
+                pos["stop_loss"] = max(pos["stop_loss"], be_stop)
+                pos["breakeven_active"] = True
+
     def check_tp1(self, ticker: str, current_price: float) -> bool:
         pos = self._positions.get(ticker)
         if not pos or pos.get("tp1_hit"):

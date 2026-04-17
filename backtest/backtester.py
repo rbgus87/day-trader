@@ -222,6 +222,14 @@ class Backtester:
                     exit_price_slipped, net_exit = apply_sell_costs(exit_price, self._costs)
                     pnl = (net_exit - position["net_entry"]) * remaining
                     pnl_pct = (net_exit - position["net_entry"]) / position["net_entry"]
+                    # ADR-017: BE 발동 후 stop 터치면 breakeven_stop 라벨
+                    if (
+                        position.get("breakeven_active")
+                        and position["stop_loss"] >= position["entry_price"]
+                    ):
+                        exit_reason = "breakeven_stop"
+                    else:
+                        exit_reason = "stop_loss"
                     trades.append({
                         "entry_ts": position["entry_ts"],
                         "exit_ts": row["ts"],
@@ -229,7 +237,7 @@ class Backtester:
                         "exit_price": exit_price_slipped,
                         "pnl": pnl,
                         "pnl_pct": pnl_pct,
-                        "exit_reason": "stop_loss",
+                        "exit_reason": exit_reason,
                     })
                     logger.debug(
                         f"[BT] 손절 ts={row['ts']} exit={exit_price_slipped:.1f} "
@@ -327,6 +335,21 @@ class Backtester:
                         # 트레일링 스톱은 위로만 움직임 (기존 stop보다 낮아지면 유지)
                         position["stop_loss"] = max(position["stop_loss"], new_stop)
 
+                    # ADR-017: Breakeven Stop (BE3) — peak_return ≥ trigger 시
+                    # stop을 entry × (1 + offset)로 상향. trailing과 max 비교로 공존.
+                    if (
+                        getattr(self._config, "breakeven_enabled", False)
+                        and not position.get("breakeven_active", False)
+                    ):
+                        _entry = position["entry_price"]
+                        _peak = position.get("highest_price", _entry)
+                        _trig = getattr(self._config, "breakeven_trigger_pct", 0.03)
+                        if _entry > 0 and (_peak - _entry) / _entry >= _trig:
+                            _off = getattr(self._config, "breakeven_offset_pct", 0.01)
+                            _be_stop = _entry * (1.0 + _off)
+                            position["stop_loss"] = max(position["stop_loss"], _be_stop)
+                            position["breakeven_active"] = True
+
                     remaining = position.get("remaining_ratio", 0.5)
                     # 트레일링 스톱 체크
                     if low <= position["stop_loss"]:
@@ -334,6 +357,13 @@ class Backtester:
                         exit_price_slipped, net_exit = apply_sell_costs(exit_price, self._costs)
                         pnl = (net_exit - position["net_entry"]) * remaining
                         pnl_pct = (net_exit - position["net_entry"]) / position["net_entry"]
+                        exit_reason = (
+                            "breakeven_stop"
+                            if position.get("breakeven_active")
+                            and position["stop_loss"] >= position["entry_price"]
+                            and position["stop_loss"] <= position["entry_price"] * 1.02
+                            else "trailing_stop"
+                        )
                         trades.append({
                             "entry_ts": position["entry_ts"],
                             "exit_ts": row["ts"],
@@ -341,7 +371,7 @@ class Backtester:
                             "exit_price": exit_price_slipped,
                             "pnl": pnl,
                             "pnl_pct": pnl_pct,
-                            "exit_reason": "trailing_stop",
+                            "exit_reason": exit_reason,
                         })
                         logger.debug(
                             f"[BT] 트레일링 청산 ts={row['ts']} exit={exit_price_slipped:.1f} "

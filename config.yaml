@@ -81,6 +81,11 @@ strategy:
     atr_trail_min_pct: 0.02         # 하한 2%
     atr_trail_max_pct: 0.10         # 상한 10%
 
+    # ADR-017: Breakeven Stop (BE3) — peak_return 3% 도달 시 stop을 진입가+1%로
+    breakeven_enabled: true         # 활성화
+    breakeven_trigger_pct: 0.03     # +3% 도달 시 발동
+    breakeven_offset_pct: 0.01      # stop을 진입가+1%로 상향
+
   # 전략 선택기 임계값 (StrategySelector — 현재 항상 momentum)
   selector:
     momentum_etf_threshold: 2.0     # 섹터 ETF 등락 ≥ 2.0% → 모멘텀 전략

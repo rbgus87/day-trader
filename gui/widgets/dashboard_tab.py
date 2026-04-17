@@ -909,11 +909,16 @@ class DashboardTab(QWidget):
                 else "—"
             )
 
-            # 손절/트레일: stop_loss가 진입가 × 0.92보다 높으면 trailing 활성 표시
+            # 손절/트레일: BE 발동 여부 + stop_loss 위치로 상태 구분
             stop_loss_val = float(row_data.get("stop_loss", 0) or 0)
-            if stop_loss_val > entry_price * 0.93 and entry_price > 0:
+            be_active = bool(row_data.get("breakeven_active", False))
+            if be_active and entry_price > 0:
+                # ADR-017: Breakeven 발동 — stop이 entry+1% 이상
+                stop_text = f"{stop_loss_val:,.0f} BE↑"
+                stop_color = QColor("#a6e3a1")  # 초록 (리스크 제로)
+            elif stop_loss_val > entry_price * 0.93 and entry_price > 0:
                 stop_text = f"{stop_loss_val:,.0f} ↑"  # trailing 당김 중
-                stop_color = QColor("#f9e2af")
+                stop_color = QColor("#f9e2af")  # 노랑
             else:
                 stop_text = f"{stop_loss_val:,.0f}"
                 stop_color = None
