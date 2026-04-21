@@ -1,6 +1,6 @@
 # CLAUDE.md — day-trader
 
-> **최종 수정**: 2026-04-17 (페이퍼 시작 준비 완결)
+> **최종 수정**: 2026-04-21 (ADR-018 상한가 즉시 청산 반영)
 > 이 문서는 **백테스트에서 검증된 사실만** 기재한다.
 
 ---
@@ -34,10 +34,11 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 - 거래 시각 09:05 ≤ now ≤ 12:00
 - 동시 보유 포지션 `max_positions = 3` 이하
 
-### 청산 경로 (4종, ADR-010/017)
+### 청산 경로 (5종, ADR-010/017/018)
 
 | reason | 트리거 |
 |------|------|
+| `limit_up_exit` | **ADR-018**: 상한가 (전일종가 × 1.30, 호가 절사) 도달 시 즉시 시장가 매도. 체결 실패 시 stop을 상한가 × 0.99로 상향 |
 | `stop_loss` | 고정 -8% 손절 (`stop_loss_pct: -0.080`) |
 | `trailing_stop` | 진입 즉시 Chandelier (최고가 − ATR × 1.0), 하한 2% / 상한 10% |
 | `breakeven_stop` | **ADR-017**: peak_return ≥ 3% 도달 시 stop을 entry+1%로 상향, 이후 되돌림 |
@@ -67,16 +68,16 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 
 ---
 
-## 백테스트 결과 (baseline, 2026-04-17 ADR-017 Breakeven Stop 반영)
+## 백테스트 결과 (baseline, 2026-04-21 ADR-018 상한가 즉시 청산 반영)
 
-- **Profit Factor 4.28** (1주 가중, 41종목, Pure trailing + 고정 -8% 손절 + 돌파폭 ≥ 3% + BE3)
-- 연 거래 건수 254건
-- 총 PnL +290,869
-- 거래당 PnL +1,145
-- PF > 1 종목 수: 30 / 41
-- 청산 분포: forced_close 152 (59.8%) / breakeven_stop 72 (28.3%) / stop_loss 26 (10.2%) / trailing_stop 4 (1.6%)
-- 시장 국면별 PF (ADR-017): 강세 5.88 / 횡보 2.45 / 약세 3.11
+- **Profit Factor 4.56** (1주 가중, 41종목, Pure trailing + 고정 -8% 손절 + 돌파폭 ≥ 3% + BE3 + 상한가 청산)
+- 연 거래 건수 248건
+- 총 PnL +297,059
+- 거래당 PnL +1,198
+- 청산 분포: forced_close 134 (54.0%) / breakeven_stop 70 (28.2%) / stop_loss 25 (10.1%) / **limit_up_exit 15 (6.0%)** / trailing_stop 4 (1.6%)
+- `limit_up_exit` 세부: PnL +111,607 (전체 37.6%) / 거래당 평균 +8.64%
 - **이전 baseline**
+  - ADR-017 (BE3): PF 4.28 / 254건 / 강세 5.88 / 횡보 2.45 / 약세 3.11
   - ADR-016 (돌파폭 3%): PF 3.88 / 240건 / 약세 2.16
   - ADR-010 (base): PF 3.28 ~ 3.41 / 거래 273~279건
 - **Walk-Forward 검증** (ADR-011, ADR-017 이전): 학습 PF 5.11 → 검증 PF 4.05 (-21%, 통과)
@@ -131,7 +132,7 @@ day-trader/
 ├── notification/            # 텔레그램
 ├── tests/                   # pytest
 └── docs/
-    ├── adr/                 # ADR-001 ~ ADR-014
+    ├── adr/                 # ADR-001 ~ ADR-018
     ├── legacy/              # 재조립 전 문서 보존
     └── verification_commands.md
 ```
@@ -185,6 +186,7 @@ pytest tests/ --cov=. --cov-report=term-missing
 - [x] 분봉 자동 수집 (ADR-014)
 - [x] 돌파 폭 하한 3% (ADR-016) — PF 3.41 → 3.88, 약세 PF 1.55 → 2.16
 - [x] Breakeven Stop BE3 (ADR-017) — PF 3.88 → 4.28, 약세 PF 2.16 → 3.11
+- [x] 상한가 즉시 청산 (ADR-018) — PF 4.28 → 4.56 (+6.5%), limit_up_exit 15건 (6.0%, 거래당 +8.64%)
 
 검증 명령어: `docs/verification_commands.md`
 후속 작업: [`docs/phase_followup_todo.md`](docs/phase_followup_todo.md)

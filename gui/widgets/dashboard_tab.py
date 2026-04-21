@@ -47,6 +47,10 @@ class DashboardTab(QWidget):
     # (종목/진입가/수량/투입액/현재가/수익률/미실현PnL/경과/손절/트레일/상태)
     POSITIONS_COLUMN_RATIOS = [14, 9, 6, 11, 9, 8, 12, 8, 11, 12]
 
+    # 당일 체결 컬럼 비율 — 종목 컬럼이 좁아 이름 truncate 되는 문제 해결
+    # (시간/종목/매매/가격/수량/투입액/손익/사유)
+    TRADES_COLUMN_RATIOS = [7, 20, 5, 10, 4, 11, 7, 6]
+
     # 매도 사유 + 전략명 → 짧은 코드 매핑 (툴팁에 원본)
     # ADR-010: TP1 시스템 폐기 → 매핑 제거
     REASON_CODES = {
@@ -535,15 +539,23 @@ class DashboardTab(QWidget):
         return self._positions_card
 
     def eventFilter(self, obj, event):  # type: ignore[override]
-        if obj is self._positions_table and event.type() == QEvent.Type.Resize:
+        if event.type() == QEvent.Type.Resize:
             # 리사이즈 시점에 viewport().width() 가 아직 갱신되지 않음 →
             # event.size() 의 새 폭에서 frame/scrollbar 차감해 직접 계산
-            tbl = self._positions_table
-            new_w = event.size().width() - tbl.frameWidth() * 2
-            sb = tbl.verticalScrollBar()
-            if sb.isVisible():
-                new_w -= sb.width()
-            self._apply_positions_column_widths(new_w)
+            if obj is self._positions_table:
+                tbl = self._positions_table
+                new_w = event.size().width() - tbl.frameWidth() * 2
+                sb = tbl.verticalScrollBar()
+                if sb.isVisible():
+                    new_w -= sb.width()
+                self._apply_positions_column_widths(new_w)
+            elif obj is getattr(self, "_trades_table", None):
+                tbl = self._trades_table
+                new_w = event.size().width() - tbl.frameWidth() * 2
+                sb = tbl.verticalScrollBar()
+                if sb.isVisible():
+                    new_w -= sb.width()
+                self._apply_trades_column_widths(new_w)
         return super().eventFilter(obj, event)
 
     def _apply_positions_column_widths(self, total: int | None = None) -> None:
@@ -563,6 +575,24 @@ class DashboardTab(QWidget):
         ratios = self.POSITIONS_COLUMN_RATIOS
         s = sum(ratios)
         # 마지막 컬럼은 잔여 할당 (반올림 오차 흡수)
+        used = 0
+        for i, r in enumerate(ratios[:-1]):
+            w = max(1, int(total * r / s))
+            table.setColumnWidth(i, w)
+            used += w
+        table.setColumnWidth(len(ratios) - 1, max(1, total - used))
+
+    def _apply_trades_column_widths(self, total: int | None = None) -> None:
+        """당일 체결 컬럼을 비율대로 재배치."""
+        table = getattr(self, "_trades_table", None)
+        if not table:
+            return
+        if total is None:
+            total = table.viewport().width()
+        if total <= 0:
+            return
+        ratios = self.TRADES_COLUMN_RATIOS
+        s = sum(ratios)
         used = 0
         for i, r in enumerate(ratios[:-1]):
             w = max(1, int(total * r / s))
@@ -621,13 +651,21 @@ class DashboardTab(QWidget):
 
         self._trades_table = QTableWidget()
         columns = ["시간", "종목", "매매", "가격", "수량", "투입액", "손익", "사유"]
+        assert len(columns) == len(self.TRADES_COLUMN_RATIOS), \
+            "trades columns/ratios mismatch"
         self._trades_table.setColumnCount(len(columns))
         self._trades_table.setHorizontalHeaderLabels(columns)
         self._trades_table.setAlternatingRowColors(True)
-        self._trades_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        # positions 테이블과 동일한 비례 폭 — eventFilter 로 리사이즈마다 재분배
+        hdr = self._trades_table.horizontalHeader()
+        hdr.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        hdr.setStretchLastSection(False)
         self._trades_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._trades_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._trades_table.verticalHeader().setVisible(False)
+        # 리사이즈 이벤트 감지
+        self._trades_table.installEventFilter(self)
+        QTimer.singleShot(0, self._apply_trades_column_widths)
         self._trades_card.addWidget(self._trades_table, stretch=1)
         return self._trades_card
 
