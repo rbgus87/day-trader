@@ -86,6 +86,11 @@ strategy:
     breakeven_trigger_pct: 0.03     # +3% 도달 시 발동
     breakeven_offset_pct: 0.01      # stop을 진입가+1%로 상향
 
+    # 상한가 즉시 청산 — current_price >= 상한가 도달 시 즉시 매도
+    limit_up_exit_enabled: true     # 활성화
+    limit_up_pct: 0.30              # 전일종가 × 1.30 (호가 절사)
+    limit_up_stop_floor_pct: 0.99   # 매도 실패 시 stop = 상한가 × 0.99 상향
+
   # 전략 선택기 임계값 (StrategySelector — 현재 항상 momentum)
   selector:
     momentum_etf_threshold: 2.0     # 섹터 ETF 등락 ≥ 2.0% → 모멘텀 전략

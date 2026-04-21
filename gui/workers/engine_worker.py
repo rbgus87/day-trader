@@ -46,6 +46,10 @@ class EngineWorker(QThread):
         # Market filter (Phase 1 Day 3) — 코스피/코스닥 지수 MA 기반 매수 차단
         self._market_filter = None
         self._ticker_markets: dict[str, str] = {}  # {ticker: "kospi"/"kosdaq"/"unknown"}
+        # 유니버스 종목명 맵 (active_strategies와 독립) — trades 조회 시 fallback
+        self._ticker_names: dict[str, str] = {}
+        # 상한가 맵 (전일 종가 × 1.30, 호가 절사) — OHLCV 갱신 시 재계산
+        self._limit_up_map: dict[str, float] = {}
 
         # Queues
         self._tick_queue = None
@@ -493,6 +497,46 @@ class EngineWorker(QThread):
                 pos = self._risk_manager.get_position(ticker)
                 if pos is None or pos["remaining_qty"] <= 0:
                     continue
+                # 상한가 즉시 청산 (stop_loss 체크 전, 최우선)
+                if self._risk_manager.check_limit_up(ticker, price):
+                    qty = pos["remaining_qty"]
+                    entry = pos["entry_price"]
+                    pnl = (price - entry) * qty
+                    pnl_pct = ((price / entry) - 1) * 100 if entry > 0 else 0
+                    strategy_name = pos.get("strategy", "") or "unknown"
+                    result = await self._order_manager.execute_sell_stop(
+                        ticker=ticker, qty=qty, price=int(price),
+                        strategy=strategy_name, pnl=pnl, pnl_pct=pnl_pct,
+                        exit_reason="limit_up_exit",
+                    )
+                    if result is not None:
+                        self._risk_manager.settle_sell(ticker, price, qty)
+                        if pnl >= 0:
+                            self._rt_wins += 1
+                        else:
+                            self._rt_losses += 1
+                        logger.info(
+                            f"limit_up_exit 실행: {ticker} {qty}주 @ {price:,} "
+                            f"PnL={pnl:+,.0f}"
+                        )
+                        strat_info = self._active_strategies.get(ticker)
+                        if strat_info:
+                            strat_info["strategy"].on_exit()
+                        self.signals.trade_executed.emit({
+                            "time": datetime.now().strftime("%H:%M:%S"),
+                            "side": "sell", "ticker": ticker,
+                            "price": int(price), "qty": qty,
+                            "pnl": int(pnl), "reason": "limit_up_exit",
+                        })
+                        continue
+                    else:
+                        # 체결 실패 → stop을 상한가 × floor_pct 로 상향 (안전장치)
+                        new_stop = self._risk_manager.raise_stop_to_limit_up_floor(ticker)
+                        logger.warning(
+                            f"limit_up_exit 실패 → stop 상향: {ticker} "
+                            f"new_stop={new_stop:,.0f}"
+                        )
+                        # fall-through: 이후 기존 stop_loss/trailing 로직이 처리
                 # 손절 체크 (tp1_hit 후 트리거면 trailing_stop로 구분)
                 if self._risk_manager.check_stop_loss(ticker, price):
                     qty = pos["remaining_qty"]
@@ -701,6 +745,7 @@ class EngineWorker(QThread):
                         stop_loss=sl,
                         tp1_price=tp1,
                         strategy=signal.strategy or "",
+                        limit_up_price=self._limit_up_map.get(signal.ticker),
                     )
                     strategy.on_entry()
                     self.signals.trade_executed.emit({
@@ -885,6 +930,9 @@ class EngineWorker(QThread):
         self._ticker_markets = {
             s["ticker"]: s.get("market", "unknown") for s in stocks
         }
+        self._ticker_names = {
+            s["ticker"]: s.get("name", s["ticker"]) for s in stocks
+        }
         return stocks
 
     def _register_active_strategies(self, stocks: list[dict]) -> None:
@@ -949,10 +997,22 @@ class EngineWorker(QThread):
                         self._prev_high_map[ticker] = prev_high
                     if prev_close > 0:
                         self._prev_close[ticker] = prev_close
+                        # 상한가 = 전일종가 × (1 + limit_up_pct), 호가 절사
+                        try:
+                            from core.price_utils import calculate_limit_up_price
+                            lu_pct = getattr(self._config.trading, "limit_up_pct", 0.30)
+                            lu = calculate_limit_up_price(prev_close, lu_pct)
+                            if lu > 0:
+                                self._limit_up_map[ticker] = float(lu)
+                        except Exception as e:
+                            logger.debug(f"상한가 계산 실패 ({ticker}): {e}")
             except Exception as e:
                 logger.debug(f"전일 OHLCV 실패 ({ticker}): {e}")
             await asyncio.sleep(0.1)
-        logger.info(f"전일 OHLCV 갱신 완료: {init_count}/{len(stocks)}")
+        logger.info(
+            f"전일 OHLCV 갱신 완료: {init_count}/{len(stocks)} "
+            f"(상한가 {len(self._limit_up_map)}종)"
+        )
 
     async def _check_uptime_sanity(self) -> None:
         """GUI 24시간 이상 가동 시 안내 알림 — ADR-006 안전망.
@@ -1575,11 +1635,13 @@ class EngineWorker(QThread):
             "SELECT * FROM trades WHERE traded_at LIKE ? || '%' ORDER BY traded_at DESC",
             (today,),
         )
-        # 유니버스에서 종목명 매핑
+        # 종목명 매핑: active_strategies 우선, fallback으로 유니버스 전체 맵
         for trade in trades:
             ticker = trade.get("ticker", "")
             if ticker in self._active_strategies:
                 trade["name"] = self._active_strategies[ticker].get("name", "")
+            elif ticker in self._ticker_names:
+                trade["name"] = self._ticker_names[ticker]
         return trades
 
     def _emit_pnl(self):

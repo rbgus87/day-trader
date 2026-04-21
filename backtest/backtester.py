@@ -90,6 +90,8 @@ class Backtester:
         # ATR 조회용 DB 경로 (Phase 2 Day 7 버그픽스):
         # ProcessPool 워커에서 db=None으로 생성 시 ATR 트레일이 꺼지던 문제 해결
         self._atr_db_path = atr_db_path
+        # 당일 상한가 (_setup_strategy_day 에서 prev_close × limit_up_pct로 계산)
+        self._current_limit_up: float | None = None
 
     # ------------------------------------------------------------------
     # 데이터 로드
@@ -199,6 +201,7 @@ class Backtester:
                         "net_entry": net_entry,
                         "stop_loss": stop_loss,
                         "tp1_price": None if pure_trail else tp1,
+                        "limit_up_price": self._current_limit_up,
                     }
                     if pure_trail:
                         position["tp1_hit"] = True
@@ -214,6 +217,35 @@ class Backtester:
                 low = float(row["low"])
                 high = float(row["high"])
                 close = float(row["close"])
+
+                # 상한가 즉시 청산 (stop_loss 체크 전, 최우선)
+                lu = position.get("limit_up_price")
+                if (
+                    getattr(self._config, "limit_up_exit_enabled", False)
+                    and lu
+                    and high >= lu
+                ):
+                    exit_price = lu
+                    remaining = position.get("remaining_ratio", 1.0)
+                    exit_price_slipped, net_exit = apply_sell_costs(exit_price, self._costs)
+                    pnl = (net_exit - position["net_entry"]) * remaining
+                    pnl_pct = (net_exit - position["net_entry"]) / position["net_entry"]
+                    trades.append({
+                        "entry_ts": position["entry_ts"],
+                        "exit_ts": row["ts"],
+                        "entry_price": position["entry_price"],
+                        "exit_price": exit_price_slipped,
+                        "pnl": pnl,
+                        "pnl_pct": pnl_pct,
+                        "exit_reason": "limit_up_exit",
+                    })
+                    logger.debug(
+                        f"[BT] 상한가 청산 ts={row['ts']} exit={exit_price_slipped:.1f} "
+                        f"pnl={pnl:.1f} ({pnl_pct:.2%})"
+                    )
+                    position = None
+                    strategy.on_exit()
+                    continue
 
                 # 손절 확인 (캔들 저가 기준)
                 if low <= position["stop_loss"]:
@@ -651,6 +683,23 @@ class Backtester:
             prev_high = float(prev_day_df["high"].max())
             prev_volume = int(prev_day_df["volume"].sum())
             strategy.set_prev_day_data(prev_high, prev_volume)
+
+        # 당일 상한가 계산 (전일 종가 × 1.30, 호가 절사)
+        self._current_limit_up = None
+        if (
+            getattr(self._config, "limit_up_exit_enabled", False)
+            and prev_day_df is not None
+            and not prev_day_df.empty
+        ):
+            try:
+                from core.price_utils import calculate_limit_up_price
+                prev_close = float(prev_day_df.iloc[-1]["close"])
+                lu_pct = getattr(self._config, "limit_up_pct", 0.30)
+                lu = calculate_limit_up_price(prev_close, lu_pct)
+                if lu > 0:
+                    self._current_limit_up = float(lu)
+            except Exception:
+                self._current_limit_up = None
 
         # ORB: 전일 거래량 설정
         if hasattr(strategy, "set_prev_day_volume") and prev_day_df is not None:

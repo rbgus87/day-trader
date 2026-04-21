@@ -108,6 +108,11 @@ class TradingConfig:
     breakeven_enabled: bool = True
     breakeven_trigger_pct: float = 0.03
     breakeven_offset_pct: float = 0.01
+
+    # 상한가 즉시 청산 — 도달 시 즉시 매도, 실패 시 stop을 상한가×0.99로 상향
+    limit_up_exit_enabled: bool = True
+    limit_up_pct: float = 0.30
+    limit_up_stop_floor_pct: float = 0.99  # 실패 시 stop = limit_up × 0.99
     adx_enabled: bool = True
     adx_length: int = 14
     adx_min: float = 25.0
@@ -256,6 +261,9 @@ class AppConfig:
             breakeven_enabled=mom.get("breakeven_enabled", True),
             breakeven_trigger_pct=mom.get("breakeven_trigger_pct", 0.03),
             breakeven_offset_pct=mom.get("breakeven_offset_pct", 0.01),
+            limit_up_exit_enabled=mom.get("limit_up_exit_enabled", True),
+            limit_up_pct=mom.get("limit_up_pct", 0.30),
+            limit_up_stop_floor_pct=mom.get("limit_up_stop_floor_pct", 0.99),
             adx_enabled=mom.get("adx_enabled", True),
             adx_length=mom.get("adx_length", 14),
             adx_min=mom.get("adx_min", 25.0),

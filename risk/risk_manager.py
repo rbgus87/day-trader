@@ -31,7 +31,7 @@ class RiskManager:
     def register_position(
         self, ticker: str, entry_price: float, qty: int, stop_loss: float,
         tp1_price: float | None = None, trailing_pct: float | None = None,
-        strategy: str = "",
+        strategy: str = "", limit_up_price: float | None = None,
     ) -> None:
         now = datetime.now()
         self._positions[ticker] = {
@@ -45,6 +45,8 @@ class RiskManager:
             "tp1_hit": False,
             "entry_time": now,
             "strategy": strategy,
+            "limit_up_price": limit_up_price,
+            "limit_up_exit_failed": False,
         }
         # 자본 차감
         cost = entry_price * qty
@@ -83,6 +85,39 @@ class RiskManager:
         if not pos:
             return False
         return current_price <= pos["stop_loss"]
+
+    def check_limit_up(self, ticker: str, current_price: float) -> bool:
+        """상한가 도달 여부. limit_up_price 없거나 기능 비활성이면 False."""
+        if not getattr(self._config, "limit_up_exit_enabled", False):
+            return False
+        pos = self._positions.get(ticker)
+        if not pos:
+            return False
+        lu = pos.get("limit_up_price")
+        if not lu or lu <= 0:
+            return False
+        # 이미 매도 실패 후 stop 상향된 상태면 재시도 방지
+        if pos.get("limit_up_exit_failed"):
+            return False
+        return current_price >= lu
+
+    def raise_stop_to_limit_up_floor(self, ticker: str) -> float | None:
+        """상한가 즉시 청산 실패 시 stop을 상한가 × floor_pct로 상향.
+
+        Returns:
+            새 stop_loss 값. 포지션 없거나 limit_up 없으면 None.
+        """
+        pos = self._positions.get(ticker)
+        if not pos:
+            return None
+        lu = pos.get("limit_up_price")
+        if not lu or lu <= 0:
+            return None
+        floor_pct = getattr(self._config, "limit_up_stop_floor_pct", 0.99)
+        new_stop = lu * floor_pct
+        pos["stop_loss"] = max(pos["stop_loss"], new_stop)
+        pos["limit_up_exit_failed"] = True
+        return pos["stop_loss"]
 
     def update_trailing_stop(self, ticker: str, current_price: float) -> None:
         pos = self._positions.get(ticker)

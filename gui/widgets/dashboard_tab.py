@@ -55,6 +55,8 @@ class DashboardTab(QWidget):
         "stop_loss": "SL",
         "trailing_stop": "TRL",
         "trailing": "TRL",
+        "breakeven_stop": "BE",
+        "limit_up_exit": "상한",
         "momentum": "MOM",
         "paper": "?",
         "unknown": "?",
