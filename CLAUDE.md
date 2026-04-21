@@ -38,7 +38,7 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 
 | reason | 트리거 |
 |------|------|
-| `limit_up_exit` | **ADR-018**: 상한가 (전일종가 × 1.30, 호가 절사) 도달 시 즉시 시장가 매도. 체결 실패 시 stop을 상한가 × 0.99로 상향 |
+| `limit_up_exit` | **ADR-018**: 상한가 (키움 ka10001 `upl_pric`, 실패 시 전일종가 × 1.30 호가 절사 fallback) 도달 시 즉시 시장가 매도. 체결 실패 시 stop을 상한가 × 0.99로 상향 |
 | `stop_loss` | 고정 -8% 손절 (`stop_loss_pct: -0.080`) |
 | `trailing_stop` | 진입 즉시 Chandelier (최고가 − ATR × 1.0), 하한 2% / 상한 10% |
 | `breakeven_stop` | **ADR-017**: peak_return ≥ 3% 도달 시 stop을 entry+1%로 상향, 이후 되돌림 |

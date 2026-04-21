@@ -972,6 +972,8 @@ class EngineWorker(QThread):
             return
         logger.info(f"전일 OHLCV 갱신 시작 — {len(stocks)}종목")
         init_count = 0
+        lu_api_count = 0
+        lu_fallback_count = 0
         for s in stocks:
             ticker = s["ticker"]
             try:
@@ -997,21 +999,34 @@ class EngineWorker(QThread):
                         self._prev_high_map[ticker] = prev_high
                     if prev_close > 0:
                         self._prev_close[ticker] = prev_close
-                        # 상한가 = 전일종가 × (1 + limit_up_pct), 호가 절사
+                        # 상한가: 1차 ka10001 upl_pric 사용, 실패 시 전일종가 × 1.30 호가 절사
+                        lu_val: float | None = None
                         try:
-                            from core.price_utils import calculate_limit_up_price
-                            lu_pct = getattr(self._config.trading, "limit_up_pct", 0.30)
-                            lu = calculate_limit_up_price(prev_close, lu_pct)
-                            if lu > 0:
-                                self._limit_up_map[ticker] = float(lu)
+                            api_lu = await self._rest_client.get_limit_up_price(ticker)
+                            if api_lu and api_lu > 0:
+                                lu_val = float(api_lu)
+                                lu_api_count += 1
                         except Exception as e:
-                            logger.debug(f"상한가 계산 실패 ({ticker}): {e}")
+                            logger.debug(f"상한가 API 실패 ({ticker}): {e}")
+                        if lu_val is None:
+                            try:
+                                from core.price_utils import calculate_limit_up_price
+                                lu_pct = getattr(self._config.trading, "limit_up_pct", 0.30)
+                                calc = calculate_limit_up_price(prev_close, lu_pct)
+                                if calc > 0:
+                                    lu_val = float(calc)
+                                    lu_fallback_count += 1
+                            except Exception as e:
+                                logger.debug(f"상한가 계산 실패 ({ticker}): {e}")
+                        if lu_val is not None:
+                            self._limit_up_map[ticker] = lu_val
             except Exception as e:
                 logger.debug(f"전일 OHLCV 실패 ({ticker}): {e}")
             await asyncio.sleep(0.1)
         logger.info(
             f"전일 OHLCV 갱신 완료: {init_count}/{len(stocks)} "
-            f"(상한가 {len(self._limit_up_map)}종)"
+            f"(상한가 {len(self._limit_up_map)}종 "
+            f"— API {lu_api_count} / fallback {lu_fallback_count})"
         )
 
     async def _check_uptime_sanity(self) -> None:

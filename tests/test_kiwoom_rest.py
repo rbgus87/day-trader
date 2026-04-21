@@ -124,3 +124,52 @@ async def test_get_market_snapshot_api_failure(rest_client):
     assert snapshot["kospi_gap_pct"] == 0.0
     assert snapshot["sector_etf_change_pct"] == 0.0
     assert snapshot["index_range_pct"] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# get_limit_up_price 테스트 (ADR-018)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_get_limit_up_price_output1_wrapper(rest_client):
+    """output1 wrapper 내 upl_pric 추출."""
+    raw = {"output1": {"cur_pric": "71500", "upl_pric": "90350"}}
+    with patch.object(rest_client, "get_current_price", new_callable=AsyncMock, return_value=raw):
+        lu = await rest_client.get_limit_up_price("069500")
+    assert lu == 90350
+
+
+@pytest.mark.asyncio
+async def test_get_limit_up_price_flat_dict(rest_client):
+    """top-level flat dict 내 upl_pric 추출 (output1 없음)."""
+    raw = {"stk_cd": "005930", "cur_prc": "72000", "upl_pric": "93600"}
+    with patch.object(rest_client, "get_current_price", new_callable=AsyncMock, return_value=raw):
+        lu = await rest_client.get_limit_up_price("005930")
+    assert lu == 93600
+
+
+@pytest.mark.asyncio
+async def test_get_limit_up_price_signed_value(rest_client):
+    """부호 붙은 문자열은 abs 처리."""
+    raw = {"upl_pric": "+13000"}
+    with patch.object(rest_client, "get_current_price", new_callable=AsyncMock, return_value=raw):
+        lu = await rest_client.get_limit_up_price("000250")
+    assert lu == 13000
+
+
+@pytest.mark.asyncio
+async def test_get_limit_up_price_missing(rest_client):
+    """upl_pric 누락 시 None."""
+    raw = {"output1": {"cur_pric": "71500"}}
+    with patch.object(rest_client, "get_current_price", new_callable=AsyncMock, return_value=raw):
+        lu = await rest_client.get_limit_up_price("069500")
+    assert lu is None
+
+
+@pytest.mark.asyncio
+async def test_get_limit_up_price_api_error(rest_client):
+    """API 예외 시 None."""
+    with patch.object(rest_client, "get_current_price",
+                      new_callable=AsyncMock, side_effect=Exception("boom")):
+        lu = await rest_client.get_limit_up_price("069500")
+    assert lu is None

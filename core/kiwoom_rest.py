@@ -165,6 +165,27 @@ class KiwoomRestClient:
         body = {"stk_cd": ticker}
         return await self.request("POST", EP_STOCK, API_STOCK_PRICE, data=body)
 
+    async def get_limit_up_price(self, ticker: str) -> int | None:
+        """ka10001의 upl_pric (상한가)를 조회. 실패/누락 시 None.
+
+        키움 REST 응답은 버전에 따라 top-level 플랫 dict 또는 output1 wrapper가
+        있어 둘 다 지원. 값 앞 부호는 +/-가 붙을 수 있어 abs().
+        """
+        try:
+            raw = await self.get_current_price(ticker)
+        except Exception as e:
+            logger.debug(f"ka10001 호출 실패 ({ticker}): {e}")
+            return None
+        # output1 wrapper 우선, 없으면 top-level
+        out = raw.get("output1") or raw
+        val = out.get("upl_pric")
+        if val is None or val == "":
+            return None
+        try:
+            return abs(int(float(str(val))))
+        except (ValueError, TypeError):
+            return None
+
     async def get_minute_ohlcv(self, ticker: str, tic_scope: int = 1,
                                 base_dt: str = "") -> dict:
         """분봉 데이터 조회.
