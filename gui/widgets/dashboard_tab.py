@@ -47,9 +47,9 @@ class DashboardTab(QWidget):
     # (종목/진입가/수량/투입액/현재가/수익률/미실현PnL/경과/손절/트레일/상태)
     POSITIONS_COLUMN_RATIOS = [14, 9, 6, 11, 9, 8, 12, 8, 11, 12]
 
-    # 당일 체결 컬럼 비율 — 종목 컬럼이 좁아 이름 truncate 되는 문제 해결
+    # 당일 체결 컬럼 비율 — 종목은 "종목명\n(코드)" 2줄 표시, 시간 HH:MM:SS 전체 수용
     # (시간/종목/매매/가격/수량/투입액/손익/사유)
-    TRADES_COLUMN_RATIOS = [7, 20, 5, 10, 4, 11, 7, 6]
+    TRADES_COLUMN_RATIOS = [9, 18, 5, 11, 4, 12, 8, 6]
 
     # 매도 사유 + 전략명 → 짧은 코드 매핑 (툴팁에 원본)
     # ADR-010: TP1 시스템 폐기 → 매핑 제거
@@ -358,7 +358,8 @@ class DashboardTab(QWidget):
         )
         bottom_splitter.addWidget(self._build_watchlist_panel())
         bottom_splitter.addWidget(self._build_trades_panel())
-        bottom_splitter.setSizes([600, 400])
+        # 체결 카드 컬럼 잘림 방지 — 감시/체결 50:50 기본 (이전 600:400 체결 폭 부족)
+        bottom_splitter.setSizes([500, 500])
         bottom_splitter.setChildrenCollapsible(False)
         root.addWidget(bottom_splitter, stretch=1)
 
@@ -663,6 +664,13 @@ class DashboardTab(QWidget):
         self._trades_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._trades_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._trades_table.verticalHeader().setVisible(False)
+        # 텍스트 잘림 방지 — wordWrap + ElideNone, 종목은 "종목명\n(코드)" 2줄
+        self._trades_table.setWordWrap(True)
+        self._trades_table.setTextElideMode(Qt.TextElideMode.ElideNone)
+        # 2줄 행 수용 (positions 테이블과 동일 44px)
+        self._trades_table.verticalHeader().setDefaultSectionSize(44)
+        # 최소 폭 보장 — splitter 비율이 조정되어도 종목 2줄이 잘리지 않게
+        self._trades_table.setMinimumWidth(500)
         # 리사이즈 이벤트 감지
         self._trades_table.installEventFilter(self)
         QTimer.singleShot(0, self._apply_trades_column_widths)
@@ -1034,7 +1042,8 @@ class DashboardTab(QWidget):
 
             ticker = str(row_data.get("ticker", ""))
             name = str(row_data.get("name", ""))
-            ticker_text = f"{name} ({ticker})" if name else ticker
+            # 좁은 컬럼 폭에서도 잘리지 않도록 2줄 (positions 테이블과 동일)
+            ticker_text = f"{name}\n({ticker})" if name else ticker
 
             # 투입액 (가격 × 수량)
             price_int = int(row_data.get("price", 0) or 0)
