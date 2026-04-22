@@ -610,7 +610,13 @@ class DashboardTab(QWidget):
         self._watchlist_table.setColumnCount(len(columns))
         self._watchlist_table.setHorizontalHeaderLabels(columns)
         self._watchlist_table.setAlternatingRowColors(True)
-        self._watchlist_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        # 종목 컬럼만 Stretch, 나머지는 ResizeToContents — Stretch 전체 균등 분배 시
+        # "⭐ 종목명" 이 좁은 종목 컬럼에 잘려 "... " 표시되던 문제 해결
+        hdr = self._watchlist_table.horizontalHeader()
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for i in range(1, len(columns)):
+            hdr.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setStretchLastSection(False)
         self._watchlist_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._watchlist_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._watchlist_table.verticalHeader().setVisible(False)
@@ -727,12 +733,16 @@ class DashboardTab(QWidget):
         self._pnl_fig.tight_layout(pad=0.5)
         self._pnl_canvas.draw_idle()
 
-    def _compute_today_from_db(self) -> tuple[float, int, int]:
-        """오늘자 매매 DB 집계로 (실현PnL, buy수, sell수) 반환.
+    def _compute_today_from_db(self) -> tuple[float, int, int, int, int]:
+        """오늘자 매매 DB 집계로 (실현PnL, buy수, sell수, wins, losses) 반환.
 
-        engine_worker가 emit하는 trades_count/daily_pnl이 다종목 환경에서
-        단일 strategy._trade_count만 참조하는 버그를 우회하기 위한 독립 경로.
+        engine_worker가 emit하는 trades_count/daily_pnl/win_rate이 다종목 환경에서
+        단일 strategy._trade_count만 참조하거나, _force_close 경로에서 _rt_wins/
+        _rt_losses 카운터가 증가하지 않는 버그를 우회하기 위한 독립 경로.
         실운영 로직(engine_worker, strategy)은 건드리지 않음.
+
+        wins/losses 기준: pnl>0 → win, pnl<0 → loss (pnl==0은 집계 제외).
+        backtester.py 의 `wins = sum(1 for p in pnl_series if p > 0)` 와 일치.
         """
         try:
             from datetime import date as _date
@@ -742,19 +752,27 @@ class DashboardTab(QWidget):
                 "SELECT "
                 " COALESCE(SUM(CASE WHEN side='sell' THEN COALESCE(pnl,0) ELSE 0 END), 0) AS pnl, "
                 " COALESCE(SUM(CASE WHEN side='buy'  THEN 1 ELSE 0 END), 0) AS buys, "
-                " COALESCE(SUM(CASE WHEN side='sell' THEN 1 ELSE 0 END), 0) AS sells "
+                " COALESCE(SUM(CASE WHEN side='sell' THEN 1 ELSE 0 END), 0) AS sells, "
+                " COALESCE(SUM(CASE WHEN side='sell' AND COALESCE(pnl,0) > 0 THEN 1 ELSE 0 END), 0) AS wins, "
+                " COALESCE(SUM(CASE WHEN side='sell' AND COALESCE(pnl,0) < 0 THEN 1 ELSE 0 END), 0) AS losses "
                 "FROM trades WHERE date(traded_at) = ?",
                 (today,),
             ).fetchone()
             conn.close()
-            return float(row[0] or 0.0), int(row[1] or 0), int(row[2] or 0)
+            return (
+                float(row[0] or 0.0),
+                int(row[1] or 0),
+                int(row[2] or 0),
+                int(row[3] or 0),
+                int(row[4] or 0),
+            )
         except Exception:
-            return 0.0, 0, 0
+            return 0.0, 0, 0, 0, 0
 
     def update_summary(self, data: dict) -> None:
         """Update summary bar."""
         # DB 기반 실제 값 계산 (engine_worker 카운터 버그 우회)
-        db_pnl, db_buys, db_sells = self._compute_today_from_db()
+        db_pnl, db_buys, db_sells, db_wins, db_losses = self._compute_today_from_db()
 
         data_pnl = float(data.get("daily_pnl", 0.0) or 0.0)
         # engine_worker 값이 0이거나 DB가 절대값 기준 더 크면 DB 우선
@@ -782,13 +800,16 @@ class DashboardTab(QWidget):
         data_trades = int(data.get("trades_count", 0) or 0)
         trades_count = max(db_sells, data_trades)  # 청산 건수
         buys_count = max(db_buys, data_trades)      # 진입 건수
-        wins = data.get("wins", 0)
-        losses = data.get("losses", 0)
         # "당일 거래"는 당일 진입 횟수
         self._trades_value.setText(f"{buys_count}")
         self._trades_subtitle.setText(f"청산 {trades_count} / 보유 {open_count}")
 
-        win_rate = data.get("win_rate", 0.0)
+        # 승률: DB 기반 (forced_close 포함 모든 청산), engine_worker _rt_wins/_rt_losses
+        # 는 _force_close 경로에서 집계 누락 → DB 값이 ground truth.
+        if db_sells > 0:
+            win_rate = db_wins / db_sells * 100
+        else:
+            win_rate = float(data.get("win_rate", 0.0) or 0.0)
         avg = data.get("avg_win_rate", 0.0)
         self._winrate_value.setText(f"{win_rate:.1f}%")
         self._winrate_value.setStyleSheet(
