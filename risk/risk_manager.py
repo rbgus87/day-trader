@@ -165,6 +165,10 @@ class RiskManager:
                 be_stop = entry * (1.0 + offset)
                 pos["stop_loss"] = max(pos["stop_loss"], be_stop)
                 pos["breakeven_active"] = True
+                logger.info(
+                    f"[BE3] 발동: {ticker} entry={entry:,.0f} peak={peak:,.0f} "
+                    f"stop→{pos['stop_loss']:,.0f} (+{(peak - entry) / entry * 100:.2f}%)"
+                )
 
     def check_tp1(self, ticker: str, current_price: float) -> bool:
         pos = self._positions.get(ticker)

@@ -547,7 +547,13 @@ class EngineWorker(QThread):
                     # ADR-010: Pure trailing 모드 시 tp1_hit 없이도 trailing 활성
                     pure_trail = not getattr(self._config.trading, "atr_tp_enabled", True)
                     is_trailing = pos.get("tp1_hit") or pure_trail
-                    reason_code = "trailing_stop" if is_trailing and price > entry * 0.975 else "stop_loss"
+                    # ADR-017: BE 발동 후 상향된 stop에 걸린 청산이면 breakeven_stop 태깅
+                    if pos.get("breakeven_active") and pos["stop_loss"] >= pos["entry_price"]:
+                        reason_code = "breakeven_stop"
+                    elif is_trailing and price > entry * 0.975:
+                        reason_code = "trailing_stop"
+                    else:
+                        reason_code = "stop_loss"
                     await self._order_manager.execute_sell_stop(
                         ticker=ticker, qty=qty, price=int(price),
                         strategy=strategy_name, pnl=pnl, pnl_pct=pnl_pct,

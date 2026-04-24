@@ -71,6 +71,9 @@ class MomentumStrategy(BaseStrategy):
         min_bp = getattr(self._config, "min_breakout_pct", 0.0)
         breakout_pct = (current_price - self._prev_day_high) / self._prev_day_high
         if breakout_pct < min_bp:
+            logger.debug(
+                f"[BREAKOUT] 미달: {tick['ticker']} {breakout_pct:.2%} < {min_bp:.2%}"
+            )
             return None
 
         # 2) 거래량 필터
