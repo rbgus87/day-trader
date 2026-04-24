@@ -126,6 +126,9 @@ def build() -> None:
     print("\n" + "=" * 50)
     print("빌드된 exe selftest 실행")
     print("=" * 50)
+    # exe 내부 Python이 stdout을 UTF-8로 열도록 강제 (cp949 파이프 인코딩 방지)
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
     try:
         result = subprocess.run(
             [exe_path, "--selftest"],
@@ -134,6 +137,7 @@ def build() -> None:
             timeout=30,
             encoding="utf-8",
             errors="replace",
+            env=env,
         )
     except subprocess.TimeoutExpired:
         print("*** selftest 30초 타임아웃 — 운영 투입 금지 ***")

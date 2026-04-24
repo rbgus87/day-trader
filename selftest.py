@@ -18,6 +18,16 @@ import time
 from pathlib import Path
 from typing import Callable
 
+# Windows cp949 파이프에서도 한글/em-dash 출력 안전화
+# (subprocess(capture_output) 경유 시 exe의 stdout 기본 인코딩이 cp949)
+try:
+    if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 # Catppuccin 호환 ANSI 컬러 (Windows 콘솔도 ANSI 지원)
 _GREEN = "\x1b[32m"
 _RED = "\x1b[31m"
@@ -70,9 +80,15 @@ def _print_step(idx: int, name: str, status: str, detail: str = "", remedy: str 
     line = f"{color}{tag:<7}{_RESET} {idx:02d}. {name:<28}"
     if detail:
         line += f"  {detail}"
-    print(line)
-    if remedy:
-        print(f"        {_GRAY}→ {remedy}{_RESET}")
+    try:
+        print(line)
+        if remedy:
+            print(f"        {_GRAY}→ {remedy}{_RESET}")
+    except UnicodeEncodeError:
+        # 인코딩 실패 시에도 집계 은폐 방지 — ASCII 폴백으로 최소 정보 보존
+        print(line.encode("ascii", "replace").decode("ascii"))
+        if remedy:
+            print(f"        -> {remedy.encode('ascii', 'replace').decode('ascii')}")
 
 
 # ──────────────────────────────────────────────────────────────────
