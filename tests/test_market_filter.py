@@ -52,6 +52,14 @@ def test_is_allowed_both_strong():
     assert mf.is_allowed("unknown") is True
 
 
+def test_initial_state_is_strong():
+    """첫 성공 전에는 강세 가정 (보수적 차단보다 진입 허용)."""
+    mf = MarketFilter(rest=None)
+    assert mf.kospi_strong is True
+    assert mf.kosdaq_strong is True
+    assert mf.last_update is None
+
+
 # ──────────────────────────────────────────────────────────────────────
 # _check_index (MA 계산 로직)
 # ──────────────────────────────────────────────────────────────────────
@@ -69,7 +77,7 @@ async def test_check_index_strong_above_ma():
     rest.get_index_daily.return_value = _make_index_response(
         [110, 100, 100, 100, 100, 100]
     )
-    mf = MarketFilter(rest=rest, ma_length=5)
+    mf = MarketFilter(rest=rest, ma_length=5, retry_delay=0.0)
 
     result = await mf._check_index(INDEX_KOSPI)
     assert result is True
@@ -83,7 +91,7 @@ async def test_check_index_weak_below_ma():
     rest.get_index_daily.return_value = _make_index_response(
         [95, 100, 100, 100, 100, 100]
     )
-    mf = MarketFilter(rest=rest, ma_length=5)
+    mf = MarketFilter(rest=rest, ma_length=5, retry_delay=0.0)
 
     result = await mf._check_index(INDEX_KOSDAQ)
     assert result is False
@@ -96,19 +104,35 @@ async def test_check_index_equal_to_ma_is_weak():
     rest.get_index_daily.return_value = _make_index_response(
         [100, 100, 100, 100, 100, 100]
     )
-    mf = MarketFilter(rest=rest, ma_length=5)
+    mf = MarketFilter(rest=rest, ma_length=5, retry_delay=0.0)
 
     assert await mf._check_index(INDEX_KOSPI) is False
 
 
 @pytest.mark.asyncio
-async def test_check_index_insufficient_data():
-    """데이터 부족 시 False (보수적)."""
+async def test_check_index_insufficient_data_returns_none():
+    """데이터 부족 시 재시도까지 실패하면 None (판정 불가)."""
     rest = AsyncMock()
     rest.get_index_daily.return_value = _make_index_response([110, 100])
-    mf = MarketFilter(rest=rest, ma_length=5)
+    mf = MarketFilter(rest=rest, ma_length=5, retry_delay=0.0)
 
-    assert await mf._check_index(INDEX_KOSPI) is False
+    assert await mf._check_index(INDEX_KOSPI) is None
+    # 재시도 1회 포함 총 2회 호출
+    assert rest.get_index_daily.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_check_index_retry_succeeds_after_empty():
+    """0건 응답 후 재시도에서 정상 데이터 받으면 판정 성공."""
+    rest = AsyncMock()
+    rest.get_index_daily.side_effect = [
+        {"inds_dt_pole_qry": []},  # 첫 호출: 빈 응답
+        _make_index_response([110, 100, 100, 100, 100, 100]),  # 재시도 성공
+    ]
+    mf = MarketFilter(rest=rest, ma_length=5, retry_delay=0.0)
+
+    assert await mf._check_index(INDEX_KOSPI) is True
+    assert rest.get_index_daily.call_count == 2
 
 
 @pytest.mark.asyncio
@@ -118,21 +142,21 @@ async def test_check_index_fallback_key():
     rest.get_index_daily.return_value = _make_index_response(
         [110, 100, 100, 100, 100, 100], key="output"
     )
-    mf = MarketFilter(rest=rest, ma_length=5)
+    mf = MarketFilter(rest=rest, ma_length=5, retry_delay=0.0)
 
     assert await mf._check_index(INDEX_KOSPI) is True
 
 
 @pytest.mark.asyncio
-async def test_check_index_zero_price_is_weak():
-    """가격 0 포함 시 False (이상치)."""
+async def test_check_index_zero_price_returns_none():
+    """가격 0 포함 시 None (이상치 → 이전 상태 유지)."""
     rest = AsyncMock()
     rest.get_index_daily.return_value = _make_index_response(
         [110, 0, 100, 100, 100, 100]
     )
-    mf = MarketFilter(rest=rest, ma_length=5)
+    mf = MarketFilter(rest=rest, ma_length=5, retry_delay=0.0)
 
-    assert await mf._check_index(INDEX_KOSPI) is False
+    assert await mf._check_index(INDEX_KOSPI) is None
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -151,7 +175,7 @@ async def test_refresh_updates_both_markets():
 
     rest.get_index_daily.side_effect = side_effect
 
-    mf = MarketFilter(rest=rest, ma_length=5)
+    mf = MarketFilter(rest=rest, ma_length=5, retry_delay=0.0)
     await mf.refresh()
 
     assert mf.kospi_strong is True
@@ -160,14 +184,59 @@ async def test_refresh_updates_both_markets():
 
 
 @pytest.mark.asyncio
-async def test_refresh_on_failure_is_weak():
-    """API 실패 시 보수적으로 False."""
+async def test_refresh_keeps_previous_when_data_insufficient():
+    """데이터 부족 시 이전 캐시 상태를 그대로 유지."""
+    rest = AsyncMock()
+    rest.get_index_daily.return_value = {"inds_dt_pole_qry": []}
+
+    mf = MarketFilter(rest=rest, ma_length=5, retry_delay=0.0)
+    # 이전 사이클에서 코스피 약세, 코스닥 강세였다고 가정
+    mf._kospi_strong = False
+    mf._kosdaq_strong = True
+
+    await mf.refresh()
+
+    # 데이터 부족이지만 이전 상태가 유지되어야 함
+    assert mf.kospi_strong is False
+    assert mf.kosdaq_strong is True
+
+
+@pytest.mark.asyncio
+async def test_refresh_keeps_previous_on_exception():
+    """API 예외 발생 시도 이전 캐시 상태를 유지."""
     rest = AsyncMock()
     rest.get_index_daily.side_effect = Exception("network error")
 
-    mf = MarketFilter(rest=rest, ma_length=5)
+    mf = MarketFilter(rest=rest, ma_length=5, retry_delay=0.0)
+    mf._kospi_strong = True
+    mf._kosdaq_strong = False
+
     await mf.refresh()
 
-    assert mf.kospi_strong is False
+    assert mf.kospi_strong is True
     assert mf.kosdaq_strong is False
     assert mf.last_update is not None
+
+
+@pytest.mark.asyncio
+async def test_refresh_partial_update_only_failed_kept():
+    """한쪽만 실패하면 그쪽만 이전값 유지, 성공한 쪽은 갱신."""
+    rest = AsyncMock()
+
+    def side_effect(code, base_dt=""):
+        if code == INDEX_KOSPI:
+            return _make_index_response([110, 100, 100, 100, 100, 100])
+        # 코스닥은 빈 응답
+        return {"inds_dt_pole_qry": []}
+
+    rest.get_index_daily.side_effect = side_effect
+
+    mf = MarketFilter(rest=rest, ma_length=5, retry_delay=0.0)
+    # 이전 코스닥 강세 가정
+    mf._kospi_strong = False
+    mf._kosdaq_strong = True
+
+    await mf.refresh()
+
+    assert mf.kospi_strong is True   # 갱신됨
+    assert mf.kosdaq_strong is True  # 빈 응답 → 이전값 유지

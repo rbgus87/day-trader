@@ -7,8 +7,11 @@
 - 지수 일봉은 키움 ka20006 API 사용 (cur_prc 값은 100배 스케일)
 - refresh()는 장 시작 전 또는 주기적으로 호출
 - is_allowed(market)는 동기 호출 (캐시된 상태 반환)
+- 데이터 부족/이상치/예외 시 이전 캐시 상태 유지 (false weak 방지)
+- 0건 응답 시 1회 재시도
 """
 
+import asyncio
 from datetime import datetime
 
 from loguru import logger
@@ -24,11 +27,18 @@ INDEX_KOSDAQ = "101"   # 코스닥 종합
 class MarketFilter:
     """코스피/코스닥 지수의 MA 기반 강세/약세 판단기."""
 
-    def __init__(self, rest: KiwoomRestClient, ma_length: int = 5):
+    def __init__(
+        self,
+        rest: KiwoomRestClient,
+        ma_length: int = 5,
+        retry_delay: float = 1.0,
+    ):
         self._rest = rest
         self._ma_length = ma_length
-        self._kospi_strong = False
-        self._kosdaq_strong = False
+        self._retry_delay = retry_delay
+        # 첫 성공 전까지는 보수적 차단보다 진입 허용을 선택 (강세 가정)
+        self._kospi_strong = True
+        self._kosdaq_strong = True
         self._last_update: datetime | None = None
 
     @property
@@ -46,19 +56,27 @@ class MarketFilter:
     async def refresh(self) -> None:
         """코스피/코스닥 지수 일봉 조회 → MA 계산 → 강세 여부 갱신.
 
-        실패 시 보수적으로 둘 다 False (매수 차단) 처리.
+        판정 불가(None) 또는 예외 발생 시 이전 캐시 상태를 그대로 유지한다.
         """
         try:
-            self._kospi_strong = await self._check_index(INDEX_KOSPI)
+            result = await self._check_index(INDEX_KOSPI)
+            if result is not None:
+                self._kospi_strong = result
         except Exception as e:
-            logger.error(f"[MARKET] 코스피 지수 조회 실패: {e}")
-            self._kospi_strong = False
+            logger.error(
+                f"[MARKET] 코스피 지수 조회 실패: {e} → 이전 상태 유지"
+                f" (현재 {'강세' if self._kospi_strong else '약세'})"
+            )
 
         try:
-            self._kosdaq_strong = await self._check_index(INDEX_KOSDAQ)
+            result = await self._check_index(INDEX_KOSDAQ)
+            if result is not None:
+                self._kosdaq_strong = result
         except Exception as e:
-            logger.error(f"[MARKET] 코스닥 지수 조회 실패: {e}")
-            self._kosdaq_strong = False
+            logger.error(
+                f"[MARKET] 코스닥 지수 조회 실패: {e} → 이전 상태 유지"
+                f" (현재 {'강세' if self._kosdaq_strong else '약세'})"
+            )
 
         self._last_update = datetime.now()
         logger.info(
@@ -67,15 +85,12 @@ class MarketFilter:
             f"(MA{self._ma_length})"
         )
 
-    async def _check_index(self, index_code: str) -> bool:
-        """지수 일봉 조회 → 현재가 > MA(ma_length) 인지 판단.
+    async def _fetch_items(self, index_code: str) -> list:
+        """ka20006 호출 후 응답 컨테이너에서 일봉 리스트 추출.
 
-        응답 컨테이너 키가 스펙에 따라 달라질 수 있어 여러 후보 키를 fallback.
-        cur_prc 값은 100배 스케일링되어 있으나 상대 비교이므로 스케일 제거 불필요.
+        스펙에 따라 컨테이너 키가 달라질 수 있어 여러 후보를 fallback.
         """
         data = await self._rest.get_index_daily(index_code)
-
-        items: list = []
         for key in (
             "inds_dt_pole_qry",
             "inds_dly_qry",
@@ -85,15 +100,37 @@ class MarketFilter:
         ):
             val = data.get(key)
             if isinstance(val, list) and val:
-                items = val
-                break
+                return val
+        return []
+
+    async def _check_index(self, index_code: str) -> bool | None:
+        """지수 일봉 조회 → 현재가 > MA 인지 판단.
+
+        Returns:
+            True  — 강세 (현재가 > MA)
+            False — 약세 (현재가 ≤ MA)
+            None  — 판정 불가 (데이터 부족/이상치). 호출자는 이전 상태 유지.
+
+        cur_prc 값은 100배 스케일링되어 있으나 상대 비교이므로 스케일 제거 불필요.
+        0건 응답 시 retry_delay 후 1회 재시도한다.
+        """
+        items = await self._fetch_items(index_code)
 
         if len(items) < self._ma_length + 1:
             logger.warning(
                 f"[MARKET] 지수 {index_code} 데이터 부족: "
-                f"{len(items)}건 (필요 {self._ma_length + 1}건)"
+                f"{len(items)}건 (필요 {self._ma_length + 1}건) → "
+                f"{self._retry_delay}s 후 재시도"
             )
-            return False
+            await asyncio.sleep(self._retry_delay)
+            items = await self._fetch_items(index_code)
+            if len(items) < self._ma_length + 1:
+                logger.warning(
+                    f"[MARKET] 지수 {index_code} 재시도 후에도 부족: "
+                    f"{len(items)}건 → 이전 상태 유지"
+                )
+                return None
+            logger.info(f"[MARKET] 지수 {index_code} 재시도 성공: {len(items)}건")
 
         # items[0]: 최신일, items[1..ma_length]: 최근 MA 기간
         try:
@@ -103,12 +140,16 @@ class MarketFilter:
                 for i in range(1, self._ma_length + 1)
             ]
         except (TypeError, ValueError) as e:
-            logger.error(f"[MARKET] 지수 {index_code} 파싱 실패: {e}")
-            return False
+            logger.error(
+                f"[MARKET] 지수 {index_code} 파싱 실패: {e} → 이전 상태 유지"
+            )
+            return None
 
         if current <= 0 or any(c <= 0 for c in recent_closes):
-            logger.warning(f"[MARKET] 지수 {index_code} 이상치 포함 → 약세 처리")
-            return False
+            logger.warning(
+                f"[MARKET] 지수 {index_code} 이상치 포함 → 이전 상태 유지"
+            )
+            return None
 
         ma = sum(recent_closes) / len(recent_closes)
         return current > ma
