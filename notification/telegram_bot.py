@@ -24,7 +24,7 @@ class TelegramNotifier:
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=10),
+                timeout=aiohttp.ClientTimeout(total=15, connect=10),
             )
         return self._session
 
@@ -38,7 +38,7 @@ class TelegramNotifier:
         self,
         message: str,
         parse_mode: str = "HTML",
-        retries: int = 1,
+        retries: int = 2,
     ) -> bool:
         payload = {
             "chat_id": self._chat_id,
@@ -55,7 +55,10 @@ class TelegramNotifier:
                         return True
                     logger.warning(f"텔레그램 발송 실패: status={resp.status}")
             except Exception as e:
-                logger.error(f"텔레그램 발송 오류 (시도 {attempt + 1}): {e}")
+                logger.error(
+                    f"텔레그램 발송 오류 (시도 {attempt + 1}): "
+                    f"{type(e).__name__}: {e}"
+                )
         return False
 
     async def send_with_cooldown(
