@@ -996,6 +996,10 @@ class EngineWorker(QThread):
                     prev = items[1]
                     prev_high = abs(float(prev.get("high_pric", 0)))
                     prev_vol = abs(int(prev.get("acml_vol", prev.get("acml_vlmn", 0))))
+                    logger.info(
+                        f"[OHLCV-DBG] {ticker} prev_high={prev_high} prev_vol={prev_vol} "
+                        f"raw_keys={list(prev.keys())[:10]}"
+                    )
                     prev_close = abs(float(prev.get("cur_prc", prev.get("stck_clpr", 0))))
                     if prev_high > 0 and ticker in self._active_strategies:
                         strat = self._active_strategies[ticker]["strategy"]
