@@ -10,7 +10,7 @@ paper_mode: true                    # true=주문 시뮬레이션(페이퍼), fa
 
 # --- 매매 기본 설정 ---
 trading:
-  initial_capital: 3_000_000       # 페이퍼 자본 (시뮬 결과: 수익률 86.5%, PF 3.24)
+  initial_capital: 5_000_000       # 페이퍼 자본 (시뮬 결과: 수익률 86.5%, PF 3.24)
 
   # 리스크
   daily_max_loss_pct: -0.015        # Phase 3 Day 11.5: -2% → -1.5% 강화
@@ -114,7 +114,7 @@ backtest:
   commission: 0.00015               # 수수료 0.015% (매수/매도 각각)
   tax: 0.0015                       # 거래세 0.15% (2024 정책)
   slippage: 0.0003                  # 슬리피지 0.03% (추정값)
-  initial_capital: 1_000_000        # (dead: 참조 코드 없음, ADR-013 baseline 비교용 상수)
+  initial_capital: 5_000_000        # (dead: 참조 코드 없음, ADR-013 baseline 비교용 상수)
 
 # --- 알림 정책 (Phase 3-B / ADR-008) ---
 notifications:
