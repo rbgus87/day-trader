@@ -253,8 +253,10 @@ class EngineWorker(QThread):
             notifier=self._notifier,
             notifications_config=self._config.notifications,
         )
+        # 5분봉은 사용처가 없고(ADR-010 이후 on_candle_5m 미구현), candle_history에
+        # 혼입되면 ADX 등 1m 기반 지표가 백테스트와 다르게 계산됨 → 1m only.
         self._candle_builder = CandleBuilder(
-            candle_queue=self._candle_queue, timeframes=["1m", "5m"],
+            candle_queue=self._candle_queue, timeframes=["1m"],
         )
         self._risk_manager = RiskManager(
             trading_config=self._config.trading, db=self._db, notifier=self._notifier,
@@ -697,6 +699,10 @@ class EngineWorker(QThread):
 
             try:
                 ticker = candle["ticker"]
+
+                # 1m 외 타임프레임 안전장치 — 백테스트와 동일하게 1m만 history/시그널에 사용
+                if candle.get("tf", "1m") != "1m":
+                    continue
 
                 # 캔들 히스토리는 모든 종목에 대해 유지 (장중 재스크리닝 대비)
                 self._candle_history.setdefault(ticker, [])

@@ -78,29 +78,40 @@ class MomentumStrategy(BaseStrategy):
 
         # 2) 거래량 필터
         if candles is None or candles.empty:
+            logger.debug(f"[VOLUME] 캔들 없음: {tick['ticker']}")
             return None
 
         cum_volume: float = candles["volume"].sum()
         required_volume: float = self._prev_day_volume * self._config.momentum_volume_ratio
         if cum_volume < required_volume:
+            logger.debug(
+                f"[VOLUME] 미달: {tick['ticker']} "
+                f"cum={cum_volume:,.0f} < req={required_volume:,.0f}"
+            )
             return None
 
         # 3) 마지막 캔들 종가 돌파 재확정 (ADR-016: 최소 돌파폭 적용)
         last_close = candles.iloc[-1]["close"]
         last_breakout_pct = (last_close - self._prev_day_high) / self._prev_day_high
         if last_breakout_pct < min_bp:
+            logger.debug(
+                f"[BREAKOUT_LAST] 미달: {tick['ticker']} "
+                f"{last_breakout_pct:.2%} < {min_bp:.2%}"
+            )
             return None
 
         # 4) ADX 추세 필터
-        if self._config.adx_enabled and not self._check_adx(candles):
+        if self._config.adx_enabled and not self._check_adx(candles, tick["ticker"]):
             return None
 
         # 5) RVol 거래량 급증 필터
         if self._config.rvol_enabled and not self._check_rvol(candles):
+            logger.debug(f"[RVOL] 탈락: {tick['ticker']}")
             return None
 
         # 6) VWAP 매수 우위 필터
         if self._config.vwap_enabled and not self._check_vwap(candles, current_price):
+            logger.debug(f"[VWAP] 탈락: {tick['ticker']} price={current_price}")
             return None
 
         # ATR 손절 계산을 위한 신호 발생 날짜 캡처 (캔들의 마지막 ts 기준)
@@ -125,26 +136,44 @@ class MomentumStrategy(BaseStrategy):
             reason=f"전일 고점({self._prev_day_high:,.0f}) 돌파 + 거래량 {self._config.momentum_volume_ratio:.1f}배 확인",
         )
 
-    def _check_adx(self, candles: pd.DataFrame) -> bool:
-        """ADX 추세 강도 필터. 캔들 부족 또는 계산 실패 시 False."""
+    def _check_adx(self, candles: pd.DataFrame, ticker: str = "") -> bool:
+        """ADX 추세 강도 필터. 캔들 부족 또는 계산 실패 시 False.
+
+        진입 후보(BREAKOUT + 거래량 통과) 단계에서만 호출되므로 진단 로그를
+        debug 레벨로 남겨도 스팸이 되지 않는다.
+        """
         min_candles = self._config.adx_length + 20
         if len(candles) < min_candles:
+            logger.debug(
+                f"[ADX] 봉 부족: {ticker} {len(candles)} < {min_candles}"
+            )
             return False
         try:
             import pandas_ta as ta
             df = candles.tail(min_candles)
             adx_result = ta.adx(df["high"], df["low"], df["close"], length=self._config.adx_length)
             if adx_result is None or adx_result.empty:
+                logger.debug(f"[ADX] 결과 비어있음: {ticker}")
                 return False
             adx_col = f"ADX_{self._config.adx_length}"
             if adx_col not in adx_result.columns:
+                logger.debug(f"[ADX] 컬럼 없음: {ticker} cols={list(adx_result.columns)}")
                 return False
             current_adx = adx_result[adx_col].iloc[-1]
             if pd.isna(current_adx):
+                logger.debug(f"[ADX] NaN: {ticker}")
                 return False
-            return current_adx >= self._config.adx_min
+            if current_adx < self._config.adx_min:
+                logger.debug(
+                    f"[ADX] 미달: {ticker} {current_adx:.1f} < {self._config.adx_min}"
+                )
+                return False
+            logger.debug(
+                f"[ADX] 통과: {ticker} {current_adx:.1f} >= {self._config.adx_min}"
+            )
+            return True
         except Exception as e:
-            logger.warning(f"ADX 계산 실패: {e}")
+            logger.warning(f"ADX 계산 실패 ({ticker}): {e}")
             return False
 
     def _check_rvol(self, candles: pd.DataFrame) -> bool:
