@@ -57,6 +57,9 @@ class EngineWorker(QThread):
         self._signal_queue = None
         self._order_queue = None
 
+        # 강제 청산 재진입 가드 (스케줄 + 수동 시그널 동시 트리거 시 중복 실행 방지)
+        self._force_close_in_progress = False
+
         # Candle history for strategy
         self._candle_history: dict[str, list[dict]] = {}
         self._MAX_HISTORY = 100
@@ -333,6 +336,7 @@ class EngineWorker(QThread):
         self._scheduler.add_job(
             _schedule_async(self._safe_force_close, "force_close"),
             "cron", hour=15, minute=10, misfire_grace_time=60,
+            id="force_close", replace_existing=True,
         )
         self._scheduler.add_job(
             _schedule_async(self._safe_run_daily_report, "daily_report"),
@@ -913,33 +917,40 @@ class EngineWorker(QThread):
 
     async def _force_close(self):
         """15:10 강제 청산."""
-        logger.warning("15:10 강제 청산 시작")
-        for ticker, pos in list(self._risk_manager.get_open_positions().items()):
-            if pos.get("remaining_qty", 0) > 0:
-                close_price = int(self._latest_prices.get(ticker, pos.get("entry_price", 0)))
-                qty = pos["remaining_qty"]
-                entry = pos.get("entry_price", 0)
-                pnl = (close_price - entry) * qty if entry > 0 else 0
-                pnl_pct = ((close_price / entry) - 1) * 100 if entry > 0 else 0
-                strategy_name = pos.get("strategy", "") or "unknown"
-                await self._order_manager.execute_sell_force_close(
-                    ticker=ticker, qty=qty, price=close_price,
-                    strategy=strategy_name, pnl=pnl, pnl_pct=pnl_pct,
-                    exit_reason="forced_close",
-                )
-                self._risk_manager.settle_sell(ticker, float(close_price), qty)
-                strat_info = self._active_strategies.get(ticker)
-                if strat_info:
-                    strat_info["strategy"].on_exit()
-        await self._candle_builder.flush()
-        self._candle_builder.reset()
-        await self._risk_manager.save_daily_summary()
-        self._risk_manager.reset_daily()
-        # Phase 3 Day 12+: 다음 날 다시 halt 알림 가능하도록 플래그 리셋
-        self._daily_halt_notified = False
-        self._active_strategy = None
-        self._active_strategies = {}
-        self._candle_history.clear()
+        if self._force_close_in_progress:
+            logger.warning("강제 청산 이미 실행 중 — 중복 호출 무시")
+            return
+        self._force_close_in_progress = True
+        try:
+            logger.warning("15:10 강제 청산 시작")
+            for ticker, pos in list(self._risk_manager.get_open_positions().items()):
+                if pos.get("remaining_qty", 0) > 0:
+                    close_price = int(self._latest_prices.get(ticker, pos.get("entry_price", 0)))
+                    qty = pos["remaining_qty"]
+                    entry = pos.get("entry_price", 0)
+                    pnl = (close_price - entry) * qty if entry > 0 else 0
+                    pnl_pct = ((close_price / entry) - 1) * 100 if entry > 0 else 0
+                    strategy_name = pos.get("strategy", "") or "unknown"
+                    await self._order_manager.execute_sell_force_close(
+                        ticker=ticker, qty=qty, price=close_price,
+                        strategy=strategy_name, pnl=pnl, pnl_pct=pnl_pct,
+                        exit_reason="forced_close",
+                    )
+                    self._risk_manager.settle_sell(ticker, float(close_price), qty)
+                    strat_info = self._active_strategies.get(ticker)
+                    if strat_info:
+                        strat_info["strategy"].on_exit()
+            await self._candle_builder.flush()
+            self._candle_builder.reset()
+            await self._risk_manager.save_daily_summary()
+            self._risk_manager.reset_daily()
+            # Phase 3 Day 12+: 다음 날 다시 halt 알림 가능하도록 플래그 리셋
+            self._daily_halt_notified = False
+            self._active_strategy = None
+            self._active_strategies = {}
+            self._candle_history.clear()
+        finally:
+            self._force_close_in_progress = False
 
     async def _run_daily_report(self):
         """15:30 일일 보고서 텔레그램 발송."""
