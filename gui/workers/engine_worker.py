@@ -61,8 +61,11 @@ class EngineWorker(QThread):
         self._force_close_in_progress = False
 
         # Candle history for strategy
+        # 50봉 전일 시드 + 장중 ~390봉(09:00~15:30 1분봉) + 여유 60 = 500
         self._candle_history: dict[str, list[dict]] = {}
-        self._MAX_HISTORY = 100
+        self._MAX_HISTORY = 500
+        # 분봉 pre-load 시드 봉 수 (장 초반 ADX 즉시 활성화 — adx_length+20=34 충족)
+        self._INTRADAY_SEED_BARS = 50
         # 최신 틱 가격 (포지션 현재가 표시용)
         self._latest_prices: dict[str, float] = {}
         # 런타임 승/패 카운터
@@ -1238,6 +1241,67 @@ class EngineWorker(QThread):
             f"(상한가 {len(self._limit_up_map)}종 "
             f"— API {lu_api_count} / fallback {lu_fallback_count})"
         )
+        # 장 초반 ADX 즉시 활성화 — 직전 영업일 마지막 N개 1분봉을 candle_history에 시드
+        try:
+            await self._seed_intraday_candles(stocks)
+        except Exception as e:
+            logger.warning(f"분봉 시드 실패 — 장 초반 ADX 미작동 가능: {e}")
+
+    async def _seed_intraday_candles(self, stocks: list[dict]) -> None:
+        """직전 영업일 마지막 N개 1분봉을 _candle_history에 pre-load.
+
+        장 시작 직후 ADX(min_candles=adx_length+20=34) 즉시 활성화 목적.
+        매 호출마다 해당 종목 history를 시드로 교체한다 (idempotent —
+        장중에는 호출 안 함, 장 시작 전 _refresh_prev_day_ohlcv 경로에서만 호출).
+        """
+        if not stocks:
+            return
+        n = self._INTRADAY_SEED_BARS
+        seeded = 0
+        for s in stocks:
+            ticker = s["ticker"]
+            try:
+                data = await self._rest_client.get_minute_ohlcv(ticker, tic_scope=1)
+                items = (
+                    data.get("stk_min_pole_chart_qry")
+                    or data.get("output2")
+                    or []
+                )
+                if not items:
+                    continue
+                # 키움 응답: 최신 → 과거 순. 시간순(오름차순)으로 뒤집고 마지막 N개
+                seed: list[dict] = []
+                for item in reversed(items):
+                    raw_ts = str(item.get("cntr_tm", ""))
+                    if len(raw_ts) < 14:
+                        continue
+                    ts = (
+                        f"{raw_ts[:4]}-{raw_ts[4:6]}-{raw_ts[6:8]}T"
+                        f"{raw_ts[8:10]}:{raw_ts[10:12]}:{raw_ts[12:14]}"
+                    )
+                    try:
+                        seed.append({
+                            "ticker": ticker,
+                            "tf": "1m",
+                            "ts": ts,
+                            "open": abs(float(item.get("open_pric") or 0)),
+                            "high": abs(float(item.get("high_pric") or 0)),
+                            "low": abs(float(item.get("low_pric") or 0)),
+                            "close": abs(float(item.get("cur_prc") or 0)),
+                            "volume": int(item.get("trde_qty") or 0),
+                            "vwap": None,
+                        })
+                    except (ValueError, TypeError):
+                        continue
+                if not seed:
+                    continue
+                # 마지막 N개만 보관 (메모리 절약)
+                self._candle_history[ticker] = seed[-n:]
+                seeded += 1
+            except Exception as e:
+                logger.debug(f"분봉 시드 ({ticker}) 실패: {e}")
+            await asyncio.sleep(0.1)
+        logger.info(f"분봉 시드 완료: {seeded}/{len(stocks)}종 — N={n}봉")
 
     async def _check_uptime_sanity(self) -> None:
         """GUI 24시간 이상 가동 시 안내 알림 — ADR-006 안전망.
