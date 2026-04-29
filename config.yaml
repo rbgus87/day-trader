@@ -95,6 +95,12 @@ strategy:
   selector:
     momentum_etf_threshold: 2.0     # 섹터 ETF 등락 ≥ 2.0% → 모멘텀 전략
 
+# --- 조건검색 (영웅문 저장 조건식 연동) ---
+condition_search:
+  enabled: true
+  condition_name: "day_momentum"    # 영웅문에 저장된 조건식 이름
+  max_watch_stocks: 80              # 전일 거래대금 상위 N종목만 채택
+
 # --- 스크리닝 필터 ---
 screener:
   min_market_cap: 200_000_000_000   # 시가총액 2,000억원 이상 (코스닥 대형 포함)

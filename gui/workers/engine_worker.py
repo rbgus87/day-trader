@@ -853,6 +853,12 @@ class EngineWorker(QThread):
         today = datetime.now().strftime("%Y-%m-%d")
         logger.info(f"스크리닝 시작 ({today})")
 
+        # 조건검색 결과를 코어 유니버스에 합산하여 감시 종목 갱신 (실패 시 코어 유지)
+        try:
+            await self._apply_condition_search_universe()
+        except Exception as e:
+            logger.error(f"[COND] 조건검색 통합 실패: {e} — 코어 유니버스 유지")
+
         try:
             # 1. Candidates 수집
             candidates = await self._candidate_collector.collect()
@@ -914,6 +920,117 @@ class EngineWorker(QThread):
                 await self._notifier.send_urgent(f"스크리닝 오류: {exc}")
             except Exception:
                 pass
+
+    async def _apply_condition_search_universe(self) -> None:
+        """08:30 — 조건검색 결과를 전일 거래대금 순으로 정렬해 코어 유니버스에 합산.
+
+        실패/비활성/결과 없음 시 기존 감시 종목 유지 (no-op).
+        """
+        cs_cfg = self._config.condition_search
+        if not cs_cfg.enabled:
+            return
+
+        # 토큰 + 조건검색 실행
+        try:
+            from core.condition_search import run_condition_search
+            token = await self._token_manager.get_token()
+            cs_results = await run_condition_search(
+                ws_url=self._config.kiwoom.ws_url,
+                access_token=token,
+                condition_name=cs_cfg.condition_name,
+            )
+        except Exception as e:
+            logger.error(f"[COND] 조건검색 실행 실패: {e} — 코어 유니버스 유지")
+            return
+
+        if not cs_results:
+            logger.warning("[COND] 조건검색 결과 비어있음 — 코어 유니버스 유지")
+            return
+
+        # 전일 거래대금 = 전일 종가 × 전일 거래량 (일봉 API에서 추출)
+        base_dt = datetime.now().strftime("%Y%m%d")
+        enriched: list[dict] = []
+        for stock in cs_results:
+            ticker = stock.get("code", "").strip()
+            if not ticker:
+                continue
+            try:
+                daily = await self._rest_client.get_daily_ohlcv(ticker, base_dt=base_dt)
+                items = (
+                    daily.get("stk_dt_pole_chart_qry")
+                    or daily.get("output2")
+                    or daily.get("output")
+                    or []
+                )
+                if len(items) < 2:
+                    continue
+                prev = items[1]
+                prev_close = abs(float(prev.get("cur_prc", prev.get("stck_clpr", 0))))
+                prev_volume = abs(int(
+                    prev.get("trde_qty",
+                    prev.get("acml_vol",
+                    prev.get("acml_vlmn", 0)))
+                ))
+                amount = prev_close * prev_volume
+                if amount > 0:
+                    enriched.append({
+                        "ticker": ticker,
+                        "name": stock.get("name", ticker),
+                        "_amount": amount,
+                    })
+            except Exception as e:
+                logger.debug(f"[COND] {ticker} 일봉 조회 실패: {e}")
+            await asyncio.sleep(0.1)
+
+        enriched.sort(key=lambda x: x["_amount"], reverse=True)
+        top = enriched[: cs_cfg.max_watch_stocks]
+        logger.info(
+            f"[COND] 조건검색 결과: {len(cs_results)}종목, 필터 후 {len(top)}종목"
+        )
+
+        if not top:
+            logger.warning("[COND] 거래대금 정렬 결과 0종 — 코어 유니버스 유지")
+            return
+
+        # 코어 유니버스 + 조건검색 상위 합산 (코어 우선, ticker 중복 제거)
+        core_stocks = self._load_universe()
+        core_tickers = {s["ticker"] for s in core_stocks}
+        merged: list[dict] = list(core_stocks)
+        for s in top:
+            if s["ticker"] not in core_tickers:
+                merged.append({
+                    "ticker": s["ticker"],
+                    "name": s["name"],
+                    "market": "unknown",
+                })
+
+        old_tickers = set(self._active_strategies.keys())
+        new_tickers = {s["ticker"] for s in merged}
+        added = new_tickers - old_tickers
+        removed = old_tickers - new_tickers
+        logger.info(
+            f"[COND] 감시 종목 갱신: 기존 {len(old_tickers)} → 신규 {len(new_tickers)}"
+        )
+
+        # active_strategies 교체
+        self._register_active_strategies(merged)
+
+        # WS 구독 갱신 (delta — 메인 WS 사용)
+        try:
+            if removed:
+                await self._ws_client.unsubscribe(list(removed))
+            if added:
+                await self._ws_client.subscribe(list(added))
+        except Exception as e:
+            logger.error(f"[COND] WS 구독 갱신 실패: {e}")
+
+        # 신규 추가 종목에 대해 전일 OHLCV 갱신
+        if added:
+            new_stock_dicts = [s for s in merged if s["ticker"] in added]
+            try:
+                await self._refresh_prev_day_ohlcv(new_stock_dicts)
+            except Exception as e:
+                logger.error(f"[COND] 신규 종목 OHLCV 갱신 실패: {e}")
 
     async def _force_close(self):
         """15:10 강제 청산."""

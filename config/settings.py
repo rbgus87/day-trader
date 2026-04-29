@@ -170,6 +170,14 @@ class NotificationConfig:
 
 
 @dataclass(frozen=True)
+class ConditionSearchConfig:
+    """조건검색 (영웅문 저장 조건식) 연동 설정."""
+    enabled: bool = True
+    condition_name: str = "day_momentum"
+    max_watch_stocks: int = 80
+
+
+@dataclass(frozen=True)
 class BacktestConfig:
     commission: float = 0.00015     # 매수/매도 각 0.015%
     tax: float = 0.0015             # 증권거래세 0.15% (ADR-009 2024 정책 반영)
@@ -185,6 +193,7 @@ class AppConfig:
     screener: ScreenerConfig = field(default_factory=ScreenerConfig)
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
     notifications: NotificationConfig = field(default_factory=NotificationConfig)
+    condition_search: ConditionSearchConfig = field(default_factory=ConditionSearchConfig)
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
     debug: bool = field(default_factory=lambda: os.getenv("DEBUG", "false").lower() == "true")
     db_path: str = "daytrader.db"
@@ -298,6 +307,14 @@ class AppConfig:
             initial_capital=bt.get("initial_capital", 1_000_000),
         )
 
+        # condition_search 섹션 (영웅문 저장 조건식 연동)
+        cs = cfg.get("condition_search", {})
+        condition_search = ConditionSearchConfig(
+            enabled=cs.get("enabled", True),
+            condition_name=cs.get("condition_name", "day_momentum"),
+            max_watch_stocks=cs.get("max_watch_stocks", 80),
+        )
+
         # notifications 섹션 (Phase 3-B / ADR-008)
         n = cfg.get("notifications", {})
         notifications = NotificationConfig(
@@ -322,6 +339,7 @@ class AppConfig:
             screener=screener,
             backtest=backtest,
             notifications=notifications,
+            condition_search=condition_search,
             log_level=os.getenv("LOG_LEVEL", "INFO"),
             debug=os.getenv("DEBUG", "false").lower() == "true",
             paper_mode=cfg.get("paper_mode", True),
