@@ -116,7 +116,7 @@ class PaperOrderManager:
                 if self._notifier and self._trade_notify_enabled():
                     try:
                         name = self._name_map.get(ticker, ticker)
-                        await self._notifier.send_execution(
+                        self._notifier.send_execution(
                             ticker=ticker, name=name, side="buy",
                             price=slipped_int, qty=qty_1st,
                             amount=slipped_int * qty_1st,
@@ -213,7 +213,7 @@ class PaperOrderManager:
             pnl_int = int(pnl_final) if pnl_final is not None else None
             pnl_pct_f = (pnl_pct_final * 100) if pnl_pct_final is not None else None
             try:
-                await self._notifier.send_execution(
+                self._notifier.send_execution(
                     ticker=ticker, name=name, side=side,
                     price=slipped_int, qty=qty, amount=slipped_int * qty,
                     mode="paper", reason=reason,

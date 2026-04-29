@@ -94,7 +94,7 @@ class OrderManager:
                     # 체결 텔레그램 알림 (ADR-008 trade_execution 토글)
                     if self._notifier and self._trade_notify_enabled():
                         try:
-                            await self._notifier.send_execution(
+                            self._notifier.send_execution(
                                 ticker=ticker,
                                 name=self._name_map.get(ticker, ticker),
                                 side="buy", price=price, qty=qty_1st,
@@ -162,7 +162,7 @@ class OrderManager:
                 # 체결 텔레그램 알림 (ADR-008 trade_execution 토글)
                 if self._notifier and self._trade_notify_enabled():
                     try:
-                        await self._notifier.send_execution(
+                        self._notifier.send_execution(
                             ticker=ticker,
                             name=self._name_map.get(ticker, ticker),
                             side=side, price=price, qty=qty,
@@ -176,7 +176,7 @@ class OrderManager:
         except Exception as e:
             logger.error(f"주문 예외: {e}")
             if self._notifier:
-                await self._notifier.send_urgent(f"주문 실패: {self._format_ticker(ticker)} {side} {qty}주 — {e}")
+                self._notifier.send_urgent(f"주문 실패: {self._format_ticker(ticker)} {side} {qty}주 — {e}")
             return None
 
     async def wait_for_confirmation(self, order_no: str) -> dict | None:

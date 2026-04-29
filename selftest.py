@@ -43,7 +43,7 @@ _REQUIRED_TABLES = {
 _REQUIRED_MODULES = [
     "pandas", "numpy", "pandas_ta", "numba",
     "PyQt6", "loguru", "apscheduler", "aiosqlite",
-    "aiohttp", "websockets", "yaml", "dotenv",
+    "aiohttp", "requests", "websockets", "yaml", "dotenv",
 ]
 _REQUIRED_CONFIG_KEYS = [
     # (dotted_path, type)

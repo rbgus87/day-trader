@@ -1,5 +1,6 @@
 # Core
-aiohttp>=3.9,<4.0
+aiohttp>=3.9,<4.0          # 키움 REST/Auth (텔레그램은 requests로 이관)
+requests>=2.31              # 텔레그램 알림 (swing-trader 패턴)
 websockets>=12.0,<14.0
 pandas>=2.2,<3.0
 numpy>=1.26,<2.0

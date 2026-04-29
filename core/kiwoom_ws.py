@@ -229,7 +229,7 @@ class KiwoomWebSocketClient:
                             and self._last_disconnect_at is not None):
                         try:
                             disc_str = self._last_disconnect_at.strftime("%H:%M:%S")
-                            await self._notifier.send(
+                            self._notifier.send(
                                 f"[복구] WS 자동 재연결 성공 "
                                 f"(시도 {failure_count_before + 1}회, 끊김 {disc_str})"
                             )
@@ -241,7 +241,7 @@ class KiwoomWebSocketClient:
                     self._reconnect_failures += 1
                     if (self._reconnect_failures >= 3 and self._notifier
                             and self._ws_notify_enabled("ws_critical_failure")):
-                        await self._notifier.send_urgent(
+                        self._notifier.send_urgent(
                             f"WS 재연결 3회 실패!\n"
                             f"마지막 오류: {e2}\n"
                             f"포지션 확인 필요"
@@ -257,7 +257,7 @@ class KiwoomWebSocketClient:
                                         strategy=strategy_name,
                                         exit_reason="forced_close",
                                     )
-                                    await self._notifier.send_urgent(
+                                    self._notifier.send_urgent(
                                         f"WS 장애 긴급 청산: {ticker} {pos['remaining_qty']}주"
                                     )
 

@@ -217,7 +217,7 @@ class EngineWorker(QThread):
         self._notifier = TelegramNotifier(self._config.telegram)
         mode_tag = "[PAPER] " if paper_mode else ""
         if self._config.notifications.system_start:
-            await self._notifier.send(f"{mode_tag}단타 매매 시스템 시작 (GUI)")
+            self._notifier.send(f"{mode_tag}단타 매매 시스템 시작 (GUI)")
 
         # ADR-006: 24시간 이상 가동 감지 안전망
         await self._check_uptime_sanity()
@@ -377,7 +377,7 @@ class EngineWorker(QThread):
             restored = await self._risk_manager.restore_from_db()
             if restored and self._notifier:
                 try:
-                    await self._notifier.send(
+                    self._notifier.send(
                         f"[복구] DB에서 오픈 포지션 {restored}건 복원 — API 대조 진행"
                     )
                 except Exception:
@@ -391,7 +391,7 @@ class EngineWorker(QThread):
             ]
             mismatches = await self._risk_manager.reconcile_positions(holdings)
             if mismatches:
-                await self._notifier.send_urgent(
+                self._notifier.send_urgent(
                     "포지션 불일치 감지!\n" + "\n".join(mismatches)
                 )
         except Exception as e:
@@ -440,7 +440,7 @@ class EngineWorker(QThread):
                         try:
                             k = "강세" if self._market_filter.kospi_strong else "약세"
                             q = "강세" if self._market_filter.kosdaq_strong else "약세"
-                            await self._notifier.send(
+                            self._notifier.send(
                                 f"[MARKET] 시장 필터 갱신 — 코스피 {k} / 코스닥 {q}"
                             )
                         except Exception:
@@ -714,7 +714,7 @@ class EngineWorker(QThread):
                         try:
                             loss = self._risk_manager._daily_pnl
                             limit = self._config.trading.daily_max_loss_pct * 100
-                            await self._notifier.send_urgent(
+                            self._notifier.send_urgent(
                                 f"[HALT] 일일 손실 한도 도달\n"
                                 f"일일 PnL: {loss:+,.0f}원\n"
                                 f"한도: {limit:.1f}%\n"
@@ -854,7 +854,7 @@ class EngineWorker(QThread):
         except Exception as e:
             logger.error(f"토큰 갱신 실패: {e}")
             if self._notifier and self._config.notifications.token_refresh_failure:
-                await self._notifier.send_urgent(f"토큰 갱신 실패: {e}")
+                self._notifier.send_urgent(f"토큰 갱신 실패: {e}")
 
     async def _run_screening(self):
         """08:30 장 전 스크리닝 — score 업데이트 + UI 정보 제공 (전략 등록은 _run_engine에서 완료)."""
@@ -872,14 +872,14 @@ class EngineWorker(QThread):
             candidates = await self._candidate_collector.collect()
             if not candidates:
                 logger.warning("candidates 없음")
-                await self._notifier.send("스크리닝: candidates 없음")
+                self._notifier.send("스크리닝: candidates 없음")
                 return
 
             # 2. 4단계 필터 적용
             screened = await self._pre_market_screener.screen(candidates)
             if not screened:
                 logger.warning("스크리닝 통과 종목 없음")
-                await self._notifier.send("스크리닝: 통과 종목 없음")
+                self._notifier.send("스크리닝: 통과 종목 없음")
                 return
 
             # Cache for UI
@@ -910,7 +910,7 @@ class EngineWorker(QThread):
 
             force = getattr(self._config, 'force_strategy', '') or 'auto'
             logger.info(f"스크리닝 완료: {len(screened)}종목 통과, 감시: {len(self._active_strategies)}종목 유지")
-            await self._notifier.send(
+            self._notifier.send(
                 f"스크리닝 완료 — {force}\n"
                 f"필터 통과: {len(screened)}종목\n"
                 f"전체 감시: {len(self._active_strategies)}종목\n"
@@ -925,7 +925,7 @@ class EngineWorker(QThread):
             import traceback
             logger.error(f"스크리닝 실패: {exc}\n{traceback.format_exc()}")
             try:
-                await self._notifier.send_urgent(f"스크리닝 오류: {exc}")
+                self._notifier.send_urgent(f"스크리닝 오류: {exc}")
             except Exception:
                 pass
 
@@ -1096,7 +1096,7 @@ class EngineWorker(QThread):
         if not self._config.notifications.daily_report:
             logger.info("일일 보고서 — 알림 비활성")
         elif summary:
-            await self._notifier.send_daily_report(
+            self._notifier.send_daily_report(
                 date=summary["date"],
                 total_trades=summary["total_trades"],
                 wins=summary["wins"],
@@ -1108,7 +1108,7 @@ class EngineWorker(QThread):
             )
             logger.info("일일 보고서 발송 완료")
         else:
-            await self._notifier.send_no_trade("당일 매매 기록 없음")
+            self._notifier.send_no_trade("당일 매매 기록 없음")
             logger.info("당일 매매 없음 -- 무거래 알림 발송")
 
     # ── Universe/strategies/OHLCV helpers (startup + daily_reset 공용) ──
@@ -1267,7 +1267,7 @@ class EngineWorker(QThread):
             logger.warning(f"[SANITY] GUI {hours}시간 이상 가동 중 (마지막 시작: {prev_str})")
             if self._notifier and self._config.notifications.uptime_sanity:
                 try:
-                    await self._notifier.send(
+                    self._notifier.send(
                         f"[안내] GUI {hours}시간 이상 가동 중\n마지막 시작: {prev_str}"
                     )
                 except Exception as e:
@@ -1296,7 +1296,7 @@ class EngineWorker(QThread):
         logger.info("[자동] 일일 리셋 완료")
         if self._notifier and self._config.notifications.daily_reset:
             try:
-                await self._notifier.send(
+                self._notifier.send(
                     f"[자동] 일일 리셋 완료 — {len(self._active_strategies)}종목, 카운터 초기화"
                 )
             except Exception as e:
@@ -1340,7 +1340,7 @@ class EngineWorker(QThread):
             # ADR-008: 성공 알림
             if self._notifier and self._config.notifications.ohlcv_refresh:
                 try:
-                    await self._notifier.send(
+                    self._notifier.send(
                         f"[자동] 08:05 전일 OHLCV 갱신 완료 — {len(self._active_strategies)}종목"
                     )
                 except Exception:
@@ -1349,7 +1349,7 @@ class EngineWorker(QThread):
             logger.error(f"[SCHED] OHLCV 갱신 실패: {e}")
             if self._notifier and self._config.notifications.ohlcv_refresh:
                 try:
-                    await self._notifier.send_urgent(
+                    self._notifier.send_urgent(
                         f"[경고] 전일 OHLCV 갱신 실패 — {type(e).__name__}: {e}"
                     )
                 except Exception:
@@ -1367,7 +1367,7 @@ class EngineWorker(QThread):
         )
         if self._notifier and self._config.notifications.universe_refresh:
             try:
-                await self._notifier.send_urgent(
+                self._notifier.send_urgent(
                     "[알림] 주간 유니버스 갱신 건너뜀\n"
                     "사유: 추세 필터 구현/검증 대기 (PF 유효성 확인 후 재활성화)"
                 )
@@ -1381,7 +1381,7 @@ class EngineWorker(QThread):
             logger.error(f"[SCHED] 유니버스 갱신 실패: {e}")
             if self._notifier and self._config.notifications.universe_refresh:
                 try:
-                    await self._notifier.send_urgent(
+                    self._notifier.send_urgent(
                         f"[경고] 유니버스 갱신 실패 — {type(e).__name__}: {e}"
                     )
                 except Exception:
@@ -1488,7 +1488,7 @@ class EngineWorker(QThread):
             if collected_count > 0:
                 msg_lines.append(f"신규 분봉: {collected_count:,}개 수집")
             try:
-                await self._notifier.send("\n".join(msg_lines))
+                self._notifier.send("\n".join(msg_lines))
             except Exception:
                 pass
 
@@ -1500,7 +1500,7 @@ class EngineWorker(QThread):
             logger.error(f"[SCHED] 분봉 수집 실패: {e}")
             if self._notifier and self._config.notifications.candle_collection:
                 try:
-                    await self._notifier.send_urgent(
+                    self._notifier.send_urgent(
                         f"[경고] 분봉 수집 실패 — {type(e).__name__}: {e}"
                     )
                 except Exception:
@@ -1539,7 +1539,7 @@ class EngineWorker(QThread):
 
         if self._notifier and self._config.notifications.candle_collection:
             try:
-                await self._notifier.send(
+                self._notifier.send(
                     f"[CANDLE] 분봉 수집 완료\n"
                     f"성공: {success}/{len(stocks)}종목\n"
                     f"캔들: {total_saved:,}개\n"
@@ -1969,12 +1969,18 @@ class EngineWorker(QThread):
         if self._ws_client:
             _safe_run(self._ws_client.disconnect(), "ws")
 
-        # 4. 텔레그램
+        # 4. 텔레그램 (sync 호출 — _safe_run 불필요)
         if self._notifier:
             if self._config and self._config.notifications.system_stop:
                 mode_tag = "[PAPER] " if self._mode == "paper" else ""
-                _safe_run(self._notifier.send(f"{mode_tag}시스템 종료 (GUI)"), "notify")
-            _safe_run(self._notifier.aclose(), "notifier_close")
+                try:
+                    self._notifier.send(f"{mode_tag}시스템 종료 (GUI)", retries=1)
+                except Exception as e:
+                    logger.warning(f"클린업 오류 (notify): {e}")
+            try:
+                self._notifier.aclose()
+            except Exception as e:
+                logger.warning(f"클린업 오류 (notifier_close): {e}")
 
         # 5. REST / DB
         if self._rest_client:

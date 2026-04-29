@@ -282,20 +282,15 @@ class MainWindow(QMainWindow):
         self._worker = None
 
     def _send_stop_telegram(self):
-        """별도 스레드에서 텔레그램 발송 (UI 블로킹 없음)."""
-        import asyncio
+        """텔레그램 발송 (TelegramNotifier 내부 ThreadPool에서 처리 — UI 블로킹 없음)."""
         try:
-            loop = asyncio.new_event_loop()
-            async def _send():
-                from config.settings import AppConfig
-                from notification.telegram_bot import TelegramNotifier
-                config = AppConfig.from_yaml()
-                notifier = TelegramNotifier(config.telegram)
-                mode_tag = "[PAPER] " if self.sidebar.get_mode() == "paper" else ""
-                await notifier.send(f"{mode_tag}시스템 종료 (GUI)")
-                await notifier.aclose()
-            loop.run_until_complete(asyncio.wait_for(_send(), timeout=5.0))
-            loop.close()
+            from config.settings import AppConfig
+            from notification.telegram_bot import TelegramNotifier
+            config = AppConfig.from_yaml()
+            notifier = TelegramNotifier(config.telegram)
+            mode_tag = "[PAPER] " if self.sidebar.get_mode() == "paper" else ""
+            notifier.send(f"{mode_tag}시스템 종료 (GUI)", retries=1)
+            notifier.aclose()  # 워커 스레드의 send 완료까지 대기 후 정리
         except Exception:
             pass
 

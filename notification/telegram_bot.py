@@ -1,78 +1,118 @@
-"""notification/telegram_bot.py — 비동기 텔레그램 알림."""
+"""notification/telegram_bot.py — 텔레그램 알림 (requests + ThreadPool, swing-trader 패턴).
 
+aiohttp 싱글턴 세션의 stale keep-alive 문제를 회피하기 위해 매 호출마다
+새 TCP 커넥션을 사용하는 requests로 전환. asyncio 이벤트 루프 블로킹을
+피하려고 ThreadPoolExecutor(max_workers=1)에 fire-and-forget으로 위임한다.
+
+호출부는 `await` 없이 직접 호출 — 결과(성공/실패)는 워커 스레드 로그로만 확인.
+"""
+
+import concurrent.futures
 import time
 
-import aiohttp
+import requests
 from loguru import logger
 
 from config.settings import TelegramConfig
 
 
 class TelegramNotifier:
-    """aiohttp 기반 비동기 텔레그램 알림 (세션 재사용)."""
+    """텔레그램 봇 알림 — requests + ThreadPool fire-and-forget."""
 
     def __init__(self, config: TelegramConfig):
         self._token = config.bot_token
         self._chat_id = config.chat_id
         self._api_url = f"https://api.telegram.org/bot{self._token}"
         self._cooldowns: dict[str, float] = {}
-        self._session: aiohttp.ClientSession | None = None
+        self._closed = False
+        self._executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="telegram",
+        )
 
     def __repr__(self) -> str:
         return f"TelegramNotifier(chat_id={self._chat_id!r})"
 
-    async def _get_session(self) -> aiohttp.ClientSession:
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=15, connect=10),
-            )
-        return self._session
-
-    async def aclose(self) -> None:
-        """세션 정리."""
-        if self._session and not self._session.closed:
-            await self._session.close()
-            self._session = None
-
-    async def send(
+    def send(
         self,
         message: str,
         parse_mode: str = "HTML",
         retries: int = 2,
+        retry_sleep_sec: int = 30,
+    ) -> None:
+        """메시지 발송을 ThreadPool에 위임 — fire-and-forget.
+
+        호출 즉시 반환되며 메인 이벤트 루프를 블로킹하지 않는다.
+        실패는 워커 스레드 로그로만 노출된다 (반환값 없음).
+        """
+        if self._closed:
+            return
+        try:
+            self._executor.submit(
+                self._send_sync, message, parse_mode, retries, retry_sleep_sec,
+            )
+        except RuntimeError:
+            # executor가 이미 shutdown된 경우 — 종료 시점 race
+            logger.debug("텔레그램 전송 스킵 — executor 종료됨")
+
+    def _send_sync(
+        self,
+        message: str,
+        parse_mode: str,
+        retries: int,
+        retry_sleep_sec: int,
     ) -> bool:
-        payload = {
-            "chat_id": self._chat_id,
-            "text": message,
-            "parse_mode": parse_mode,
-        }
-        session = await self._get_session()
+        """실제 HTTP 발송 — 워커 스레드에서 실행 (블로킹 I/O 격리)."""
+        last_err = ""
         for attempt in range(retries):
             try:
-                async with session.post(
-                    f"{self._api_url}/sendMessage", json=payload,
-                ) as resp:
-                    if resp.status == 200:
-                        return True
-                    logger.warning(f"텔레그램 발송 실패: status={resp.status}")
-            except Exception as e:
-                logger.error(
-                    f"텔레그램 발송 오류 (시도 {attempt + 1}): "
-                    f"{type(e).__name__}: {e}"
+                resp = requests.post(
+                    f"{self._api_url}/sendMessage",
+                    json={
+                        "chat_id": self._chat_id,
+                        "text": message,
+                        "parse_mode": parse_mode,
+                    },
+                    timeout=30,
                 )
+                if resp.status_code == 200:
+                    return True
+                last_err = f"status={resp.status_code}"
+            except Exception as e:
+                last_err = f"{type(e).__name__}: {e}"
+
+            is_last = attempt == retries - 1
+            if is_last:
+                logger.warning(f"텔레그램 발송 최종 실패 (무시): {last_err}")
+            else:
+                logger.warning(
+                    f"텔레그램 발송 실패, {retry_sleep_sec}초 후 재시도: {last_err}"
+                )
+                time.sleep(retry_sleep_sec)
         return False
 
-    async def send_with_cooldown(
+    def send_with_cooldown(
         self, key: str, message: str, cooldown_sec: float = 60.0,
-    ) -> bool:
+    ) -> None:
         now = time.monotonic()
         if key in self._cooldowns and now - self._cooldowns[key] < cooldown_sec:
-            return False
+            return
         self._cooldowns[key] = now
-        return await self.send(message)
+        self.send(message)
 
-    async def send_buy_signal(
+    def aclose(self) -> None:
+        """ThreadPool 정리 — 대기 중 task 취소, 실행 중 task는 완료까지 대기."""
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            self._executor.shutdown(wait=True, cancel_futures=True)
+        except TypeError:
+            # Python < 3.9
+            self._executor.shutdown(wait=True)
+
+    def send_buy_signal(
         self, ticker: str, name: str, strategy: str, price: int, reason: str,
-    ) -> bool:
+    ) -> None:
         msg = (
             f"🟢 <b>매수 신호</b>\n"
             f"종목: {name} ({ticker})\n"
@@ -80,9 +120,9 @@ class TelegramNotifier:
             f"가격: {price:,}원\n"
             f"사유: {reason}"
         )
-        return await self.send(msg)
+        self.send(msg)
 
-    async def send_execution(
+    def send_execution(
         self,
         ticker: str,
         name: str,
@@ -95,7 +135,7 @@ class TelegramNotifier:
         reason: str = "",
         pnl: int | None = None,
         pnl_pct: float | None = None,
-    ) -> bool:
+    ) -> None:
         """체결 알림 통일 포맷 (ADR-008).
 
         mode: 'live' / 'paper'. paper면 제목에 [PAPER] 태그.
@@ -123,20 +163,20 @@ class TelegramNotifier:
         if pnl is not None and side == "sell":
             pct_str = f" ({pnl_pct:+.2f}%)" if pnl_pct is not None else ""
             lines.append(f"손익: {pnl:+,}원{pct_str}")
-        return await self.send("\n".join(lines))
+        self.send("\n".join(lines))
 
-    async def send_stop_loss(
+    def send_stop_loss(
         self, ticker: str, name: str, entry_price: int, exit_price: int, pnl_pct: float,
-    ) -> bool:
+    ) -> None:
         msg = (
             f"🛑 <b>손절 실행</b>\n"
             f"종목: {name} ({ticker})\n"
             f"진입가: {entry_price:,} → 청산가: {exit_price:,}\n"
             f"손익: {pnl_pct:+.2%}"
         )
-        return await self.send(msg)
+        self.send(msg)
 
-    async def send_daily_report(
+    def send_daily_report(
         self,
         date: str,
         total_trades: int,
@@ -146,7 +186,7 @@ class TelegramNotifier:
         win_rate: float,
         strategy: str,
         max_drawdown: float = 0.0,
-    ) -> bool:
+    ) -> None:
         pnl_emoji = "📈" if total_pnl >= 0 else "📉"
         msg = (
             f"📊 <b>일일 성과 보고서</b>\n"
@@ -159,18 +199,18 @@ class TelegramNotifier:
             f"{pnl_emoji} 손익: {total_pnl:+,}원\n"
             f"최대낙폭: {max_drawdown:,.0f}원"
         )
-        return await self.send(msg)
+        self.send(msg)
 
-    async def send_urgent(self, message: str) -> bool:
+    def send_urgent(self, message: str) -> None:
         msg = f"🚨 <b>긴급</b>\n{message}"
-        return await self.send(msg, retries=3)
+        self.send(msg, retries=3)
 
-    async def send_no_trade(self, reason: str) -> bool:
+    def send_no_trade(self, reason: str) -> None:
         msg = f"⏸️ <b>당일 매매 없음</b>\n사유: {reason}"
-        return await self.send(msg)
+        self.send(msg)
 
-    async def send_system_start(self) -> bool:
-        return await self.send("🚀 <b>단타 매매 시스템 시작</b>")
+    def send_system_start(self) -> None:
+        self.send("🚀 <b>단타 매매 시스템 시작</b>")
 
-    async def send_system_stop(self, reason: str = "정상 종료") -> bool:
-        return await self.send(f"⏹️ <b>시스템 종료</b>\n사유: {reason}")
+    def send_system_stop(self, reason: str = "정상 종료") -> None:
+        self.send(f"⏹️ <b>시스템 종료</b>\n사유: {reason}")

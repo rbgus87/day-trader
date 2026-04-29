@@ -17,7 +17,7 @@ def order_mgr(mock_db):
     return OrderManager(
         rest_client=AsyncMock(),
         risk_manager=AsyncMock(),
-        notifier=AsyncMock(),
+        notifier=MagicMock(),
         db=mock_db,
     )
 

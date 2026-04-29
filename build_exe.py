@@ -90,6 +90,7 @@ def build() -> None:
         "--hidden-import=yaml",
         "--hidden-import=dotenv",
         "--hidden-import=aiohttp",
+        "--hidden-import=requests",
         "--hidden-import=websockets",
         "--hidden-import=aiosqlite",
         # Exclusions (numba 는 절대 제외 금지)

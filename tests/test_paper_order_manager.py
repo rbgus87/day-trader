@@ -18,8 +18,8 @@ def mock_db():
 @pytest.fixture
 def mock_notifier():
     notifier = MagicMock()
-    notifier.send = AsyncMock(return_value=True)
-    notifier.send_execution = AsyncMock(return_value=True)
+    notifier.send = MagicMock(return_value=None)
+    notifier.send_execution = MagicMock(return_value=None)
     return notifier
 
 
