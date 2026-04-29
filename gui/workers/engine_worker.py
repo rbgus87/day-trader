@@ -417,6 +417,14 @@ class EngineWorker(QThread):
                     )
 
             self._register_active_strategies(all_stocks)
+
+            # 시작 시 1회 조건검색 (장중 재시작 / 장외 시작 대비) — 실패 시 코어 fallback
+            if self._config.condition_search.enabled:
+                try:
+                    await self._apply_condition_search_universe()
+                except Exception as e:
+                    logger.error(f"[COND] 시작 시 조건검색 실패: {e} — 코어 유니버스 유지")
+
             await self._refresh_prev_day_ohlcv(all_stocks)
 
             # 시장 필터 초기 갱신 (Phase 1 Day 3)
