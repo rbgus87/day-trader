@@ -99,6 +99,9 @@ class EngineWorker(QThread):
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
 
+        # Global exception handler — unhandled 예외를 로그 + GUI 에러 시그널로 라우팅
+        self._install_exception_handlers()
+
         # Phase 3 Day 12+: 일일 손실 한도 도달 1회성 알림 플래그
         self._daily_halt_notified = False
 
@@ -126,6 +129,57 @@ class EngineWorker(QThread):
             self._stop_event = None
             logger.info("EngineWorker 종료 완료")
             self.signals.stopped.emit()
+
+    # ── Global exception handlers ──
+
+    def _install_exception_handlers(self):
+        """sys.excepthook + asyncio loop exception handler 등록.
+
+        unhandled 예외를 로그로 남기고 GUI에 error 시그널로 전달한다.
+        프로세스/이벤트 루프가 조용히 죽는 것을 방지하는 것이 목적.
+        """
+        import traceback
+
+        def _emit_error(msg: str) -> None:
+            try:
+                self.signals.error.emit(msg)
+            except Exception:
+                pass
+
+        # 1) sys.excepthook — 동기 코드의 unhandled 예외
+        prev_excepthook = sys.excepthook
+
+        def _excepthook(exc_type, exc_value, exc_tb):
+            try:
+                tb_str = "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+                logger.error(f"[CRASH] unhandled exception:\n{tb_str}")
+                _emit_error(f"unhandled: {exc_type.__name__}: {exc_value}")
+            except Exception:
+                pass
+            try:
+                prev_excepthook(exc_type, exc_value, exc_tb)
+            except Exception:
+                pass
+
+        sys.excepthook = _excepthook
+
+        # 2) asyncio loop exception handler — Task/콜백의 unhandled 예외
+        def _loop_exc_handler(loop, context):
+            exc = context.get("exception")
+            msg = context.get("message", "")
+            try:
+                if exc is not None:
+                    tb_str = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+                    logger.error(f"[CRASH] asyncio unhandled exception ({msg}):\n{tb_str}")
+                    _emit_error(f"asyncio: {type(exc).__name__}: {exc}")
+                else:
+                    logger.error(f"[CRASH] asyncio handler context: {context}")
+                    _emit_error(f"asyncio: {msg}")
+            except Exception:
+                pass
+
+        if self._loop is not None:
+            self._loop.set_exception_handler(_loop_exc_handler)
 
     # ── Core async engine ──
 

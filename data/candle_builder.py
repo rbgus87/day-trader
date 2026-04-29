@@ -10,6 +10,9 @@ from loguru import logger
 class CandleBuilder:
     """틱 데이터 → 1분/5분 캔들 생성, VWAP 계산."""
 
+    MAX_CANDLES_PER_TICKER = 100  # 종목당 보관 상한 (메모리 관리)
+    CUTOFF_TIME = "1520"  # HHMM, 이 시각 이후 틱은 무시 (15:10 강제청산 + 여유 10분)
+
     def __init__(
         self,
         candle_queue: asyncio.Queue,
@@ -21,6 +24,7 @@ class CandleBuilder:
         self._min1_buffer: dict[str, list[dict]] = defaultdict(list)
         self._vwap_accum: dict[str, dict] = defaultdict(lambda: {"pv_sum": 0.0, "vol_sum": 0})
         self._date_str: str | None = None  # 백테스트 모드에서 날짜 주입용
+        self._cutoff_logged: bool = False
 
     def set_date(self, date_str: str) -> None:
         """백테스트 모드에서 날짜를 외부에서 주입."""
@@ -32,6 +36,13 @@ class CandleBuilder:
         volume = tick["volume"]
         time_str = tick["time"]
         minute_key = time_str[:4]
+
+        # 15:20 이후 캔들 생성 중단 (백테스트 모드는 set_date로 식별 → 시간 컷오프 비활성화)
+        if self._date_str is None and minute_key >= self.CUTOFF_TIME:
+            if not self._cutoff_logged:
+                logger.info(f"[CandleBuilder] {self.CUTOFF_TIME[:2]}:{self.CUTOFF_TIME[2:]} 이후 틱 무시 (캔들 생성 중단)")
+                self._cutoff_logged = True
+            return
 
         self._vwap_accum[ticker]["pv_sum"] += price * volume
         self._vwap_accum[ticker]["vol_sum"] += volume
@@ -70,9 +81,13 @@ class CandleBuilder:
         logger.trace(f"1분봉 완성: {ticker} {candle['ts']} C={candle['close']}")
 
         if "5m" in self._timeframes:
-            self._min1_buffer[ticker].append(out)
-            if len(self._min1_buffer[ticker]) >= 5:
+            buf = self._min1_buffer[ticker]
+            buf.append(out)
+            if len(buf) >= 5:
                 await self._emit_5m_candle(ticker)
+            # 종목당 최대 MAX_CANDLES_PER_TICKER 봉 유지, 초과 시 오래된 것 제거
+            if len(buf) > self.MAX_CANDLES_PER_TICKER:
+                del buf[: len(buf) - self.MAX_CANDLES_PER_TICKER]
 
     async def _emit_5m_candle(self, ticker: str) -> None:
         buf = self._min1_buffer[ticker][:5]
@@ -101,3 +116,4 @@ class CandleBuilder:
         self._building.clear()
         self._min1_buffer.clear()
         self._vwap_accum.clear()
+        self._cutoff_logged = False

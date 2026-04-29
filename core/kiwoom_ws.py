@@ -27,8 +27,8 @@ class KiwoomWebSocketClient:
     """키움 WebSocket — 체결/호가/주문체결 구독, Queue 기반 데이터 전달."""
 
     HEARTBEAT_INTERVAL = 30
-    RECONNECT_BASE_DELAY = 2
-    RECONNECT_MAX_DELAY = 60
+    RECONNECT_BASE_DELAY = 1
+    RECONNECT_MAX_DELAY = 30
 
     def __init__(
         self,
@@ -181,13 +181,18 @@ class KiwoomWebSocketClient:
                     if not self._running:
                         break
                     logger.info("장 시간 진입 — WS 재연결 시도")
+                    reconnect_delay = self.RECONNECT_BASE_DELAY  # 장 진입 직후 즉시 시도
 
+                # exponential backoff: 1 → 2 → 4 → ... → RECONNECT_MAX_DELAY
+                logger.info(f"[WS] {reconnect_delay}초 후 재연결 시도")
+                await asyncio.sleep(reconnect_delay)
                 try:
                     await self._establish_connection()
-                    reconnect_delay = self.RECONNECT_BASE_DELAY
+                    reconnect_delay = self.RECONNECT_BASE_DELAY  # 성공 시 backoff 리셋
                     self._reconnect_failures = 0
                 except Exception as e2:
                     logger.error(f"재연결 실패: {e2}")
+                    reconnect_delay = min(reconnect_delay * 2, self.RECONNECT_MAX_DELAY)
             except Exception as e:
                 if not self._running:
                     break
