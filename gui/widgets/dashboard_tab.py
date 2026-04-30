@@ -881,7 +881,11 @@ class DashboardTab(QWidget):
                 else QColor("#6c7086")
             )
 
-            atr_pct = self._atr_cache.get(ticker)
+            # 조건검색 추가 종목은 ticker_atr 테이블에 없어 _atr_cache 미스 →
+            # engine이 watchlist payload에 동봉한 atr_pct(일봉 응답에서 계산) 우선 사용.
+            atr_pct = item.get("atr_pct")
+            if atr_pct is None:
+                atr_pct = self._atr_cache.get(ticker)
             if atr_pct is not None:
                 atr_text = f"{atr_pct:.1f}%"
                 if atr_pct >= 10:

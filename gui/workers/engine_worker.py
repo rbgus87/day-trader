@@ -51,6 +51,9 @@ class EngineWorker(QThread):
         # 조건검색 추가 종목의 market 분류용 KOSPI/KOSDAQ 종목코드 캐시 (ka10099, 1회 조회).
         # _apply_condition_search_universe가 처음 호출될 때 채워지고 이후 재사용.
         self._market_codes_cache: dict[str, set[str]] | None = None
+        # 조건검색 추가 종목의 ATR%(소수, 예: 3.4) — universe.yaml에 없어 ticker_atr
+        # 테이블에 미등록인 종목용. enrichment 시 일봉 응답으로 계산 후 watchlist에 동봉.
+        self._ticker_atr_pct: dict[str, float] = {}
         # 상한가 맵 (전일 종가 × 1.30, 호가 절사) — OHLCV 갱신 시 재계산
         self._limit_up_map: dict[str, float] = {}
 
@@ -996,9 +999,11 @@ class EngineWorker(QThread):
         return "unknown"
 
     async def _apply_condition_search_universe(self) -> None:
-        """08:30 — 조건검색 결과를 전일 거래대금 순으로 정렬해 코어 유니버스에 합산.
+        """08:30 — 조건검색 결과를 전일 거래대금 순으로 정렬해 감시 유니버스로 사용.
 
-        실패/비활성/결과 없음 시 기존 감시 종목 유지 (no-op).
+        성공: 조건검색 결과(상위 max_watch_stocks)만으로 _active_strategies 교체.
+              코어 유니버스(universe.yaml)는 합산하지 않음.
+        실패/비활성/결과 없음: 기존 감시 종목 유지 (no-op) → 코어 fallback.
         """
         cs_cfg = self._config.condition_search
         if not cs_cfg.enabled:
@@ -1021,7 +1026,12 @@ class EngineWorker(QThread):
             logger.warning("[COND] 조건검색 결과 비어있음 — 코어 유니버스 유지")
             return
 
-        # 전일 거래대금 = 전일 종가 × 전일 거래량 (일봉 API에서 추출)
+        # 전일 거래대금 = 전일 종가 × 전일 거래량 (일봉 API에서 추출).
+        # 같은 응답에서 14일치 high/low/close로 ATR%도 계산해 _ticker_atr_pct에 캐시
+        # (조건검색 종목은 ticker_atr 테이블에 미등록 → dashboard 표시 누락 방지).
+        from core.indicators import calculate_atr, calculate_atr_pct
+        import pandas as pd
+
         base_dt = datetime.now().strftime("%Y%m%d")
         enriched: list[dict] = []
         for stock in cs_results:
@@ -1046,6 +1056,28 @@ class EngineWorker(QThread):
                     prev.get("acml_vlmn", 0)))
                 ))
                 amount = prev_close * prev_volume
+
+                # ATR% 계산 — 키움 응답은 최신→과거 순, 시간순으로 reverse 후 계산.
+                if len(items) >= 15:
+                    try:
+                        rows = []
+                        for it in items[:30]:
+                            h = abs(float(it.get("high_pric", it.get("stck_hgpr", 0)) or 0))
+                            l = abs(float(it.get("low_pric", it.get("stck_lwpr", 0)) or 0))
+                            c = abs(float(it.get("cur_prc", it.get("stck_clpr", 0)) or 0))
+                            if h > 0 and l > 0 and c > 0:
+                                rows.append((h, l, c))
+                        if len(rows) >= 15:
+                            rows.reverse()
+                            df = pd.DataFrame(rows, columns=["high", "low", "close"])
+                            atr = calculate_atr(df, length=14)
+                            atr_pct_series = calculate_atr_pct(atr, df["close"])
+                            latest = atr_pct_series.dropna()
+                            if len(latest) > 0:
+                                self._ticker_atr_pct[ticker] = float(latest.iloc[-1])
+                    except Exception as e:
+                        logger.debug(f"[COND] {ticker} ATR 계산 실패: {e}")
+
                 if amount > 0:
                     enriched.append({
                         "ticker": ticker,
@@ -1066,20 +1098,20 @@ class EngineWorker(QThread):
             logger.warning("[COND] 거래대금 정렬 결과 0종 — 코어 유니버스 유지")
             return
 
-        # 코어 유니버스 + 조건검색 상위 합산 (코어 우선, ticker 중복 제거).
-        # 조건검색 종목 market은 ka10099 캐시로 정확히 분류 — "unknown"이면 시장
-        # 필터(MA5)가 OR fallback으로 약화되어 약세 시장에서 거래가 새므로 중요.
-        core_stocks = self._load_universe()
-        core_tickers = {s["ticker"] for s in core_stocks}
+        # 조건검색 결과만으로 감시 유니버스 구성 (코어 합산 안 함).
+        # 코어 fallback은 condition_search 실패 경로(early return)에서 자동 — 그 경우
+        # _active_strategies는 startup에서 이미 yaml 코어로 등록된 상태 그대로 유지된다.
+        # market은 ka10099 캐시로 정확히 분류해야 함 — "unknown"이면 market_filter(MA5)가
+        # OR fallback으로 약화되어 약세 시장에서 거래가 새므로 중요.
         market_codes = await self._ensure_market_codes_cache()
-        merged: list[dict] = list(core_stocks)
-        for s in top:
-            if s["ticker"] not in core_tickers:
-                merged.append({
-                    "ticker": s["ticker"],
-                    "name": s["name"],
-                    "market": self._resolve_market(s["ticker"], market_codes),
-                })
+        merged: list[dict] = [
+            {
+                "ticker": s["ticker"],
+                "name": s["name"],
+                "market": self._resolve_market(s["ticker"], market_codes),
+            }
+            for s in top
+        ]
 
         old_tickers = set(self._active_strategies.keys())
         new_tickers = {s["ticker"] for s in merged}
@@ -2037,6 +2069,10 @@ class EngineWorker(QThread):
                     # _market_map만으로는 판별 불가 — engine의 _ticker_markets로
                     # 정확한 분류 전달 ("kospi"/"kosdaq"/"unknown").
                     "market": self._ticker_markets.get(ticker, "unknown"),
+                    # 조건검색 enrichment에서 계산한 ATR%. ticker_atr 테이블에
+                    # 없는 종목용. 코어 fallback 종목은 None이고 dashboard가
+                    # _atr_cache(ticker_atr)로 보완.
+                    "atr_pct": self._ticker_atr_pct.get(ticker),
                     "current_price": current,
                     "change_pct": change_pct,
                     "prev_high": prev_high,
