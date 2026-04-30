@@ -55,6 +55,19 @@ class KiwoomWebSocketClient:
         self._running = False
         self._reconnect_failures = 0
         self._last_disconnect_at: object | None = None  # 재연결 성공 알림용
+        # 재연결 시 구독 복원에 사용할 provider — () -> list[str] (TICK 종목)
+        # 설정 시 _subscriptions 대신 provider 결과로 복원하므로 항상 현재 감시 목록과 일치.
+        self._subscription_provider = None
+
+    def set_subscription_provider(self, provider) -> None:
+        """재연결 시 구독할 TICK 종목 리스트를 반환하는 callback 등록.
+
+        provider() → list[str].
+        장외 시간 중 condition_search가 _active_strategies를 갱신했어도
+        WS subscribe는 실패해 _subscriptions에 누락될 수 있으므로,
+        재연결 시 provider 결과(현재 감시 목록)로 직접 복원한다.
+        """
+        self._subscription_provider = provider
 
     def _ws_notify_enabled(self, key: str) -> bool:
         """ADR-008: notifications 토글. 설정 없으면 기본 True."""
@@ -382,7 +395,30 @@ class KiwoomWebSocketClient:
                     logger.warning("tick_queue 가득 참 — 틱 드랍")
 
     async def _restore_subscriptions(self) -> None:
-        """재연결 후 구독 복원."""
+        """재연결 후 구독 복원.
+
+        provider가 등록되어 있으면 그 결과(현재 감시 목록)로 TICK 구독.
+        없거나 결과가 비어있으면 기존 _subscriptions dict로 fallback.
+        """
+        if self._subscription_provider:
+            try:
+                tickers = list(self._subscription_provider())
+            except Exception as e:
+                logger.error(f"[WS] subscription_provider 호출 실패: {e}")
+                tickers = []
+            if tickers:
+                msg = json.dumps({
+                    "trnm": "REG",
+                    "grp_no": "1",
+                    "refresh": "1",
+                    "data": [{"item": tickers, "type": [WS_TYPE_TICK]}],
+                })
+                if self._ws:
+                    await self._ws.send(msg)
+                self._subscriptions[WS_TYPE_TICK] = list(tickers)
+                logger.info(f"구독 복원(provider): {len(tickers)}종목")
+                return
+
         for real_type, codes in self._subscriptions.items():
             if codes:
                 msg = json.dumps({

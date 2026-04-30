@@ -256,6 +256,11 @@ class EngineWorker(QThread):
             notifier=self._notifier,
             notifications_config=self._config.notifications,
         )
+        # WS 재연결 시 universe.yaml 코어가 아닌 현재 감시 목록 전체로 복원.
+        # condition_search가 추가한 종목까지 포함되도록 _active_strategies 키를 사용.
+        self._ws_client.set_subscription_provider(
+            lambda: list(self._active_strategies.keys())
+        )
         # 5분봉은 사용처가 없고(ADR-010 이후 on_candle_5m 미구현), candle_history에
         # 혼입되면 ADX 등 1m 기반 지표가 백테스트와 다르게 계산됨 → 1m only.
         self._candle_builder = CandleBuilder(
@@ -1032,14 +1037,19 @@ class EngineWorker(QThread):
         # active_strategies 교체
         self._register_active_strategies(merged)
 
-        # WS 구독 갱신 (delta — 메인 WS 사용)
+        # WS 구독 갱신 (delta — 메인 WS 사용).
+        # 장외 시간(WS 끊김 상태)에는 send 실패할 수 있으나, _active_strategies는
+        # 위에서 이미 갱신되었으므로 다음 WS 재연결 시 subscription_provider가
+        # 자동 복원한다.
         try:
             if removed:
                 await self._ws_client.unsubscribe(list(removed))
             if added:
                 await self._ws_client.subscribe(list(added))
         except Exception as e:
-            logger.error(f"[COND] WS 구독 갱신 실패: {e}")
+            logger.warning(
+                f"[COND] WS 구독 갱신 실패: {e} — 다음 재연결 시 자동 복원"
+            )
 
         # 신규 추가 종목에 대해 전일 OHLCV 갱신
         if added:
