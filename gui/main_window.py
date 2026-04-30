@@ -661,9 +661,21 @@ class MainWindow(QMainWindow):
                 self._tray.tray.MessageIcon.Information,
                 2000,
             )
-        else:
+            return
+
+        # 엔진 미실행 시 — 실수로 X 클릭한 경우를 막기 위해 명시적 확인.
+        reply = QMessageBox.question(
+            self,
+            "DayTrader",
+            "프로그램을 종료하시겠습니까?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
             event.accept()
             self._cleanup_and_quit()
+        else:
+            event.ignore()
 
     def _cleanup_and_quit(self):
         if getattr(self, "_cleanup_done", False):
