@@ -48,6 +48,9 @@ class EngineWorker(QThread):
         self._ticker_markets: dict[str, str] = {}  # {ticker: "kospi"/"kosdaq"/"unknown"}
         # 유니버스 종목명 맵 (active_strategies와 독립) — trades 조회 시 fallback
         self._ticker_names: dict[str, str] = {}
+        # 조건검색 추가 종목의 market 분류용 KOSPI/KOSDAQ 종목코드 캐시 (ka10099, 1회 조회).
+        # _apply_condition_search_universe가 처음 호출될 때 채워지고 이후 재사용.
+        self._market_codes_cache: dict[str, set[str]] | None = None
         # 상한가 맵 (전일 종가 × 1.30, 호가 절사) — OHLCV 갱신 시 재계산
         self._limit_up_map: dict[str, float] = {}
 
@@ -943,6 +946,55 @@ class EngineWorker(QThread):
             except Exception:
                 pass
 
+    async def _ensure_market_codes_cache(self) -> dict[str, set[str]] | None:
+        """KOSPI/KOSDAQ 전종목 코드 set을 ka10099로 1회 조회해 캐시.
+
+        조건검색이 추가하는 종목의 market 필드를 정확히 채우기 위함.
+        실패/빈 응답이면 None 반환(캐시 미저장)하여 다음 호출 때 재시도.
+        """
+        if self._market_codes_cache is not None:
+            return self._market_codes_cache
+        try:
+            kospi = await self._rest_client.get_stock_list_by_market("0")
+            kosdaq = await self._rest_client.get_stock_list_by_market("10")
+        except Exception as e:
+            logger.error(f"[MARKET-CODES] ka10099 조회 실패: {e}")
+            return None
+
+        def _codes(rows: list[dict]) -> set[str]:
+            return {
+                (s.get("code") or s.get("stk_cd") or s.get("shcode") or "").strip()
+                for s in rows
+            } - {""}
+
+        kospi_codes = _codes(kospi)
+        kosdaq_codes = _codes(kosdaq)
+        if not kospi_codes or not kosdaq_codes:
+            logger.warning(
+                f"[MARKET-CODES] 응답 비어있음: KOSPI {len(kospi_codes)}, "
+                f"KOSDAQ {len(kosdaq_codes)} — 캐시 미저장"
+            )
+            return None
+        self._market_codes_cache = {"kospi": kospi_codes, "kosdaq": kosdaq_codes}
+        logger.info(
+            f"[MARKET-CODES] 캐시 구축: KOSPI {len(kospi_codes)}, "
+            f"KOSDAQ {len(kosdaq_codes)}"
+        )
+        return self._market_codes_cache
+
+    @staticmethod
+    def _resolve_market(
+        ticker: str, market_codes: dict[str, set[str]] | None
+    ) -> str:
+        """ticker → 'kospi' / 'kosdaq' / 'unknown'."""
+        if not market_codes:
+            return "unknown"
+        if ticker in market_codes.get("kospi", set()):
+            return "kospi"
+        if ticker in market_codes.get("kosdaq", set()):
+            return "kosdaq"
+        return "unknown"
+
     async def _apply_condition_search_universe(self) -> None:
         """08:30 — 조건검색 결과를 전일 거래대금 순으로 정렬해 코어 유니버스에 합산.
 
@@ -1014,16 +1066,19 @@ class EngineWorker(QThread):
             logger.warning("[COND] 거래대금 정렬 결과 0종 — 코어 유니버스 유지")
             return
 
-        # 코어 유니버스 + 조건검색 상위 합산 (코어 우선, ticker 중복 제거)
+        # 코어 유니버스 + 조건검색 상위 합산 (코어 우선, ticker 중복 제거).
+        # 조건검색 종목 market은 ka10099 캐시로 정확히 분류 — "unknown"이면 시장
+        # 필터(MA5)가 OR fallback으로 약화되어 약세 시장에서 거래가 새므로 중요.
         core_stocks = self._load_universe()
         core_tickers = {s["ticker"] for s in core_stocks}
+        market_codes = await self._ensure_market_codes_cache()
         merged: list[dict] = list(core_stocks)
         for s in top:
             if s["ticker"] not in core_tickers:
                 merged.append({
                     "ticker": s["ticker"],
                     "name": s["name"],
-                    "market": "unknown",
+                    "market": self._resolve_market(s["ticker"], market_codes),
                 })
 
         old_tickers = set(self._active_strategies.keys())
@@ -1173,6 +1228,11 @@ class EngineWorker(QThread):
                 "name": s.get("name", ticker),
                 "score": 0,
             }
+            # 시장/이름 매핑 동기화 — 조건검색 추가 종목까지 _ticker_markets에 반영되어
+            # market_filter.is_allowed가 정확한 시장으로 판정.
+            if "market" in s:
+                self._ticker_markets[ticker] = s["market"]
+            self._ticker_names[ticker] = s.get("name", ticker)
         self._active_strategy = (
             list(self._active_strategies.values())[0]["strategy"]
             if self._active_strategies else None
@@ -1973,6 +2033,10 @@ class EngineWorker(QThread):
                 items.append({
                     "ticker": ticker,
                     "name": info.get("name", ticker),
+                    # 조건검색 추가 종목은 universe.yaml에 없으므로 dashboard의
+                    # _market_map만으로는 판별 불가 — engine의 _ticker_markets로
+                    # 정확한 분류 전달 ("kospi"/"kosdaq"/"unknown").
+                    "market": self._ticker_markets.get(ticker, "unknown"),
                     "current_price": current,
                     "change_pct": change_pct,
                     "prev_high": prev_high,

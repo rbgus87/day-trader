@@ -871,7 +871,9 @@ class DashboardTab(QWidget):
             ticker_color = QColor("#f9e2af") if has_pos else QColor("#89b4fa")
 
             # Phase 3 Day 12+ Level 1: 시장 구분 + ATR%
-            market = self._market_map.get(ticker, "")
+            # 조건검색 추가 종목은 universe.yaml에 없어 _market_map으로는 판별 불가 —
+            # engine이 watchlist 페이로드에 동봉한 market을 우선 사용.
+            market = item.get("market") or self._market_map.get(ticker, "")
             market_text = "K" if market == "kospi" else ("Q" if market == "kosdaq" else "-")
             market_color = (
                 QColor("#89b4fa") if market == "kospi"
