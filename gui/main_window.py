@@ -252,27 +252,45 @@ class MainWindow(QMainWindow):
             f"Mode: {self.sidebar.get_mode().upper()} | Engine: Stopping..."
         )
 
-        # 1단계: _running 플래그 해제 (worker가 감지하면 자연 종료)
-        if self._worker:
-            self._worker._running = False
+        # 정상 경로: request_stop 시그널 → engine_worker._on_request_stop가
+        # _running=False + scheduler shutdown + _stop_event.set(threadsafe).
+        # _stop_event가 set되어야 polling loop의 wait_for가 즉시 깨어나며,
+        # 그렇지 않으면 다음 timeout(2초)까지 지연되어 _stop_phase2의 강제
+        # terminate로 빠진다. 직전 구현은 _running만 만져서 이 문제가 발생.
+        self._worker.signals.request_stop.emit()
 
-        # 2단계: 2초 대기 — 자연 종료되면 stopped 시그널이 옴
-        QTimer.singleShot(2000, self._stop_phase2)
+        # fallback: 5초 안에도 미종료 시 terminate. 정상 흐름이라면
+        # signals.stopped이 먼저 도착해 _on_engine_stopped가 worker=None 처리.
+        QTimer.singleShot(5000, self._stop_phase2)
 
     def _stop_phase2(self):
-        """2초 후 — 자연 종료 안 됐으면 terminate."""
+        """5초 후 fallback — 자연 종료 실패 시 terminate.
+
+        정상 흐름에서는 signals.stopped 시그널이 먼저 도착해 worker=None이
+        되므로 이 함수는 isRunning() 체크에서 즉시 return.
+        """
         if not self._worker or not self._worker.isRunning():
             return
 
-        logger.info("엔진 정지 완료 (terminate)")
+        logger.warning("엔진 자연 종료 실패 — terminate fallback")
         self._worker.terminate()
-        self._worker.wait(1000)  # 최대 1초만 대기
+        # terminate 후엔 wait를 충분히. 미종료 상태에서 worker=None을 하면
+        # QThread가 running 중에 destroy되어 Qt가 fatal abort → 프로세스 사망.
+        if not self._worker.wait(3000):
+            logger.error(
+                "terminate 후에도 3초 내 미종료 — worker reference 유지 (프로세스 보호)"
+            )
+            self.sidebar.set_engine_running(False)
+            self._lbl_status_left.setText(
+                f"Mode: {self.sidebar.get_mode().upper()} | Engine: Hung"
+            )
+            return
 
         # 텔레그램은 별도 스레드에서 (UI 블로킹 없음)
         import threading
         threading.Thread(target=self._send_stop_telegram, daemon=True).start()
 
-        # UI 즉시 복구
+        # UI 복구
         self._stop_btn_pressed = False
         self.sidebar.set_engine_running(False)
         self.sidebar.update_connection(False, False)
