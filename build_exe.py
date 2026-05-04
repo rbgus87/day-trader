@@ -81,11 +81,8 @@ def build() -> None:
         "--hidden-import=apscheduler.jobstores.memory",
         "--hidden-import=apscheduler.executors.pool",
         "--hidden-import=apscheduler.executors.asyncio",
-        # numba/llvmlite/pandas_ta — collect_all 로 sub-module + 데이터 + 바이너리 일괄 수집
-        # (2026-04-13 페이퍼 1일차 numba silent failure 재발 방지)
-        "--collect-all=numba",
-        "--collect-all=llvmlite",
-        "--collect-all=pandas_ta",
+        # pandas_ta(numba/llvmlite 의존) 운영 의존 제거 — core.indicators의 자체 Wilder
+        # 구현(wilder_adx/wilder_atr)으로 대체. EXE 크기 ~80~100MB, 빌드 ~60~90초 절감.
         "--hidden-import=loguru",
         "--hidden-import=yaml",
         "--hidden-import=dotenv",

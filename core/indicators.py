@@ -1,13 +1,128 @@
-"""core/indicators.py — 공통 기술 지표 (pandas_ta 기반).
+"""core/indicators.py — 공통 기술 지표.
 
 일봉 또는 분봉 DataFrame으로 ATR, ATR% 등을 계산한다.
 ticker_atr DB에서 최신 ATR%를 조회하고 ATR 기반 손절가를 산출하는 유틸도 제공한다.
+
+ADX/ATR은 Wilder smoothing(RMA) 기반 직접 구현 — pandas_ta 의존 제거로 EXE
+크기·빌드 시간을 줄이기 위해. 알고리즘은 pandas_ta(mamode='rma')와 동등.
 """
 
 import sqlite3
 
+import numpy as np
 import pandas as pd
-import pandas_ta as ta
+
+
+def _wilder_rma(s: pd.Series, length: int) -> pd.Series:
+    """ATR용 RMA — pandas_ta atr(presma=True)의 동작 복제.
+
+    인덱스 ``length-1``에 ``s.iloc[0:length].mean()`` (NaN-skip 평균)을 주입하고,
+    이후 ``rma[i] = rma[i-1]*(length-1)/length + s[i]/length`` 점화식 적용.
+    그 앞 인덱스는 NaN. 입력 NaN은 RMA를 그 시점에서 진전시키지 않는다.
+    """
+    s = s.astype(float)
+    out = pd.Series(np.nan, index=s.index, dtype=float)
+    if len(s) < length:
+        return out
+
+    init_val = s.iloc[0:length].mean()  # skipna=True (기본)
+    if pd.isna(init_val):
+        return out
+    init_pos = length - 1
+    out.iloc[init_pos] = init_val
+
+    factor = (length - 1) / length
+    inv = 1.0 / length
+    prev = init_val
+    arr = s.to_numpy()
+    out_arr = out.to_numpy(copy=True)
+    for i in range(init_pos + 1, len(s)):
+        cur = arr[i]
+        if np.isnan(cur):
+            out_arr[i] = prev
+        else:
+            prev = prev * factor + cur * inv
+            out_arr[i] = prev
+    return pd.Series(out_arr, index=s.index, dtype=float)
+
+
+def _true_range(
+    high: pd.Series, low: pd.Series, close: pd.Series, prenan: bool = False,
+) -> pd.Series:
+    """True Range. ``DataFrame.max(axis=1)``이 NaN을 무시하므로, 기본 동작은
+    첫 행에 ``high-low``가 들어간다 (pandas_ta prenan=False와 동일).
+
+    ``prenan=True``면 첫 행을 NaN으로 강제한다 (pandas_ta가 ADX 내부 ATR 호출 시
+    사용하는 모드).
+    """
+    prev_close = close.shift(1)
+    tr1 = high - low
+    tr2 = (high - prev_close).abs()
+    tr3 = (low - prev_close).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    if prenan:
+        tr.iloc[0] = np.nan
+    return tr
+
+
+def wilder_atr(
+    high: pd.Series, low: pd.Series, close: pd.Series, length: int = 14,
+    prenan: bool = False,
+) -> pd.Series:
+    """Wilder ATR(length) — pandas_ta.atr(mamode='rma', prenan=...)와 동등."""
+    tr = _true_range(
+        high.astype(float), low.astype(float), close.astype(float), prenan=prenan,
+    )
+    return _wilder_rma(tr, length)
+
+
+def _zero_small(s: pd.Series) -> pd.Series:
+    """pandas_ta.utils.zero 동등 — |x| < eps면 0, NaN/그 외는 그대로."""
+    eps = np.finfo(float).eps
+    return s.where((s.abs() >= eps) | s.isna(), 0.0)
+
+
+def wilder_adx(
+    high: pd.Series, low: pd.Series, close: pd.Series, length: int = 14,
+) -> pd.DataFrame:
+    """ADX(length) — pandas_ta.adx(mamode='rma', talib=False)와 동등.
+
+    pandas_ta는 ATR에는 presma=True(진짜 Wilder)를 적용하지만, DM/DX smoothing에는
+    단순 ``ewm(alpha=1/length, adjust=False)``를 사용한다. 그 동작을 그대로 따른다.
+
+    Returns:
+        DataFrame with ``ADX_{length}``, ``DMP_{length}``, ``DMN_{length}``.
+    """
+    high = high.astype(float)
+    low = low.astype(float)
+    close = close.astype(float)
+
+    # pandas_ta.adx는 내부 ATR을 prenan=True로 호출 — 첫 행 TR을 NaN으로 강제
+    atr = wilder_atr(high, low, close, length=length, prenan=True)
+    k = 100.0 / atr
+
+    up = high.diff()
+    dn = -low.diff()
+    pos = ((up > dn) & (up > 0)) * up
+    neg = ((dn > up) & (dn > 0)) * dn
+    # boolean × NaN = NaN — 첫 행 NaN 유지
+    pos = pos.where(up.notna(), np.nan)
+    neg = neg.where(dn.notna(), np.nan)
+    pos = _zero_small(pos)
+    neg = _zero_small(neg)
+
+    alpha = 1.0 / length
+    dmp = k * pos.ewm(alpha=alpha, adjust=False).mean()
+    dmn = k * neg.ewm(alpha=alpha, adjust=False).mean()
+
+    dx = 100.0 * (dmp - dmn).abs() / (dmp + dmn)
+    adx = dx.ewm(alpha=alpha, adjust=False).mean()
+
+    return pd.DataFrame({
+        f"ADX_{length}": adx,
+        f"DMP_{length}": dmp,
+        f"DMN_{length}": dmn,
+    })
 
 
 def calculate_atr(daily_df: pd.DataFrame, length: int = 14) -> pd.Series:
@@ -22,17 +137,9 @@ def calculate_atr(daily_df: pd.DataFrame, length: int = 14) -> pd.Series:
     """
     if len(daily_df) < length + 1:
         return pd.Series(dtype=float)
-
-    atr = ta.atr(
-        high=daily_df["high"],
-        low=daily_df["low"],
-        close=daily_df["close"],
-        length=length,
+    return wilder_atr(
+        daily_df["high"], daily_df["low"], daily_df["close"], length=length,
     )
-    # pandas_ta가 None을 반환할 가능성에 대한 방어
-    if atr is None:
-        return pd.Series(dtype=float)
-    return atr
 
 
 def calculate_atr_pct(atr: pd.Series, close: pd.Series) -> pd.Series:

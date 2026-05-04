@@ -41,7 +41,7 @@ _REQUIRED_TABLES = {
     "screener_results", "index_candles", "ticker_atr",
 }
 _REQUIRED_MODULES = [
-    "pandas", "numpy", "pandas_ta", "numba",
+    "pandas", "numpy",
     "PyQt6", "loguru", "apscheduler", "aiosqlite",
     "aiohttp", "requests", "websockets", "yaml", "dotenv",
 ]
@@ -112,10 +112,11 @@ def step_imports() -> tuple[str, str, str]:
 
 
 def step_adx_calc() -> tuple[str, str, str]:
+    """자체 Wilder ADX 구현(core.indicators.wilder_adx)이 작동하는지 검증."""
     try:
         import numpy as np
         import pandas as pd
-        import pandas_ta as ta
+        from core.indicators import wilder_adx
         rng = np.random.default_rng(42)
         n = 50
         df = pd.DataFrame({
@@ -123,33 +124,34 @@ def step_adx_calc() -> tuple[str, str, str]:
             "low": rng.random(n) * 100,
             "close": rng.random(n) * 100 + 50,
         })
-        result = ta.adx(df["high"], df["low"], df["close"], length=14)
+        result = wilder_adx(df["high"], df["low"], df["close"], length=14)
         if result is None or result.empty:
-            return StepResult.FAIL, "ADX 결과 비어있음", "pandas_ta 버전 확인"
+            return StepResult.FAIL, "ADX 결과 비어있음", "core.indicators 확인"
         col = "ADX_14"
         if col not in result.columns:
             return (
                 StepResult.FAIL,
                 f"{col} 컬럼 없음 (실제: {list(result.columns)})",
-                "pandas_ta 버전 호환성 확인",
+                "wilder_adx 반환 형식 확인",
             )
         last = result[col].iloc[-1]
         if pd.isna(last):
-            return StepResult.FAIL, "ADX_14 마지막 값이 NaN", "ADX 계산 로직 확인"
+            return StepResult.FAIL, "ADX_14 마지막 값이 NaN", "wilder_adx 로직 확인"
         return StepResult.OK, f"ADX_14 = {float(last):.2f}", ""
     except Exception as e:
         return (
             StepResult.FAIL,
             f"{type(e).__name__}: {e}",
-            "numba/pandas_ta hidden import 누락 가능 (build_exe.py 확인)",
+            "core.indicators import / numpy/pandas 환경 확인",
         )
 
 
 def step_atr_calc() -> tuple[str, str, str]:
+    """자체 Wilder ATR 구현(core.indicators.wilder_atr)이 작동하는지 검증."""
     try:
         import numpy as np
         import pandas as pd
-        import pandas_ta as ta
+        from core.indicators import wilder_atr
         rng = np.random.default_rng(42)
         n = 50
         df = pd.DataFrame({
@@ -157,18 +159,18 @@ def step_atr_calc() -> tuple[str, str, str]:
             "low": rng.random(n) * 100,
             "close": rng.random(n) * 100 + 50,
         })
-        result = ta.atr(df["high"], df["low"], df["close"], length=14)
+        result = wilder_atr(df["high"], df["low"], df["close"], length=14)
         if result is None or len(result) == 0:
-            return StepResult.FAIL, "ATR 결과 비어있음", "pandas_ta 버전 확인"
+            return StepResult.FAIL, "ATR 결과 비어있음", "core.indicators 확인"
         last = result.iloc[-1]
         if pd.isna(last):
-            return StepResult.FAIL, "ATR 마지막 값이 NaN", "ATR 계산 로직 확인"
+            return StepResult.FAIL, "ATR 마지막 값이 NaN", "wilder_atr 로직 확인"
         return StepResult.OK, f"ATR_14 = {float(last):.2f}", ""
     except Exception as e:
         return (
             StepResult.FAIL,
             f"{type(e).__name__}: {e}",
-            "numba/pandas_ta hidden import 누락 가능",
+            "core.indicators import / numpy/pandas 환경 확인",
         )
 
 

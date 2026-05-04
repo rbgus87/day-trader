@@ -149,9 +149,9 @@ class MomentumStrategy(BaseStrategy):
             )
             return False
         try:
-            import pandas_ta as ta
+            from core.indicators import wilder_adx
             df = candles.tail(min_candles)
-            adx_result = ta.adx(df["high"], df["low"], df["close"], length=self._config.adx_length)
+            adx_result = wilder_adx(df["high"], df["low"], df["close"], length=self._config.adx_length)
             if adx_result is None or adx_result.empty:
                 logger.debug(f"[ADX] 결과 비어있음: {ticker}")
                 return False

@@ -4,7 +4,6 @@ requests>=2.31              # 텔레그램 알림 (swing-trader 패턴)
 websockets>=12.0,<14.0
 pandas>=2.2,<3.0
 numpy>=1.26,<2.0
-pandas-ta>=0.3.14b
 python-dotenv>=1.0
 apscheduler>=3.10,<4.0
 loguru>=0.7
@@ -19,6 +18,9 @@ matplotlib>=3.8
 # vectorbt>=0.26
 
 # Dev
+# pandas-ta는 운영 코드에서 제거됨(core.indicators의 자체 wilder 구현 사용).
+# 회귀 동등성 게이트 (tests/test_wilder_indicators.py)에서만 dev 의존으로 유지 — 미설치 시 자동 skip.
+pandas-ta>=0.3.14b ; extra == "dev"
 pytest>=8.0
 pytest-asyncio>=0.23
 black>=24.0
