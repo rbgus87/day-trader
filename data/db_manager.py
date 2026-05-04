@@ -112,6 +112,11 @@ class DbManager:
     async def init(self) -> None:
         self._conn = await aiosqlite.connect(self._db_path)
         self._conn.row_factory = aiosqlite.Row
+        # 동시성 안정화 — WAL은 reader-writer 동시 접근 허용, NORMAL은 fsync 빈도 절감,
+        # busy_timeout은 외부 프로세스 락 시 5초까지 대기 후 SQLITE_BUSY 발생.
+        await self._conn.execute("PRAGMA journal_mode=WAL;")
+        await self._conn.execute("PRAGMA synchronous=NORMAL;")
+        await self._conn.execute("PRAGMA busy_timeout=5000;")
         await self._conn.executescript(SCHEMA_SQL)
         await self._conn.commit()
         logger.info(f"DB 초기화 완료: {self._db_path}")

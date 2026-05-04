@@ -7,6 +7,7 @@ QThread 내 asyncio 이벤트 루프에서 실행.
 
 import asyncio
 import sys
+from collections import deque
 from datetime import datetime, time as dt_time
 
 from PyQt6.QtCore import QThread
@@ -68,8 +69,16 @@ class EngineWorker(QThread):
 
         # Candle history for strategy
         # 50봉 전일 시드 + 장중 ~390봉(09:00~15:30 1분봉) + 여유 60 = 500
-        self._candle_history: dict[str, list[dict]] = {}
+        # deque(maxlen=N) — append만으로 자동 truncate, list 슬라이스 비용 제거.
+        self._candle_history: dict[str, deque] = {}
         self._MAX_HISTORY = 500
+        # 시작 시퀀스 캐시 — startup에서 _fetch_condition_search_top이 채우면
+        # _apply_condition_search_universe가 그대로 사용해 조건검색 중복 호출 방지.
+        # 1회 사용 후 None으로 초기화. 일반 cron 경로에서는 항상 None.
+        self._pending_cond_top: list[dict] | None = None
+        # _fetch_condition_search_top이 320종목 일봉을 조회한 응답을 _refresh_prev_day_ohlcv가
+        # 재사용하도록 캐시. startup 1회용 — _refresh_prev_day_ohlcv 끝에서 clear.
+        self._daily_ohlcv_cache: dict[str, list] = {}
         # 분봉 pre-load 시드 봉 수 (장 초반 ADX 즉시 활성화 — adx_length+20=34 충족)
         self._INTRADAY_SEED_BARS = 50
         # 최신 틱 가격 (포지션 현재가 표시용)
@@ -429,7 +438,9 @@ class EngineWorker(QThread):
         try:
             core_stocks = self._load_universe()
 
-            # 1. 조건검색으로 최종 감시 종목 확정 (실패 시 코어 fallback)
+            # 1. 조건검색으로 최종 감시 종목 확정 (실패 시 코어 fallback).
+            # startup에서 한 번 호출한 결과는 _pending_cond_top에 캐시 — 직후 _run_screening의
+            # _apply_condition_search_universe가 같은 결과를 재사용해 중복 REST 호출 방지.
             final_stocks = core_stocks
             source = "core"
             if self._config.condition_search.enabled:
@@ -438,6 +449,7 @@ class EngineWorker(QThread):
                     if cond_top:
                         final_stocks = cond_top
                         source = "condition_search"
+                        self._pending_cond_top = cond_top
                 except Exception as e:
                     logger.error(f"[COND] 시작 시 조건검색 실패: {e} — 코어 유니버스 사용")
             logger.info(
@@ -766,10 +778,12 @@ class EngineWorker(QThread):
                     continue
 
                 # 캔들 히스토리는 모든 종목에 대해 유지 (장중 재스크리닝 대비)
-                self._candle_history.setdefault(ticker, [])
-                self._candle_history[ticker].append(candle)
-                if len(self._candle_history[ticker]) > self._MAX_HISTORY:
-                    self._candle_history[ticker] = self._candle_history[ticker][-self._MAX_HISTORY:]
+                # deque(maxlen=N)이 append만으로 자동 truncate — 슬라이스 불필요.
+                hist = self._candle_history.get(ticker)
+                if hist is None:
+                    hist = deque(maxlen=self._MAX_HISTORY)
+                    self._candle_history[ticker] = hist
+                hist.append(candle)
 
                 # 전략 판단은 active_strategies에 등록된 종목만
                 if not self._active_strategies:
@@ -1099,6 +1113,8 @@ class EngineWorker(QThread):
                 )
                 if len(items) < 2:
                     continue
+                # _refresh_prev_day_ohlcv가 직후 같은 일봉을 다시 조회하지 않도록 캐시
+                self._daily_ohlcv_cache[ticker] = items
                 prev = items[1]
                 prev_close = abs(float(prev.get("cur_prc", prev.get("stck_clpr", 0))))
                 prev_volume = abs(int(
@@ -1136,7 +1152,7 @@ class EngineWorker(QThread):
                     })
             except Exception as e:
                 logger.debug(f"[COND] {ticker} 일봉 조회 실패: {e}")
-            await asyncio.sleep(0.1)
+            # rate_limiter(5 cps)가 이미 흐름을 제어하므로 별도 sleep 불필요
 
         enriched.sort(key=lambda x: x["_amount"], reverse=True)
         top = enriched[: cs_cfg.max_watch_stocks]
@@ -1161,9 +1177,15 @@ class EngineWorker(QThread):
         """08:30 cron / 장중 갱신 — 조건검색 결과로 _active_strategies + WS 구독 동기화.
 
         실패/비활성/결과 없음: 기존 감시 종목 유지 (no-op) → 코어 fallback.
-        startup 시작 시퀀스는 _run_engine에서 _fetch_condition_search_top을 직접 사용.
+        startup 직후 _run_screening 즉시 호출 시에는 _pending_cond_top 캐시(1회)를
+        그대로 사용해 같은 조건검색을 두 번 실행하지 않는다.
         """
-        top = await self._fetch_condition_search_top()
+        if self._pending_cond_top is not None:
+            top = self._pending_cond_top
+            self._pending_cond_top = None
+            logger.info(f"[COND] startup 캐시 재사용: {len(top)}종목")
+        else:
+            top = await self._fetch_condition_search_top()
         if top is None:
             logger.warning("[COND] 조건검색 결과 없음 — 기존 감시 종목 유지")
             return
@@ -1336,15 +1358,20 @@ class EngineWorker(QThread):
         for s in stocks:
             ticker = s["ticker"]
             try:
-                daily = await self._rest_client.get_daily_ohlcv(
-                    ticker, base_dt=datetime.now().strftime('%Y%m%d'),
-                )
-                items = (
-                    daily.get("stk_dt_pole_chart_qry")
-                    or daily.get("output2")
-                    or daily.get("output")
-                    or []
-                )
+                # _fetch_condition_search_top이 방금 같은 일봉을 조회했으면 재사용 (REST 절약)
+                cached = self._daily_ohlcv_cache.pop(ticker, None)
+                if cached is not None:
+                    items = cached
+                else:
+                    daily = await self._rest_client.get_daily_ohlcv(
+                        ticker, base_dt=datetime.now().strftime('%Y%m%d'),
+                    )
+                    items = (
+                        daily.get("stk_dt_pole_chart_qry")
+                        or daily.get("output2")
+                        or daily.get("output")
+                        or []
+                    )
                 if items and len(items) >= 2:
                     prev = items[1]
                     prev_high = abs(float(prev.get("high_pric", 0)))
@@ -1395,6 +1422,9 @@ class EngineWorker(QThread):
             f"(상한가 {len(self._limit_up_map)}종 "
             f"— API {lu_api_count} / fallback {lu_fallback_count})"
         )
+        # startup용 일봉 캐시는 1회 사용 후 정리 (잔여분 — 다음 호출 오염 방지)
+        if self._daily_ohlcv_cache:
+            self._daily_ohlcv_cache.clear()
         # 장 초반 ADX 즉시 활성화 — 직전 영업일 마지막 N개 1분봉을 candle_history에 시드
         try:
             await self._seed_intraday_candles(stocks)
@@ -1449,12 +1479,14 @@ class EngineWorker(QThread):
                         continue
                 if not seed:
                     continue
-                # 마지막 N개만 보관 (메모리 절약)
-                self._candle_history[ticker] = seed[-n:]
+                # 마지막 N개만 보관 + 이후 append 자동 truncate를 위해 maxlen 설정
+                self._candle_history[ticker] = deque(
+                    seed[-n:], maxlen=self._MAX_HISTORY
+                )
                 seeded += 1
             except Exception as e:
                 logger.debug(f"분봉 시드 ({ticker}) 실패: {e}")
-            await asyncio.sleep(0.1)
+            # rate_limiter(5 cps)가 이미 흐름을 제어하므로 별도 sleep 불필요
         logger.info(f"분봉 시드 완료: {seeded}/{len(stocks)}종 — N={n}봉")
 
     async def _check_uptime_sanity(self) -> None:
@@ -1507,6 +1539,11 @@ class EngineWorker(QThread):
         logger.info("[자동] 일일 리셋 시작")
         self._risk_manager.reset_daily_counters()
         self._daily_halt_notified = False
+
+        # candle_builder의 _vwap_accum/_building/_min1_buffer를 비워 익일 VWAP 오염 방지
+        if self._candle_builder is not None:
+            self._candle_builder.reset()
+        self._candle_history.clear()
 
         stocks = self._load_universe()
         if not self._active_strategies:
