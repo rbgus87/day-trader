@@ -425,33 +425,48 @@ class EngineWorker(QThread):
 
         await self._risk_manager.check_consecutive_losses()
 
-        # WS connect + 유니버스 전체 구독 + 전략 등록
+        # 시작 시퀀스: 종목 확정 → 전략 등록 → WS 구독 (순서 통일로 strategies/WS 불일치 방지)
         try:
+            core_stocks = self._load_universe()
+
+            # 1. 조건검색으로 최종 감시 종목 확정 (실패 시 코어 fallback)
+            final_stocks = core_stocks
+            source = "core"
+            if self._config.condition_search.enabled:
+                try:
+                    cond_top = await self._fetch_condition_search_top()
+                    if cond_top:
+                        final_stocks = cond_top
+                        source = "condition_search"
+                except Exception as e:
+                    logger.error(f"[COND] 시작 시 조건검색 실패: {e} — 코어 유니버스 사용")
+            logger.info(
+                f"시작 시 감시 종목 확정: {len(final_stocks)}종목 (source={source})"
+            )
+
+            # 2. 확정된 리스트로 전략 등록
+            self._register_active_strategies(final_stocks)
+
+            # 3. WS connect + 동일 리스트로 구독 (strategies와 WS 1:1 일치)
             await self._ws_client.connect()
+            final_tickers = [s["ticker"] for s in final_stocks]
+            if final_tickers:
+                await self._ws_client.subscribe(final_tickers)
+                logger.info(
+                    f"WS 구독: {len(final_tickers)}종목 (source={source})"
+                )
 
-            all_stocks = self._load_universe()
-            all_tickers = [s["ticker"] for s in all_stocks]
-            if all_tickers:
-                await self._ws_client.subscribe(all_tickers)
-                logger.info(f"유니버스 전체 WS 구독: {len(all_tickers)}종목")
-
-                n_unknown = sum(1 for m in self._ticker_markets.values() if m == "unknown")
+                n_unknown = sum(
+                    1 for s in final_stocks if s.get("market") == "unknown"
+                )
                 if n_unknown:
                     logger.warning(
-                        f"⚠ universe.yaml에 market 필드 없는 종목 {n_unknown}개 "
+                        f"⚠ market 미상 종목 {n_unknown}개 "
                         f"— scripts/update_universe_market.py 실행 권장"
                     )
 
-            self._register_active_strategies(all_stocks)
-
-            # 시작 시 1회 조건검색 (장중 재시작 / 장외 시작 대비) — 실패 시 코어 fallback
-            if self._config.condition_search.enabled:
-                try:
-                    await self._apply_condition_search_universe()
-                except Exception as e:
-                    logger.error(f"[COND] 시작 시 조건검색 실패: {e} — 코어 유니버스 유지")
-
-            await self._refresh_prev_day_ohlcv(all_stocks)
+            # 4. 전일 OHLCV — 확정 리스트 기준
+            await self._refresh_prev_day_ohlcv(final_stocks)
 
             # 시장 필터 초기 갱신 (Phase 1 Day 3)
             if self._market_filter is not None:
@@ -704,6 +719,15 @@ class EngineWorker(QThread):
         import time as _time
         candle_count = 0
         signal_eval_count = 0
+        gate_counts = {
+            "tf_skip": 0,
+            "no_strategy": 0,
+            "halted": 0,
+            "blacklist": 0,
+            "loss_rest": 0,
+            "max_pos": 0,
+            "has_pos": 0,
+        }
         last_candle_log = _time.time()
         while self._running and not self._stop_event.is_set():
             try:
@@ -717,8 +741,20 @@ class EngineWorker(QThread):
             now_ts = _time.time()
             if now_ts - last_candle_log >= 300:
                 logger.info(f"[CANDLE] {candle_count}건 생성, {signal_eval_count}건 평가 (최근 5분)")
+                logger.info(
+                    f"[CANDLE-GATE] tf_skip={gate_counts['tf_skip']}, "
+                    f"no_strategy={gate_counts['no_strategy']}, "
+                    f"halted={gate_counts['halted']}, "
+                    f"blacklist={gate_counts['blacklist']}, "
+                    f"loss_rest={gate_counts['loss_rest']}, "
+                    f"max_pos={gate_counts['max_pos']}, "
+                    f"has_pos={gate_counts['has_pos']}, "
+                    f"eval={signal_eval_count}"
+                )
                 candle_count = 0
                 signal_eval_count = 0
+                for _k in gate_counts:
+                    gate_counts[_k] = 0
                 last_candle_log = now_ts
 
             try:
@@ -726,6 +762,7 @@ class EngineWorker(QThread):
 
                 # 1m 외 타임프레임 안전장치 — 백테스트와 동일하게 1m만 history/시그널에 사용
                 if candle.get("tf", "1m") != "1m":
+                    gate_counts["tf_skip"] += 1
                     continue
 
                 # 캔들 히스토리는 모든 종목에 대해 유지 (장중 재스크리닝 대비)
@@ -736,8 +773,10 @@ class EngineWorker(QThread):
 
                 # 전략 판단은 active_strategies에 등록된 종목만
                 if not self._active_strategies:
+                    gate_counts["no_strategy"] += 1
                     continue
                 if self._risk_manager.is_trading_halted():
+                    gate_counts["halted"] += 1
                     # Phase 3 Day 12+: 일일 손실 한도 도달 — 최초 1회 텔레그램 알림
                     if not self._daily_halt_notified and self._notifier:
                         self._daily_halt_notified = True
@@ -754,19 +793,24 @@ class EngineWorker(QThread):
                             logger.warning(f"halt 텔레그램 실패: {e}")
                     continue
                 if ticker not in self._active_strategies:
+                    gate_counts["no_strategy"] += 1
                     continue
                 # Phase 2 Day 10: 블랙리스트 체크 (신호 평가 자체를 차단)
                 if self._risk_manager.is_ticker_blacklisted(ticker):
+                    gate_counts["blacklist"] += 1
                     continue
                 # Phase 3 Day 11.5: 연속 손실 휴식
                 if self._risk_manager.is_in_loss_rest():
+                    gate_counts["loss_rest"] += 1
                     continue
 
                 # 동시 포지션 한도
                 open_pos = self._risk_manager.get_open_positions()
                 if len(open_pos) >= self._config.trading.max_positions and ticker not in open_pos:
+                    gate_counts["max_pos"] += 1
                     continue
                 if self._risk_manager.get_position(ticker):
+                    gate_counts["has_pos"] += 1
                     continue
 
                 strat_info = self._active_strategies[ticker]
@@ -1008,18 +1052,17 @@ class EngineWorker(QThread):
             return "kosdaq"
         return "unknown"
 
-    async def _apply_condition_search_universe(self) -> None:
-        """08:30 — 조건검색 결과를 전일 거래대금 순으로 정렬해 감시 유니버스로 사용.
+    async def _fetch_condition_search_top(self) -> list[dict] | None:
+        """조건검색 실행 → 거래대금 정렬 → top N 종목 리스트 반환.
 
-        성공: 조건검색 결과(상위 max_watch_stocks)만으로 _active_strategies 교체.
-              코어 유니버스(universe.yaml)는 합산하지 않음.
-        실패/비활성/결과 없음: 기존 감시 종목 유지 (no-op) → 코어 fallback.
+        Returns:
+            성공: [{"ticker", "name", "market"}, ...] (max_watch_stocks 이하)
+            실패/비활성/결과 없음: None
         """
         cs_cfg = self._config.condition_search
         if not cs_cfg.enabled:
-            return
+            return None
 
-        # 토큰 + 조건검색 실행
         try:
             from core.condition_search import run_condition_search
             token = await self._token_manager.get_token()
@@ -1029,16 +1072,14 @@ class EngineWorker(QThread):
                 condition_name=cs_cfg.condition_name,
             )
         except Exception as e:
-            logger.error(f"[COND] 조건검색 실행 실패: {e} — 코어 유니버스 유지")
-            return
+            logger.error(f"[COND] 조건검색 실행 실패: {e}")
+            return None
 
         if not cs_results:
-            logger.warning("[COND] 조건검색 결과 비어있음 — 코어 유니버스 유지")
-            return
+            logger.warning("[COND] 조건검색 결과 비어있음")
+            return None
 
-        # 전일 거래대금 = 전일 종가 × 전일 거래량 (일봉 API에서 추출).
-        # 같은 응답에서 14일치 high/low/close로 ATR%도 계산해 _ticker_atr_pct에 캐시
-        # (조건검색 종목은 ticker_atr 테이블에 미등록 → dashboard 표시 누락 방지).
+        # 전일 거래대금 = 전일 종가 × 전일 거래량. ATR%도 같은 응답에서 캐시.
         from core.indicators import calculate_atr, calculate_atr_pct
         import pandas as pd
 
@@ -1067,7 +1108,6 @@ class EngineWorker(QThread):
                 ))
                 amount = prev_close * prev_volume
 
-                # ATR% 계산 — 키움 응답은 최신→과거 순, 시간순으로 reverse 후 계산.
                 if len(items) >= 15:
                     try:
                         rows = []
@@ -1105,16 +1145,10 @@ class EngineWorker(QThread):
         )
 
         if not top:
-            logger.warning("[COND] 거래대금 정렬 결과 0종 — 코어 유니버스 유지")
-            return
+            return None
 
-        # 조건검색 결과만으로 감시 유니버스 구성 (코어 합산 안 함).
-        # 코어 fallback은 condition_search 실패 경로(early return)에서 자동 — 그 경우
-        # _active_strategies는 startup에서 이미 yaml 코어로 등록된 상태 그대로 유지된다.
-        # market은 ka10099 캐시로 정확히 분류해야 함 — "unknown"이면 market_filter(MA5)가
-        # OR fallback으로 약화되어 약세 시장에서 거래가 새므로 중요.
         market_codes = await self._ensure_market_codes_cache()
-        merged: list[dict] = [
+        return [
             {
                 "ticker": s["ticker"],
                 "name": s["name"],
@@ -1123,21 +1157,29 @@ class EngineWorker(QThread):
             for s in top
         ]
 
+    async def _apply_condition_search_universe(self) -> None:
+        """08:30 cron / 장중 갱신 — 조건검색 결과로 _active_strategies + WS 구독 동기화.
+
+        실패/비활성/결과 없음: 기존 감시 종목 유지 (no-op) → 코어 fallback.
+        startup 시작 시퀀스는 _run_engine에서 _fetch_condition_search_top을 직접 사용.
+        """
+        top = await self._fetch_condition_search_top()
+        if top is None:
+            logger.warning("[COND] 조건검색 결과 없음 — 기존 감시 종목 유지")
+            return
+
         old_tickers = set(self._active_strategies.keys())
-        new_tickers = {s["ticker"] for s in merged}
+        new_tickers = {s["ticker"] for s in top}
         added = new_tickers - old_tickers
         removed = old_tickers - new_tickers
         logger.info(
             f"[COND] 감시 종목 갱신: 기존 {len(old_tickers)} → 신규 {len(new_tickers)}"
         )
 
-        # active_strategies 교체
-        self._register_active_strategies(merged)
+        self._register_active_strategies(top)
 
-        # WS 구독 갱신 (delta — 메인 WS 사용).
-        # 장외 시간(WS 끊김 상태)에는 send 실패할 수 있으나, _active_strategies는
-        # 위에서 이미 갱신되었으므로 다음 WS 재연결 시 subscription_provider가
-        # 자동 복원한다.
+        # WS 구독 delta 갱신 — 장외 시간 send 실패 시에도 _active_strategies는 위에서
+        # 이미 갱신되었으므로 다음 WS 재연결 시 subscription_provider가 자동 복원한다.
         try:
             if removed:
                 await self._ws_client.unsubscribe(list(removed))
