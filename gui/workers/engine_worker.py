@@ -378,6 +378,11 @@ class EngineWorker(QThread):
             _schedule_async(self._safe_collect_candles, "candle_collection"),
             "cron", day_of_week="mon-fri", hour=15, minute=35, misfire_grace_time=600,
         )
+        # 시장 필터 09:05 재갱신 (장 시작 전 호출 시 당일 미완성 행을 본 결과 교정)
+        self._scheduler.add_job(
+            _schedule_async(self._safe_market_filter_refresh, "market_filter_refresh"),
+            "cron", day_of_week="mon-fri", hour=9, minute=5, misfire_grace_time=300,
+        )
         self._scheduler.start()
         logger.debug(f"BackgroundScheduler 시작됨, running={self._scheduler.running}")
 
@@ -1505,6 +1510,27 @@ class EngineWorker(QThread):
             await self._daily_reset()
         except Exception as e:
             logger.error(f"[SCHED] 일일 리셋 실패: {e}")
+
+    async def _safe_market_filter_refresh(self):
+        if self._market_filter is None:
+            return
+        try:
+            await self._market_filter.refresh()
+            self.signals.market_status_updated.emit(
+                self._market_filter.kospi_strong,
+                self._market_filter.kosdaq_strong,
+            )
+            if self._notifier:
+                try:
+                    k = "강세" if self._market_filter.kospi_strong else "약세"
+                    q = "강세" if self._market_filter.kosdaq_strong else "약세"
+                    self._notifier.send(
+                        f"[MARKET] 09:05 재갱신 — 코스피 {k} / 코스닥 {q}"
+                    )
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.error(f"[SCHED] 시장 필터 09:05 재갱신 실패: {e}")
 
     async def _safe_refresh_ohlcv(self):
         try:

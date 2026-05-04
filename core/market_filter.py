@@ -40,6 +40,8 @@ class MarketFilter:
         self._kospi_strong = True
         self._kosdaq_strong = True
         self._last_update: datetime | None = None
+        # 마지막 성공 갱신의 (current, ma) — 로그/디버깅용. 키움 cur_prc는 100배 스케일.
+        self._index_metrics: dict[str, tuple[float, float]] = {}
 
     @property
     def kospi_strong(self) -> bool:
@@ -79,10 +81,18 @@ class MarketFilter:
             )
 
         self._last_update = datetime.now()
+
+        def _fmt(idx_code: str, strong: bool) -> str:
+            state = "강세" if strong else "약세"
+            m = self._index_metrics.get(idx_code)
+            if m is None:
+                return f"{state} (값 없음)"
+            cur, ma = m
+            return f"{state} (현재={cur / 100:.2f}, MA{self._ma_length}={ma / 100:.2f})"
+
         logger.info(
-            f"[MARKET] 코스피 {'강세' if self._kospi_strong else '약세'}, "
-            f"코스닥 {'강세' if self._kosdaq_strong else '약세'} "
-            f"(MA{self._ma_length})"
+            f"[MARKET] 코스피 {_fmt(INDEX_KOSPI, self._kospi_strong)}, "
+            f"코스닥 {_fmt(INDEX_KOSDAQ, self._kosdaq_strong)}"
         )
 
     async def _fetch_items(self, index_code: str) -> list:
@@ -132,12 +142,24 @@ class MarketFilter:
                 return None
             logger.info(f"[MARKET] 지수 {index_code} 재시도 성공: {len(items)}건")
 
-        # items[0]: 최신일, items[1..ma_length]: 최근 MA 기간
+        # 장 시작 전/장중에 ka20006이 당일 행을 items[0]에 포함시키는 경우가 있다.
+        # 그 행은 동시호가/시가가 미완성이라 MA5 비교에 부적합 → 직전 거래일 기준으로
+        # 비교하기 위해 items[0].dt가 오늘이면 한 칸 밀어 사용한다.
+        today_str = datetime.now().strftime("%Y%m%d")
+        start = 1 if items[0].get("dt") == today_str else 0
+
+        if len(items) < start + self._ma_length + 1:
+            logger.warning(
+                f"[MARKET] 지수 {index_code} 당일 행 스킵 후 데이터 부족: "
+                f"{len(items)}건 → 이전 상태 유지"
+            )
+            return None
+
         try:
-            current = float(items[0].get("cur_prc", 0))
+            current = float(items[start].get("cur_prc", 0))
             recent_closes = [
                 float(items[i].get("cur_prc", 0))
-                for i in range(1, self._ma_length + 1)
+                for i in range(start + 1, start + self._ma_length + 1)
             ]
         except (TypeError, ValueError) as e:
             logger.error(
@@ -152,6 +174,7 @@ class MarketFilter:
             return None
 
         ma = sum(recent_closes) / len(recent_closes)
+        self._index_metrics[index_code] = (current, ma)
         return current > ma
 
     def is_allowed(self, market: str) -> bool:

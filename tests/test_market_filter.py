@@ -1,5 +1,6 @@
 """tests/test_market_filter.py — MarketFilter 단위 테스트."""
 
+from datetime import datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -157,6 +158,56 @@ async def test_check_index_zero_price_returns_none():
     mf = MarketFilter(rest=rest, ma_length=5, retry_delay=0.0)
 
     assert await mf._check_index(INDEX_KOSPI) is None
+
+
+@pytest.mark.asyncio
+async def test_check_index_skips_today_row():
+    """items[0].dt가 오늘이면 스킵하고 items[1]을 current, items[2..6]을 MA5로 사용."""
+    today = datetime.now().strftime("%Y%m%d")
+    rest = AsyncMock()
+    # items[0] = 오늘 (미완성 호가 50, 약세 유발) - 스킵 대상
+    # items[1] = 직전 거래일 110 (current로 사용)
+    # items[2..6] = 100×5 → MA5 = 100, 110 > 100 → 강세
+    rest.get_index_daily.return_value = {
+        "inds_dt_pole_qry": [
+            {"dt": today, "cur_prc": "50"},
+            {"dt": "20260430", "cur_prc": "110"},
+            {"dt": "20260429", "cur_prc": "100"},
+            {"dt": "20260428", "cur_prc": "100"},
+            {"dt": "20260427", "cur_prc": "100"},
+            {"dt": "20260424", "cur_prc": "100"},
+            {"dt": "20260423", "cur_prc": "100"},
+        ]
+    }
+    mf = MarketFilter(rest=rest, ma_length=5, retry_delay=0.0)
+
+    assert await mf._check_index(INDEX_KOSPI) is True
+    # 메트릭은 스킵된 items[1] 기준
+    cur, ma = mf._index_metrics[INDEX_KOSPI]
+    assert cur == 110
+    assert ma == 100
+
+
+@pytest.mark.asyncio
+async def test_check_index_does_not_skip_when_today_row_absent():
+    """items[0].dt가 오늘이 아니면 스킵하지 않고 기존대로 동작."""
+    rest = AsyncMock()
+    rest.get_index_daily.return_value = {
+        "inds_dt_pole_qry": [
+            {"dt": "20260430", "cur_prc": "110"},
+            {"dt": "20260429", "cur_prc": "100"},
+            {"dt": "20260428", "cur_prc": "100"},
+            {"dt": "20260427", "cur_prc": "100"},
+            {"dt": "20260424", "cur_prc": "100"},
+            {"dt": "20260423", "cur_prc": "100"},
+        ]
+    }
+    mf = MarketFilter(rest=rest, ma_length=5, retry_delay=0.0)
+
+    assert await mf._check_index(INDEX_KOSPI) is True
+    cur, ma = mf._index_metrics[INDEX_KOSPI]
+    assert cur == 110
+    assert ma == 100
 
 
 # ──────────────────────────────────────────────────────────────────────
