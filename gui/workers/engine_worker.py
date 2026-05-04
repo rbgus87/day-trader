@@ -378,10 +378,15 @@ class EngineWorker(QThread):
             _schedule_async(self._safe_collect_candles, "candle_collection"),
             "cron", day_of_week="mon-fri", hour=15, minute=35, misfire_grace_time=600,
         )
-        # 시장 필터 09:05 재갱신 (장 시작 전 호출 시 당일 미완성 행을 본 결과 교정)
+        # 시장 필터 장중 재갱신 — 09:05 (시초가 직후 교정), 10:00 (중간 체크)
         self._scheduler.add_job(
             _schedule_async(self._safe_market_filter_refresh, "market_filter_refresh"),
             "cron", day_of_week="mon-fri", hour=9, minute=5, misfire_grace_time=300,
+        )
+        self._scheduler.add_job(
+            _schedule_async(self._safe_market_filter_refresh, "market_filter_refresh_mid"),
+            "cron", day_of_week="mon-fri", hour=10, minute=0, misfire_grace_time=300,
+            id="market_filter_refresh_mid", replace_existing=True,
         )
         self._scheduler.start()
         logger.debug(f"BackgroundScheduler 시작됨, running={self._scheduler.running}")
@@ -1522,15 +1527,16 @@ class EngineWorker(QThread):
             )
             if self._notifier:
                 try:
+                    hhmm = datetime.now().strftime("%H:%M")
                     k = "강세" if self._market_filter.kospi_strong else "약세"
                     q = "강세" if self._market_filter.kosdaq_strong else "약세"
                     self._notifier.send(
-                        f"[MARKET] 09:05 재갱신 — 코스피 {k} / 코스닥 {q}"
+                        f"[MARKET] {hhmm} 재갱신 — 코스피 {k} / 코스닥 {q}"
                     )
                 except Exception:
                     pass
         except Exception as e:
-            logger.error(f"[SCHED] 시장 필터 09:05 재갱신 실패: {e}")
+            logger.error(f"[SCHED] 시장 필터 재갱신 실패: {e}")
 
     async def _safe_refresh_ohlcv(self):
         try:

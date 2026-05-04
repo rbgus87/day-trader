@@ -160,17 +160,25 @@ async def test_check_index_zero_price_returns_none():
     assert await mf._check_index(INDEX_KOSPI) is None
 
 
+def _patch_market_filter_now(monkeypatch, fake_now: datetime) -> None:
+    """core.market_filter의 datetime.now()를 fake_now로 고정."""
+    class _FakeDT(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fake_now if tz is None else fake_now.replace(tzinfo=tz)
+    monkeypatch.setattr("core.market_filter.datetime", _FakeDT)
+
+
 @pytest.mark.asyncio
-async def test_check_index_skips_today_row():
-    """items[0].dt가 오늘이면 스킵하고 items[1]을 current, items[2..6]을 MA5로 사용."""
-    today = datetime.now().strftime("%Y%m%d")
+async def test_check_index_before_market_open_skips_today_row(monkeypatch):
+    """09:00 이전: items[0].dt가 오늘이면 미완성 호가로 보고 스킵."""
+    _patch_market_filter_now(monkeypatch, datetime(2026, 5, 4, 8, 30))
     rest = AsyncMock()
-    # items[0] = 오늘 (미완성 호가 50, 약세 유발) - 스킵 대상
-    # items[1] = 직전 거래일 110 (current로 사용)
+    # items[0] = 오늘 미완성 호가 50 (스킵), items[1] = 110 (current로 사용),
     # items[2..6] = 100×5 → MA5 = 100, 110 > 100 → 강세
     rest.get_index_daily.return_value = {
         "inds_dt_pole_qry": [
-            {"dt": today, "cur_prc": "50"},
+            {"dt": "20260504", "cur_prc": "50"},
             {"dt": "20260430", "cur_prc": "110"},
             {"dt": "20260429", "cur_prc": "100"},
             {"dt": "20260428", "cur_prc": "100"},
@@ -182,10 +190,55 @@ async def test_check_index_skips_today_row():
     mf = MarketFilter(rest=rest, ma_length=5, retry_delay=0.0)
 
     assert await mf._check_index(INDEX_KOSPI) is True
-    # 메트릭은 스킵된 items[1] 기준
     cur, ma = mf._index_metrics[INDEX_KOSPI]
     assert cur == 110
     assert ma == 100
+
+
+@pytest.mark.asyncio
+async def test_check_index_after_market_open_uses_today_row(monkeypatch):
+    """09:00 이후: items[0].dt가 오늘이면 장중 현재가로 보고 그대로 사용."""
+    _patch_market_filter_now(monkeypatch, datetime(2026, 5, 4, 10, 30))
+    rest = AsyncMock()
+    # items[0] = 오늘 장중가 150 (사용), items[1..5] = 100×5 → MA5 = 100, 150 > 100 → 강세
+    rest.get_index_daily.return_value = {
+        "inds_dt_pole_qry": [
+            {"dt": "20260504", "cur_prc": "150"},
+            {"dt": "20260430", "cur_prc": "100"},
+            {"dt": "20260429", "cur_prc": "100"},
+            {"dt": "20260428", "cur_prc": "100"},
+            {"dt": "20260427", "cur_prc": "100"},
+            {"dt": "20260424", "cur_prc": "100"},
+        ]
+    }
+    mf = MarketFilter(rest=rest, ma_length=5, retry_delay=0.0)
+
+    assert await mf._check_index(INDEX_KOSPI) is True
+    cur, ma = mf._index_metrics[INDEX_KOSPI]
+    assert cur == 150
+    assert ma == 100
+
+
+@pytest.mark.asyncio
+async def test_check_index_at_9am_boundary_uses_today_row(monkeypatch):
+    """09:00 정각은 '이후'로 간주 (start = 0)."""
+    _patch_market_filter_now(monkeypatch, datetime(2026, 5, 4, 9, 0))
+    rest = AsyncMock()
+    rest.get_index_daily.return_value = {
+        "inds_dt_pole_qry": [
+            {"dt": "20260504", "cur_prc": "150"},
+            {"dt": "20260430", "cur_prc": "100"},
+            {"dt": "20260429", "cur_prc": "100"},
+            {"dt": "20260428", "cur_prc": "100"},
+            {"dt": "20260427", "cur_prc": "100"},
+            {"dt": "20260424", "cur_prc": "100"},
+        ]
+    }
+    mf = MarketFilter(rest=rest, ma_length=5, retry_delay=0.0)
+
+    assert await mf._check_index(INDEX_KOSPI) is True
+    cur, _ = mf._index_metrics[INDEX_KOSPI]
+    assert cur == 150  # 오늘 행을 사용
 
 
 @pytest.mark.asyncio

@@ -12,7 +12,7 @@
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, time
 
 from loguru import logger
 
@@ -142,11 +142,14 @@ class MarketFilter:
                 return None
             logger.info(f"[MARKET] 지수 {index_code} 재시도 성공: {len(items)}건")
 
-        # 장 시작 전/장중에 ka20006이 당일 행을 items[0]에 포함시키는 경우가 있다.
-        # 그 행은 동시호가/시가가 미완성이라 MA5 비교에 부적합 → 직전 거래일 기준으로
-        # 비교하기 위해 items[0].dt가 오늘이면 한 칸 밀어 사용한다.
-        today_str = datetime.now().strftime("%Y%m%d")
-        start = 1 if items[0].get("dt") == today_str else 0
+        # 시간 분기: 장 시작 전(< 09:00)에는 당일 행이 동시호가 단계라 미완성 → 스킵.
+        # 장 시작 후(≥ 09:00)에는 items[0]이 장중 현재가이므로 그대로 사용해 적시성 확보.
+        now = datetime.now()
+        today_str = now.strftime("%Y%m%d")
+        skip_today = (
+            items[0].get("dt") == today_str and now.time() < time(9, 0)
+        )
+        start = 1 if skip_today else 0
 
         if len(items) < start + self._ma_length + 1:
             logger.warning(
