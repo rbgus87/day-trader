@@ -90,7 +90,13 @@ def build() -> None:
         "--hidden-import=requests",
         "--hidden-import=websockets",
         "--hidden-import=aiosqlite",
-        # Exclusions (numba 는 절대 제외 금지)
+        # Exclusions
+        # pandas의 numba 가속 경로(pandas.core._numba.kernels)가 conditional import라
+        # PyInstaller가 자동으로 numba/llvmlite를 따라옴 — pandas_ta 제거 후에도 EXE에
+        # 잔존하던 원인. 운영 코드는 numba/llvmlite/scipy 모두 사용 0건이므로 명시 차단.
+        "--exclude-module=numba",
+        "--exclude-module=llvmlite",
+        "--exclude-module=scipy",
         "--exclude-module=streamlit",
         "--exclude-module=tkinter",
         "--exclude-module=pytest",
