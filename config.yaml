@@ -25,7 +25,9 @@ trading:
   blacklist_days: 7                 # 7일간 매매 제외
 
   # Phase 3 Day 11.5: 방어 레벨 A — 연속 손실 휴식
-  consecutive_loss_rest_enabled: true
+  # 페이퍼 단계 비활성화: 이전 손실은 버그(5분봉 혼입/WS 미구독/시장필터 오판) 산물,
+  # 현재 수정된 코드 검증과 무관하여 평가 자체를 차단할 이유가 없음.
+  consecutive_loss_rest_enabled: false
   consecutive_loss_threshold: 3     # 3일 연속 손실 시
   consecutive_loss_rest_days: 1     # 1일 휴식
 
