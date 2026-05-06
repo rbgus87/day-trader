@@ -1214,7 +1214,7 @@ class EngineWorker(QThread):
 
         # 신규 추가 종목에 대해 전일 OHLCV 갱신
         if added:
-            new_stock_dicts = [s for s in merged if s["ticker"] in added]
+            new_stock_dicts = [s for s in top if s["ticker"] in added]
             try:
                 await self._refresh_prev_day_ohlcv(new_stock_dicts)
             except Exception as e:
