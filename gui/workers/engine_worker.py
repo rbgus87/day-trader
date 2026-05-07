@@ -9,11 +9,58 @@ import asyncio
 import sys
 from collections import deque
 from datetime import datetime, time as dt_time
+from pathlib import Path
 
 from PyQt6.QtCore import QThread
 from loguru import logger
 
 from gui.workers.signals import EngineSignals
+
+
+def _write_universe_yaml(
+    top: list[dict],
+    path: Path | str = "config/universe.yaml",
+) -> None:
+    """조건검색 결과 top을 universe.yaml에 atomic write.
+
+    원본은 `.bak`로 보존하고 새 파일을 임시 경로에 쓴 뒤 원자적으로 교체한다.
+    실패 시 예외를 그대로 올리며, 호출자가 try/except로 처리해야 한다.
+    """
+    import yaml
+
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    bak = p.with_suffix(p.suffix + ".bak")
+
+    header = (
+        "# ============================================================================\n"
+        f"# universe.yaml — 조건검색 자동 갱신 "
+        f"({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})\n"
+        "# 생성: gui.workers.engine_worker._write_universe_yaml\n"
+        "# ============================================================================\n\n"
+    )
+    body = yaml.safe_dump(
+        {
+            "stocks": [
+                {
+                    "ticker": str(s["ticker"]),
+                    "name": s.get("name", ""),
+                    "market": s.get("market", "unknown"),
+                }
+                for s in top
+            ],
+        },
+        allow_unicode=True,
+        sort_keys=False,
+        default_flow_style=False,
+    )
+    tmp.write_text(header + body, encoding="utf-8")
+    if p.exists():
+        if bak.exists():
+            bak.unlink()
+        p.replace(bak)
+    tmp.replace(p)
 
 
 class EngineWorker(QThread):
@@ -1200,7 +1247,7 @@ class EngineWorker(QThread):
             return None
 
         market_codes = await self._ensure_market_codes_cache()
-        return [
+        result = [
             {
                 "ticker": s["ticker"],
                 "name": s["name"],
@@ -1208,6 +1255,13 @@ class EngineWorker(QThread):
             }
             for s in top
         ]
+        # 성공 시 universe.yaml 자동 갱신 — 다음 조건검색 실패 시 fallback이 최신화됨.
+        try:
+            _write_universe_yaml(result)
+            logger.info(f"[UNIVERSE] 유니버스 갱신: {len(result)}종목 저장")
+        except Exception as e:
+            logger.warning(f"[UNIVERSE] 저장 실패: {e}")
+        return result
 
     async def _apply_condition_search_universe(self) -> None:
         """08:30 cron / 장중 갱신 — 조건검색 결과로 _active_strategies + WS 구독 동기화.
