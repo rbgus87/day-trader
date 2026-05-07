@@ -72,6 +72,9 @@ class EngineWorker(QThread):
         # deque(maxlen=N) — append만으로 자동 truncate, list 슬라이스 비용 제거.
         self._candle_history: dict[str, deque] = {}
         self._MAX_HISTORY = 500
+        # 실시간 ATR% 캐시 — candle_history 길이가 변하지 않으면 직전 값 재사용.
+        # tick마다 wilder_atr 재계산 비용 회피.
+        self._atr_pct_cache: dict[str, tuple[int, float | None]] = {}
         # 시작 시퀀스 캐시 — startup에서 _fetch_condition_search_top이 채우면
         # _apply_condition_search_universe가 그대로 사용해 조건검색 중복 호출 방지.
         # 1회 사용 후 None으로 초기화. 일반 cron 경로에서는 항상 None.
@@ -578,6 +581,38 @@ class EngineWorker(QThread):
 
     # ── Pipeline consumers ──
 
+    def _intraday_atr_pct(self, ticker: str, length: int = 14) -> float | None:
+        """candle_history(1분봉)에서 wilder_atr 계산해 종가 대비 ATR% 반환.
+
+        ticker_atr DB 의존을 제거하기 위한 실시간 경로. candle_history 길이가
+        직전 호출과 동일하면 캐시된 값을 재사용 (tick당 재계산 비용 회피).
+        """
+        hist = self._candle_history.get(ticker)
+        if hist is None or len(hist) < length + 1:
+            return None
+        cur_len = len(hist)
+        cached = self._atr_pct_cache.get(ticker)
+        if cached is not None and cached[0] == cur_len:
+            return cached[1]
+        atr_pct: float | None = None
+        try:
+            import pandas as pd
+            from core.indicators import wilder_atr
+            df = pd.DataFrame(list(hist))
+            if {"high", "low", "close"}.issubset(df.columns):
+                atr = wilder_atr(
+                    df["high"], df["low"], df["close"], length=length,
+                )
+                if not atr.empty:
+                    last_atr = atr.iloc[-1]
+                    last_close = float(df["close"].iloc[-1])
+                    if not pd.isna(last_atr) and last_close > 0:
+                        atr_pct = float(last_atr) / last_close
+        except Exception:
+            atr_pct = None
+        self._atr_pct_cache[ticker] = (cur_len, atr_pct)
+        return atr_pct
+
     async def _tick_consumer(self):
         """틱 -> 캔들 빌더 + 포지션 모니터링."""
         import time as _time
@@ -716,8 +751,9 @@ class EngineWorker(QThread):
                         "pnl": int(pnl), "reason": "tp1_hit",
                     })
                     continue
-                # 트레일링 스톱 갱신
-                self._risk_manager.update_trailing_stop(ticker, price)
+                # 트레일링 스톱 갱신 (ATR%는 candle_history에서 실시간 계산)
+                atr_pct = self._intraday_atr_pct(ticker)
+                self._risk_manager.update_trailing_stop(ticker, price, atr_pct=atr_pct)
             except asyncio.TimeoutError:
                 continue
             except asyncio.CancelledError:

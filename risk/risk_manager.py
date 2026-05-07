@@ -119,7 +119,12 @@ class RiskManager:
         pos["limit_up_exit_failed"] = True
         return pos["stop_loss"]
 
-    def update_trailing_stop(self, ticker: str, current_price: float) -> None:
+    def update_trailing_stop(
+        self,
+        ticker: str,
+        current_price: float,
+        atr_pct: float | None = None,
+    ) -> None:
         pos = self._positions.get(ticker)
         if not pos:
             return
@@ -129,27 +134,32 @@ class RiskManager:
         if current_price > pos["highest_price"]:
             pos["highest_price"] = current_price
 
-            # Phase 2 Day 7: ATR 기반 Chandelier 트레일링 (폴백: 고정 trailing_pct)
+            # ATR 기반 Chandelier 트레일링.
+            # atr_pct는 호출자(engine_worker)가 candle_history에서 실시간 계산해 전달.
+            # ticker_atr DB 의존 제거 — 미갱신/미등록 종목에서도 동작.
             new_stop = None
-            if getattr(self._config, "atr_trail_enabled", False):
+            if (
+                getattr(self._config, "atr_trail_enabled", False)
+                and atr_pct is not None
+            ):
                 try:
-                    from core.indicators import (
-                        calculate_atr_trailing_stop,
-                        get_latest_atr,
+                    from core.indicators import calculate_atr_trailing_stop
+                    new_stop = calculate_atr_trailing_stop(
+                        peak_price=current_price,
+                        atr_pct=atr_pct,
+                        multiplier=self._config.atr_trail_multiplier,
+                        min_pct=self._config.atr_trail_min_pct,
+                        max_pct=self._config.atr_trail_max_pct,
                     )
-                    atr_pct = get_latest_atr("daytrader.db", ticker)
-                    if atr_pct is not None:
-                        new_stop = calculate_atr_trailing_stop(
-                            peak_price=current_price,
-                            atr_pct=atr_pct,
-                            multiplier=self._config.atr_trail_multiplier,
-                            min_pct=self._config.atr_trail_min_pct,
-                            max_pct=self._config.atr_trail_max_pct,
-                        )
                 except Exception:
                     new_stop = None
             if new_stop is None:
-                new_stop = current_price * (1 - pos["trailing_pct"])
+                # ATR 미가용 폴백 — min/max 클램프 적용. 클램프 없으면 trailing_stop_pct
+                # 기본값 0.5%가 인트라바 변동성에 즉발 청산되는 버그 발생 (2026-05-07).
+                min_pct = getattr(self._config, "atr_trail_min_pct", 0.02)
+                max_pct = getattr(self._config, "atr_trail_max_pct", 0.10)
+                trail_pct = max(min_pct, min(max_pct, pos["trailing_pct"]))
+                new_stop = current_price * (1 - trail_pct)
 
             # 트레일링은 위로만 (기존 stop_loss 아래로 내려가지 않음)
             pos["stop_loss"] = max(pos["stop_loss"], new_stop)

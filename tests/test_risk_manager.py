@@ -48,8 +48,8 @@ def test_daily_loss_limit_allows(risk_mgr):
 
 @pytest.mark.asyncio
 async def test_update_trailing_stop(risk_mgr):
-    # Phase 2 Day 7: 이 테스트는 고정 trailing_pct 경로를 검증.
-    # 가짜 ticker로 ATR 조회가 None이 되도록 하여 폴백(고정) 경로 사용.
+    # ATR 미가용 폴백 경로를 검증. atr_pct를 전달하지 않으므로 폴백 진입 →
+    # min_pct 클램프(2%)가 적용되어 trailing_pct=0.01은 0.02로 상향됨.
     risk_mgr._positions["TEST001"] = {
         "entry_price": 70000, "stop_loss": 68950,
         "qty": 10, "remaining_qty": 5,
@@ -59,7 +59,24 @@ async def test_update_trailing_stop(risk_mgr):
     risk_mgr.update_trailing_stop("TEST001", current_price=72000)
     pos = risk_mgr._positions["TEST001"]
     assert pos["highest_price"] == 72000
-    assert pos["stop_loss"] == 72000 * (1 - 0.01)
+    # 폴백에 min_pct 클램프(0.02) 적용된 stop
+    assert pos["stop_loss"] == 72000 * (1 - 0.02)
+
+
+@pytest.mark.asyncio
+async def test_update_trailing_stop_with_atr(risk_mgr):
+    # 호출자가 atr_pct를 전달하면 calculate_atr_trailing_stop 경로 진입.
+    risk_mgr._positions["TEST002"] = {
+        "entry_price": 70000, "stop_loss": 68000,
+        "qty": 10, "remaining_qty": 10,
+        "highest_price": 70000, "trailing_pct": 0.005,
+        "tp1_hit": True,
+    }
+    # ATR 4% × multiplier 1.0 = 4% (min 2% / max 10% 사이)
+    risk_mgr.update_trailing_stop("TEST002", current_price=72000, atr_pct=0.04)
+    pos = risk_mgr._positions["TEST002"]
+    assert pos["highest_price"] == 72000
+    assert pos["stop_loss"] == pytest.approx(72000 * (1 - 0.04))
 
 
 @pytest.mark.asyncio

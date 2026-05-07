@@ -125,9 +125,10 @@ async def test_position_monitor_tp1(risk_manager, order_manager):
 
 @pytest.mark.asyncio
 async def test_position_monitor_trailing_stop(risk_manager):
-    """틱 가격이 고점 갱신 → trailing_stop 갱신 (고정 경로).
+    """틱 가격이 고점 갱신 → trailing_stop 갱신 (ATR 미가용 폴백).
 
-    Phase 2 Day 7: 가짜 ticker로 ATR 조회 None → 폴백(고정 trailing_pct).
+    atr_pct를 전달하지 않으면 폴백 경로. trailing_stop_pct(0.005)는
+    atr_trail_min_pct(0.02) 클램프로 상향됨 (2026-05-07 0.5% 즉발 청산 버그 수정).
     ATR 트레일링 자체는 tests/test_atr_stop.py에서 별도 검증.
     """
     risk_manager.register_position(
@@ -143,7 +144,8 @@ async def test_position_monitor_trailing_stop(risk_manager):
     risk_manager.update_trailing_stop("TEST001", 73000)
     pos = risk_manager.get_position("TEST001")
     assert pos["highest_price"] == 73000
-    assert pos["stop_loss"] == 73000 * (1 - TradingConfig().trailing_stop_pct)
+    # 폴백 클램프 적용: max(atr_trail_min_pct, trailing_stop_pct)
+    assert pos["stop_loss"] == 73000 * (1 - TradingConfig().atr_trail_min_pct)
 
 
 @pytest.mark.asyncio
