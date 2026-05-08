@@ -832,8 +832,14 @@ class EngineWorker(QThread):
                     continue
                 # 트레일링 스톱 갱신 — 일봉 ATR%를 우선 사용 (백테스트와 동일 스케일).
                 # 1분봉 wilder_atr은 0.1~0.5%로 너무 작아 min_pct=2% 클램프에 항상 걸렸음.
-                # _ticker_atr_pct가 비면 candle_history 폴백.
-                atr_pct = self._ticker_atr_pct.get(ticker) or self._intraday_atr_pct(ticker)
+                # _ticker_atr_pct는 calculate_atr_pct(×100) 결과라 백분율(예: 5.00).
+                # calculate_atr_trailing_stop은 소수점(0.05)을 기대하므로 / 100 필요.
+                # _ticker_atr_pct가 비면 candle_history 폴백 (이미 소수점 단위).
+                daily_pct = self._ticker_atr_pct.get(ticker)
+                if daily_pct:
+                    atr_pct = daily_pct / 100.0
+                else:
+                    atr_pct = self._intraday_atr_pct(ticker)
                 self._risk_manager.update_trailing_stop(ticker, price, atr_pct=atr_pct)
             except asyncio.TimeoutError:
                 continue
@@ -1032,9 +1038,11 @@ class EngineWorker(QThread):
                     try:
                         hist = self._candle_history.get(signal.ticker)
                         hist_len = len(hist) if hist is not None else 0
+                        # daily는 _ticker_atr_pct 캐시(백분율, 5.00 형태).
+                        # intraday는 _intraday_atr_pct(소수점, 0.0034 형태) — ×100.
                         daily = self._ticker_atr_pct.get(signal.ticker)
                         intra = self._intraday_atr_pct(signal.ticker)
-                        daily_str = f"{daily * 100:.2f}%" if daily else "None"
+                        daily_str = f"{daily:.2f}%" if daily else "None"
                         intra_str = f"{intra * 100:.4f}%" if intra is not None else "None"
                         logger.info(
                             f"[ATR-DBG] {signal.ticker} entry "
