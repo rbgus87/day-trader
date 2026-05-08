@@ -830,8 +830,10 @@ class EngineWorker(QThread):
                         "pnl": int(pnl), "reason": "tp1_hit",
                     })
                     continue
-                # 트레일링 스톱 갱신 (ATR%는 candle_history에서 실시간 계산)
-                atr_pct = self._intraday_atr_pct(ticker)
+                # 트레일링 스톱 갱신 — 일봉 ATR%를 우선 사용 (백테스트와 동일 스케일).
+                # 1분봉 wilder_atr은 0.1~0.5%로 너무 작아 min_pct=2% 클램프에 항상 걸렸음.
+                # _ticker_atr_pct가 비면 candle_history 폴백.
+                atr_pct = self._ticker_atr_pct.get(ticker) or self._intraday_atr_pct(ticker)
                 self._risk_manager.update_trailing_stop(ticker, price, atr_pct=atr_pct)
             except asyncio.TimeoutError:
                 continue
@@ -1024,20 +1026,20 @@ class EngineWorker(QThread):
                         limit_up_price=self._limit_up_map.get(signal.ticker),
                     )
                     strategy.on_entry()
-                    # 진입 직후 [ATR-DBG] 1회 dump — trailing 단위/None 검증용.
-                    # 1분봉 wilder_atr 결과가 너무 작아 min_pct 클램프에 걸리면
-                    # ATR 분기여도 폴백과 동일 효과. 다음 거래에서 즉시 확인 가능.
+                    # 진입 직후 [ATR-DBG] 1회 dump — trailing ATR 소스 검증용.
+                    # daily는 _fetch_condition_search_top 캐시 (백테스트와 동일 일봉 스케일),
+                    # intraday는 candle_history 1분봉 폴백 (스케일 다름).
                     try:
                         hist = self._candle_history.get(signal.ticker)
                         hist_len = len(hist) if hist is not None else 0
-                        atr_dbg = self._intraday_atr_pct(signal.ticker)
-                        atr_str = (
-                            f"{atr_dbg * 100:.4f}%"
-                            if atr_dbg is not None else "None"
-                        )
+                        daily = self._ticker_atr_pct.get(signal.ticker)
+                        intra = self._intraday_atr_pct(signal.ticker)
+                        daily_str = f"{daily * 100:.2f}%" if daily else "None"
+                        intra_str = f"{intra * 100:.4f}%" if intra is not None else "None"
                         logger.info(
                             f"[ATR-DBG] {signal.ticker} entry "
-                            f"hist_len={hist_len} atr_pct={atr_str} "
+                            f"hist_len={hist_len} "
+                            f"daily_atr={daily_str} intraday_atr={intra_str} "
                             f"min_clamp={self._config.trading.atr_trail_min_pct * 100:.2f}%"
                         )
                     except Exception as e:
