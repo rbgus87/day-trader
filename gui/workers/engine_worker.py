@@ -639,7 +639,7 @@ class EngineWorker(QThread):
         if hist is None:
             return None  # 미등록 종목 — 정상, 로그 스팸 방지
         if len(hist) < length + 1:
-            logger.debug(
+            logger.info(
                 f"[ATR-CALC] {ticker} reason=short len={len(hist)} need={length + 1}"
             )
             return None
@@ -675,7 +675,9 @@ class EngineWorker(QThread):
         except Exception as e:
             reason = f"exc={type(e).__name__}:{e}"
         if atr_pct is None and reason:
-            logger.debug(f"[ATR-CALC] {ticker} reason={reason} len={cur_len}")
+            # _tick_consumer에서 보유 포지션 종목에만 호출 (max 3종목).
+            # 캐시는 cur_len 기준이라 새 분봉이 들어와야 재계산 → 종목당 분당 1회.
+            logger.info(f"[ATR-CALC] {ticker} reason={reason} len={cur_len}")
         self._atr_pct_cache[ticker] = (cur_len, atr_pct)
         return atr_pct
 
