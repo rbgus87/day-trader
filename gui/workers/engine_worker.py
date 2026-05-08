@@ -846,6 +846,7 @@ class EngineWorker(QThread):
                     f"has_pos={gate_counts['has_pos']}, "
                     f"eval={signal_eval_count}"
                 )
+                self._emit_signal_summary(signal_eval_count)
                 candle_count = 0
                 signal_eval_count = 0
                 for _k in gate_counts:
@@ -1684,6 +1685,39 @@ class EngineWorker(QThread):
             await self._daily_reset()
         except Exception as e:
             logger.error(f"[SCHED] 일일 리셋 실패: {e}")
+
+    def _emit_signal_summary(self, eval_count: int) -> None:
+        """active_strategies의 단계별 진단 카운터를 합산해 [SIGNAL-SUMMARY] 1줄
+        출력 후 모든 인스턴스 카운터를 리셋한다. 카운터가 없는 전략은 스킵.
+        """
+        agg: dict[str, int] = {}
+        any_strategy = False
+        for info in self._active_strategies.values():
+            strat = info.get("strategy") if isinstance(info, dict) else None
+            counters = getattr(strat, "diag_counters", None)
+            if not isinstance(counters, dict):
+                continue
+            any_strategy = True
+            for k, v in counters.items():
+                agg[k] = agg.get(k, 0) + int(v)
+            reset = getattr(strat, "reset_diag_counters", None)
+            if callable(reset):
+                reset()
+        if not any_strategy:
+            return
+        logger.info(
+            f"[SIGNAL-SUMMARY] 평가={eval_count}, "
+            f"BREAKOUT통과={agg.get('breakout_pass', 0)}, "
+            f"BREAKOUT미달={agg.get('breakout_fail', 0)}, "
+            f"VOLUME미달={agg.get('volume_fail', 0)}, "
+            f"BREAKOUT_LAST미달={agg.get('breakout_last_fail', 0)}, "
+            f"ADX봉부족={agg.get('adx_no_bars', 0)}, "
+            f"ADX미달={agg.get('adx_fail', 0)}, "
+            f"ADX통과={agg.get('adx_pass', 0)}, "
+            f"RVOL탈락={agg.get('rvol_fail', 0)}, "
+            f"VWAP탈락={agg.get('vwap_fail', 0)}, "
+            f"신호발생={agg.get('signal_emit', 0)}"
+        )
 
     async def _safe_market_filter_refresh(self):
         if self._market_filter is None:

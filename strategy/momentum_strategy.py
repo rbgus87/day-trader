@@ -22,10 +22,34 @@ class MomentumStrategy(BaseStrategy):
         # Phase 2 Day 6: ATR 손절 컨텍스트
         self._ticker: str = ""
         self._last_signal_date: str = ""  # YYYY-MM-DD
+        # 5분 요약 로그용 단계별 평가 카운터. engine_worker가 주기적으로
+        # 합산해 [SIGNAL-SUMMARY]를 출력하고 reset_diag_counters()로 리셋.
+        self.diag_counters: dict[str, int] = self._make_diag_counters()
         self.configure_multi_trade(
             max_trades=config.max_trades_per_day,
             cooldown_minutes=config.cooldown_minutes,
         )
+
+    @staticmethod
+    def _make_diag_counters() -> dict[str, int]:
+        return {
+            "breakout_fail": 0,
+            "breakout_pass": 0,
+            "no_candle": 0,
+            "volume_fail": 0,
+            "breakout_last_fail": 0,
+            "adx_no_bars": 0,
+            "adx_fail": 0,
+            "adx_pass": 0,
+            "rvol_fail": 0,
+            "vwap_fail": 0,
+            "signal_emit": 0,
+        }
+
+    def reset_diag_counters(self) -> None:
+        """5분 요약 로그 출력 직후 호출되어 카운터를 0으로 초기화."""
+        for k in self.diag_counters:
+            self.diag_counters[k] = 0
 
     def set_prev_day_data(self, high: float, volume: int) -> None:
         """전일 고가·거래량 기준값 저장."""
@@ -71,19 +95,23 @@ class MomentumStrategy(BaseStrategy):
         min_bp = getattr(self._config, "min_breakout_pct", 0.0)
         breakout_pct = (current_price - self._prev_day_high) / self._prev_day_high
         if breakout_pct < min_bp:
+            self.diag_counters["breakout_fail"] += 1
             logger.debug(
                 f"[BREAKOUT] 미달: {tick['ticker']} {breakout_pct:.2%} < {min_bp:.2%}"
             )
             return None
+        self.diag_counters["breakout_pass"] += 1
 
         # 2) 거래량 필터
         if candles is None or candles.empty:
+            self.diag_counters["no_candle"] += 1
             logger.debug(f"[VOLUME] 캔들 없음: {tick['ticker']}")
             return None
 
         cum_volume: float = candles["volume"].sum()
         required_volume: float = self._prev_day_volume * self._config.momentum_volume_ratio
         if cum_volume < required_volume:
+            self.diag_counters["volume_fail"] += 1
             logger.debug(
                 f"[VOLUME] 미달: {tick['ticker']} "
                 f"cum={cum_volume:,.0f} < req={required_volume:,.0f}"
@@ -94,23 +122,26 @@ class MomentumStrategy(BaseStrategy):
         last_close = candles.iloc[-1]["close"]
         last_breakout_pct = (last_close - self._prev_day_high) / self._prev_day_high
         if last_breakout_pct < min_bp:
+            self.diag_counters["breakout_last_fail"] += 1
             logger.debug(
                 f"[BREAKOUT_LAST] 미달: {tick['ticker']} "
                 f"{last_breakout_pct:.2%} < {min_bp:.2%}"
             )
             return None
 
-        # 4) ADX 추세 필터
+        # 4) ADX 추세 필터 (카운팅은 _check_adx 내부)
         if self._config.adx_enabled and not self._check_adx(candles, tick["ticker"]):
             return None
 
         # 5) RVol 거래량 급증 필터
         if self._config.rvol_enabled and not self._check_rvol(candles):
+            self.diag_counters["rvol_fail"] += 1
             logger.debug(f"[RVOL] 탈락: {tick['ticker']}")
             return None
 
         # 6) VWAP 매수 우위 필터
         if self._config.vwap_enabled and not self._check_vwap(candles, current_price):
+            self.diag_counters["vwap_fail"] += 1
             logger.debug(f"[VWAP] 탈락: {tick['ticker']} price={current_price}")
             return None
 
@@ -123,6 +154,7 @@ class MomentumStrategy(BaseStrategy):
         except Exception:
             pass  # 폴백은 get_stop_loss에서 처리
 
+        self.diag_counters["signal_emit"] += 1
         logger.info(
             f"모멘텀 매수 신호: {tick['ticker']} price={current_price} "
             f"prev_high={self._prev_day_high} cum_vol={cum_volume:,.0f}"
@@ -144,6 +176,7 @@ class MomentumStrategy(BaseStrategy):
         """
         min_candles = self._config.adx_length + 20
         if len(candles) < min_candles:
+            self.diag_counters["adx_no_bars"] += 1
             logger.debug(
                 f"[ADX] 봉 부족: {ticker} {len(candles)} < {min_candles}"
             )
@@ -153,26 +186,32 @@ class MomentumStrategy(BaseStrategy):
             df = candles.tail(min_candles)
             adx_result = wilder_adx(df["high"], df["low"], df["close"], length=self._config.adx_length)
             if adx_result is None or adx_result.empty:
+                self.diag_counters["adx_fail"] += 1
                 logger.debug(f"[ADX] 결과 비어있음: {ticker}")
                 return False
             adx_col = f"ADX_{self._config.adx_length}"
             if adx_col not in adx_result.columns:
+                self.diag_counters["adx_fail"] += 1
                 logger.debug(f"[ADX] 컬럼 없음: {ticker} cols={list(adx_result.columns)}")
                 return False
             current_adx = adx_result[adx_col].iloc[-1]
             if pd.isna(current_adx):
+                self.diag_counters["adx_fail"] += 1
                 logger.debug(f"[ADX] NaN: {ticker}")
                 return False
             if current_adx < self._config.adx_min:
+                self.diag_counters["adx_fail"] += 1
                 logger.debug(
                     f"[ADX] 미달: {ticker} {current_adx:.1f} < {self._config.adx_min}"
                 )
                 return False
+            self.diag_counters["adx_pass"] += 1
             logger.debug(
                 f"[ADX] 통과: {ticker} {current_adx:.1f} >= {self._config.adx_min}"
             )
             return True
         except Exception as e:
+            self.diag_counters["adx_fail"] += 1
             logger.warning(f"ADX 계산 실패 ({ticker}): {e}")
             return False
 

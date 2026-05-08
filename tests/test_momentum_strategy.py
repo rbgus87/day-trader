@@ -80,3 +80,41 @@ def test_reset(strategy):
     assert strategy._has_position is True
     strategy.reset()
     assert strategy._has_position is False
+
+
+# ---------------------------------------------------------------------------
+# diag_counters — 5분 [SIGNAL-SUMMARY] 로그용 단계별 카운터
+# ---------------------------------------------------------------------------
+
+def test_diag_counters_initial_zero(strategy):
+    assert strategy.diag_counters["breakout_fail"] == 0
+    assert strategy.diag_counters["breakout_pass"] == 0
+    assert strategy.diag_counters["volume_fail"] == 0
+    assert strategy.diag_counters["signal_emit"] == 0
+
+
+def test_diag_counters_breakout_fail(strategy):
+    strategy.generate_signal(make_candles(9_800, 2_100_000), make_tick("005930", 9_800))
+    assert strategy.diag_counters["breakout_fail"] == 1
+    assert strategy.diag_counters["breakout_pass"] == 0
+
+
+def test_diag_counters_volume_fail(strategy):
+    # 가격은 돌파, 거래량은 미달
+    strategy.generate_signal(make_candles(10_100, 1_500_000), make_tick("005930", 10_100))
+    assert strategy.diag_counters["breakout_pass"] == 1
+    assert strategy.diag_counters["volume_fail"] == 1
+    assert strategy.diag_counters["signal_emit"] == 0
+
+
+def test_diag_counters_signal_emit(strategy):
+    strategy.generate_signal(make_candles(10_100, 2_100_000), make_tick("005930", 10_100))
+    assert strategy.diag_counters["breakout_pass"] == 1
+    assert strategy.diag_counters["signal_emit"] == 1
+
+
+def test_reset_diag_counters(strategy):
+    strategy.generate_signal(make_candles(10_100, 2_100_000), make_tick("005930", 10_100))
+    assert strategy.diag_counters["signal_emit"] == 1
+    strategy.reset_diag_counters()
+    assert all(v == 0 for v in strategy.diag_counters.values())
