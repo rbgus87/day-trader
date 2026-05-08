@@ -1,7 +1,7 @@
 """tests/test_risk_manager.py"""
 
 import pytest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from risk.risk_manager import RiskManager
 from config.settings import TradingConfig
@@ -77,6 +77,76 @@ async def test_update_trailing_stop_with_atr(risk_mgr):
     pos = risk_mgr._positions["TEST002"]
     assert pos["highest_price"] == 72000
     assert pos["stop_loss"] == pytest.approx(72000 * (1 - 0.04))
+
+
+# ---------------------------------------------------------------------------
+# [TRAIL] 진단 로그 — peak 갱신 시 ATR/폴백 분기 가시성
+# ---------------------------------------------------------------------------
+
+def _trail_log_lines(mock_logger) -> list[str]:
+    return [
+        c.args[0] for c in mock_logger.info.call_args_list
+        if c.args and isinstance(c.args[0], str) and c.args[0].startswith("[TRAIL]")
+    ]
+
+
+@patch("risk.risk_manager.logger")
+def test_trail_log_atr_branch(mock_logger, risk_mgr):
+    risk_mgr._positions["A"] = {
+        "entry_price": 70000, "stop_loss": 68000,
+        "qty": 10, "remaining_qty": 10,
+        "highest_price": 70000, "trailing_pct": 0.005,
+        "tp1_hit": True,
+    }
+    risk_mgr.update_trailing_stop("A", current_price=72000, atr_pct=0.04)
+    lines = _trail_log_lines(mock_logger)
+    assert len(lines) == 1
+    assert "branch=ATR" in lines[0]
+    assert "atr_pct=4.00%" in lines[0]
+
+
+@patch("risk.risk_manager.logger")
+def test_trail_log_fallback_when_atr_pct_none(mock_logger, risk_mgr):
+    risk_mgr._positions["B"] = {
+        "entry_price": 70000, "stop_loss": 68000,
+        "qty": 10, "remaining_qty": 10,
+        "highest_price": 70000, "trailing_pct": 0.005,
+        "tp1_hit": True,
+    }
+    risk_mgr.update_trailing_stop("B", current_price=72000, atr_pct=None)
+    lines = _trail_log_lines(mock_logger)
+    assert len(lines) == 1
+    assert "branch=FALLBACK(atr_pct=None)" in lines[0]
+    assert "atr_pct=None" in lines[0]
+
+
+@patch("risk.risk_manager.logger")
+def test_trail_log_fallback_when_atr_disabled(mock_logger, risk_mgr):
+    from dataclasses import replace
+    risk_mgr._config = replace(risk_mgr._config, atr_trail_enabled=False)
+    risk_mgr._positions["C"] = {
+        "entry_price": 70000, "stop_loss": 68000,
+        "qty": 10, "remaining_qty": 10,
+        "highest_price": 70000, "trailing_pct": 0.005,
+        "tp1_hit": True,
+    }
+    risk_mgr.update_trailing_stop("C", current_price=72000, atr_pct=0.04)
+    lines = _trail_log_lines(mock_logger)
+    assert len(lines) == 1
+    assert "branch=FALLBACK(disabled)" in lines[0]
+
+
+@patch("risk.risk_manager.logger")
+def test_trail_log_skipped_when_no_peak_update(mock_logger, risk_mgr):
+    """current_price가 highest_price 이하이면 [TRAIL] 로그 스팸 방지."""
+    risk_mgr._positions["D"] = {
+        "entry_price": 70000, "stop_loss": 68000,
+        "qty": 10, "remaining_qty": 10,
+        "highest_price": 75000, "trailing_pct": 0.005,
+        "tp1_hit": True,
+    }
+    risk_mgr.update_trailing_stop("D", current_price=72000, atr_pct=0.04)
+    assert _trail_log_lines(mock_logger) == []
 
 
 @pytest.mark.asyncio

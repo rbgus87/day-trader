@@ -137,11 +137,10 @@ class RiskManager:
             # ATR 기반 Chandelier 트레일링.
             # atr_pct는 호출자(engine_worker)가 candle_history에서 실시간 계산해 전달.
             # ticker_atr DB 의존 제거 — 미갱신/미등록 종목에서도 동작.
-            new_stop = None
-            if (
-                getattr(self._config, "atr_trail_enabled", False)
-                and atr_pct is not None
-            ):
+            new_stop: float | None = None
+            branch = "FALLBACK"
+            atr_enabled = getattr(self._config, "atr_trail_enabled", False)
+            if atr_enabled and atr_pct is not None:
                 try:
                     from core.indicators import calculate_atr_trailing_stop
                     new_stop = calculate_atr_trailing_stop(
@@ -151,8 +150,14 @@ class RiskManager:
                         min_pct=self._config.atr_trail_min_pct,
                         max_pct=self._config.atr_trail_max_pct,
                     )
-                except Exception:
+                    branch = "ATR"
+                except Exception as e:
                     new_stop = None
+                    branch = f"FALLBACK(atr-exc:{type(e).__name__})"
+            elif not atr_enabled:
+                branch = "FALLBACK(disabled)"
+            else:
+                branch = "FALLBACK(atr_pct=None)"
             if new_stop is None:
                 # ATR 미가용 폴백 — min/max 클램프 적용. 클램프 없으면 trailing_stop_pct
                 # 기본값 0.5%가 인트라바 변동성에 즉발 청산되는 버그 발생 (2026-05-07).
@@ -162,7 +167,17 @@ class RiskManager:
                 new_stop = current_price * (1 - trail_pct)
 
             # 트레일링은 위로만 (기존 stop_loss 아래로 내려가지 않음)
-            pos["stop_loss"] = max(pos["stop_loss"], new_stop)
+            prev_stop = pos["stop_loss"]
+            pos["stop_loss"] = max(prev_stop, new_stop)
+
+            # 진단 로그 — peak 갱신 시점만 (스팸 방지). ATR/폴백 어느 분기를 탔는지,
+            # atr_pct 실제 값, new_stop 후보 vs 실제 적용된 stop을 명시.
+            atr_str = f"{atr_pct * 100:.2f}%" if atr_pct is not None else "None"
+            logger.info(
+                f"[TRAIL] {ticker} peak={current_price:,.0f} atr_pct={atr_str} "
+                f"branch={branch} new_stop={new_stop:,.0f} "
+                f"stop={pos['stop_loss']:,.0f}"
+            )
 
         # ADR-017: Breakeven Stop (BE3) — peak_return ≥ trigger 도달 시
         # stop을 entry × (1 + offset)로 상향. 기존 trailing과 max 비교로 공존.

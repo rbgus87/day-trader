@@ -633,30 +633,49 @@ class EngineWorker(QThread):
 
         ticker_atr DB 의존을 제거하기 위한 실시간 경로. candle_history 길이가
         직전 호출과 동일하면 캐시된 값을 재사용 (tick당 재계산 비용 회피).
+        None 반환 시 [ATR-CALC] DEBUG 로그로 사유 기록 (캐시 미스 시점만).
         """
         hist = self._candle_history.get(ticker)
-        if hist is None or len(hist) < length + 1:
+        if hist is None:
+            return None  # 미등록 종목 — 정상, 로그 스팸 방지
+        if len(hist) < length + 1:
+            logger.debug(
+                f"[ATR-CALC] {ticker} reason=short len={len(hist)} need={length + 1}"
+            )
             return None
         cur_len = len(hist)
         cached = self._atr_pct_cache.get(ticker)
         if cached is not None and cached[0] == cur_len:
             return cached[1]
         atr_pct: float | None = None
+        reason: str | None = None
         try:
             import pandas as pd
             from core.indicators import wilder_atr
             df = pd.DataFrame(list(hist))
-            if {"high", "low", "close"}.issubset(df.columns):
+            cols_needed = {"high", "low", "close"}
+            missing = cols_needed - set(df.columns)
+            if missing:
+                reason = f"cols_missing={sorted(missing)}"
+            else:
                 atr = wilder_atr(
                     df["high"], df["low"], df["close"], length=length,
                 )
-                if not atr.empty:
+                if atr.empty:
+                    reason = "empty"
+                else:
                     last_atr = atr.iloc[-1]
                     last_close = float(df["close"].iloc[-1])
-                    if not pd.isna(last_atr) and last_close > 0:
+                    if pd.isna(last_atr):
+                        reason = "nan"
+                    elif last_close <= 0:
+                        reason = f"close<=0({last_close})"
+                    else:
                         atr_pct = float(last_atr) / last_close
-        except Exception:
-            atr_pct = None
+        except Exception as e:
+            reason = f"exc={type(e).__name__}:{e}"
+        if atr_pct is None and reason:
+            logger.debug(f"[ATR-CALC] {ticker} reason={reason} len={cur_len}")
         self._atr_pct_cache[ticker] = (cur_len, atr_pct)
         return atr_pct
 
