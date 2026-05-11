@@ -153,7 +153,7 @@ async def main():
     bt_raw = yaml.safe_load(open("config.yaml", encoding="utf-8")).get("backtest", {})
     bcfg = BacktestConfig(commission=bt_raw.get("commission",0.00015),
                           tax=bt_raw.get("tax",0.0015), slippage=bt_raw.get("slippage",0.0003))
-    uni = yaml.safe_load(open("config/universe.yaml", encoding="utf-8"))
+    uni = yaml.safe_load(open("config/universe_backtest.yaml", encoding="utf-8"))
     stocks = uni["stocks"]
     tkm_map = {s["ticker"]: s.get("market","?") for s in stocks}
     db = DbManager(app.db_path); await db.init()

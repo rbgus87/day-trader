@@ -71,7 +71,7 @@ async def collect_all_trades(start: str, end: str) -> list[dict]:
         tax=bt_cfg.get("tax", 0.0015),
         slippage=bt_cfg.get("slippage", 0.0003),
     )
-    uni = yaml.safe_load(open("config/universe.yaml", encoding="utf-8"))
+    uni = yaml.safe_load(open("config/universe_backtest.yaml", encoding="utf-8"))
     stocks = uni.get("stocks", [])
     ticker_to_market = {s["ticker"]: s.get("market", "unknown") for s in stocks}
 
@@ -671,7 +671,7 @@ def gen_report(
     a("python scripts/analyze_entry_signal_quality.py --use-cache")
     a("```")
     a()
-    a("- 데이터 소스: `intraday_candles` + `config/universe.yaml` (41종목)")
+    a("- 데이터 소스: `intraday_candles` + `config/universe_backtest.yaml` (41종목)")
     a("- baseline 재현: `analyze_baseline.py` 동일 경로 (`run_multi_day_cached` × ProcessPool)")
     a("- 지표 계산: `momentum_strategy._check_adx` / L80 cum_vol / backtester L651 전일 집계와 일치")
     a()

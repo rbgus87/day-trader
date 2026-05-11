@@ -120,7 +120,7 @@ async def main():
         tax=bt_raw.get("tax", 0.0015),
         slippage=bt_raw.get("slippage", 0.0003),
     )
-    uni = yaml.safe_load(open("config/universe.yaml", encoding="utf-8"))
+    uni = yaml.safe_load(open("config/universe_backtest.yaml", encoding="utf-8"))
     stocks = uni["stocks"]
     name_map = {s["ticker"]: s.get("name", "") for s in stocks}
     market_map = {s["ticker"]: s.get("market", "?") for s in stocks}

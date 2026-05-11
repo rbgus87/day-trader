@@ -569,7 +569,7 @@ async def main() -> None:
         tax=bt_cfg.get("tax", 0.0015),
         slippage=bt_cfg.get("slippage", 0.0003),
     )
-    uni = yaml.safe_load(open("config/universe.yaml", encoding="utf-8"))
+    uni = yaml.safe_load(open("config/universe_backtest.yaml", encoding="utf-8"))
     stocks = uni.get("stocks", [])
     ticker_to_market = {s["ticker"]: s.get("market", "unknown") for s in stocks}
 

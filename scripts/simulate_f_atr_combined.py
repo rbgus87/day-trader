@@ -642,7 +642,7 @@ async def main():
 
     # ATR 필터: 최신 ATR% 기준
     conn = sqlite3.connect(DB_PATH)
-    uni = yaml.safe_load(open("config/universe.yaml", encoding="utf-8"))
+    uni = yaml.safe_load(open("config/universe_backtest.yaml", encoding="utf-8"))
     stocks = uni.get("stocks", [])
     ticker_to_market = {s["ticker"]: s.get("market", "unknown") for s in stocks}
     all_tickers = [s["ticker"] for s in stocks]
