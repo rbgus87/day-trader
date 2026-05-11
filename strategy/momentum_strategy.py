@@ -33,6 +33,7 @@ class MomentumStrategy(BaseStrategy):
     @staticmethod
     def _make_diag_counters() -> dict[str, int]:
         return {
+            "prev_day_missing": 0,
             "breakout_fail": 0,
             "breakout_pass": 0,
             "no_candle": 0,
@@ -89,6 +90,7 @@ class MomentumStrategy(BaseStrategy):
         current_price: float = tick["price"]
 
         if self._prev_day_high <= 0:
+            self.diag_counters["prev_day_missing"] += 1
             return None
 
         # 1) 가격 돌파 확인 (ADR-016: 최소 돌파폭 적용)

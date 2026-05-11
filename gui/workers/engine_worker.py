@@ -1470,6 +1470,18 @@ class EngineWorker(QThread):
         if force != 'momentum':
             logger.warning(f"force_strategy={force} 무시 — momentum만 지원")
 
+        # 08:30 재등록 등 동일 ticker 재생성 케이스에서 기존 인스턴스의
+        # 전일 데이터(_prev_day_high/_prev_day_volume)를 새 인스턴스에 복사.
+        # 미보존 시 added=∅ 경로에서 _refresh_prev_day_ohlcv가 호출되지 않아
+        # _prev_day_high=0 → generate_signal early return 누적.
+        prev_data: dict[str, tuple[float, int]] = {}
+        for ticker, info in (self._active_strategies or {}).items():
+            old = info.get("strategy") if isinstance(info, dict) else None
+            high = getattr(old, "_prev_day_high", 0.0)
+            vol = getattr(old, "_prev_day_volume", 0)
+            if high > 0:
+                prev_data[ticker] = (float(high), int(vol))
+
         self._active_strategies = {}
         for s in stocks:
             ticker = s["ticker"]
@@ -1480,6 +1492,9 @@ class EngineWorker(QThread):
             )
             if hasattr(strat, "set_ticker"):
                 strat.set_ticker(ticker)
+            if ticker in prev_data and hasattr(strat, "set_prev_day_data"):
+                ph, pv = prev_data[ticker]
+                strat.set_prev_day_data(ph, pv)
             self._active_strategies[ticker] = {
                 "strategy": strat,
                 "name": s.get("name", ticker),
@@ -1767,6 +1782,7 @@ class EngineWorker(QThread):
             return
         logger.info(
             f"[SIGNAL-SUMMARY] 평가={eval_count}, "
+            f"전일데이터누락={agg.get('prev_day_missing', 0)}, "
             f"BREAKOUT통과={agg.get('breakout_pass', 0)}, "
             f"BREAKOUT미달={agg.get('breakout_fail', 0)}, "
             f"VOLUME미달={agg.get('volume_fail', 0)}, "
