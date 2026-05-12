@@ -34,14 +34,15 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 - 거래 시각 09:05 ≤ now ≤ 12:00
 - 동시 보유 포지션 `max_positions = 3` 이하
 
-### 청산 경로 (5종, ADR-010/017/018)
+### 청산 경로 (6종, ADR-010/017/018 + 2026-05-12)
 
 | reason | 트리거 |
 |------|------|
 | `limit_up_exit` | **ADR-018**: 상한가 (키움 ka10001 `upl_pric`, 실패 시 전일종가 × 1.30 호가 절사 fallback) 도달 시 즉시 시장가 매도. 체결 실패 시 stop을 상한가 × 0.99로 상향 |
 | `stop_loss` | 고정 -8% 손절 (`stop_loss_pct: -0.080`) |
-| `trailing_stop` | 진입 즉시 Chandelier (최고가 − ATR × 1.0), 하한 2% / 상한 10% |
+| `trailing_stop` | 진입 즉시 Chandelier (최고가 − ATR × 1.0), 하한 2% / 상한 10%. **time_decay 적용**: 12:00~ ATR×0.7, 13:30~ 0.5, 14:30~ 0.3 (hard floor 1.0%) |
 | `breakeven_stop` | **ADR-017**: peak_return ≥ 3% 도달 시 stop을 entry+1%로 상향, 이후 되돌림 |
+| `momentum_fade` | **2026-05-12**: 수익 ≥ +1% + 보유 ≥ 15분 + ROC(10분) ≤ −0.5% 시 즉시 청산. 손실 포지션 미적용 |
 | `forced_close` | 15:10 미청산 포지션 일괄 청산 |
 
 > TP1 분할매도(`tp1_hit`)는 ADR-010에서 폐기. `atr_tp_enabled: false`.
