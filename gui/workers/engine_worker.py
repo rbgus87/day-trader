@@ -917,7 +917,9 @@ class EngineWorker(QThread):
                     atr_pct = daily_pct / 100.0
                 else:
                     atr_pct = self._intraday_atr_pct(ticker)
-                self._risk_manager.update_trailing_stop(ticker, price, atr_pct=atr_pct)
+                self._risk_manager.update_trailing_stop(
+                    ticker, price, atr_pct=atr_pct, now=datetime.now(),
+                )
             except asyncio.TimeoutError:
                 continue
             except asyncio.CancelledError:
