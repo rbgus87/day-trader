@@ -62,6 +62,23 @@ def test_trading_config_order_tracking_defaults():
     assert tc.order_timeout_consecutive_threshold == 3
 
 
+def test_trading_config_time_decay_and_fade_defaults():
+    """time_decay + momentum_fade 기본값."""
+    from config.settings import TradingConfig
+    tc = TradingConfig()
+    # time_decay
+    assert tc.time_decay_trailing_enabled is True
+    assert tc.time_decay_min_pct_floor == 0.01
+    assert isinstance(tc.time_decay_phases, tuple)
+    # 기본 phases가 비어있어도 동작 — yaml로 주입되는 게 정상
+    # momentum_fade
+    assert tc.momentum_fade_exit_enabled is True
+    assert tc.momentum_fade_lookback == 10
+    assert tc.momentum_fade_threshold == -0.005
+    assert tc.momentum_fade_min_hold_min == 15
+    assert tc.momentum_fade_min_profit == 0.01
+
+
 def test_market_calendar_2027():
     """2027년 공휴일이 거래일에서 제외."""
     from datetime import date

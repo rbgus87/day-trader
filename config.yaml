@@ -107,6 +107,27 @@ strategy:
     limit_up_pct: 0.30              # 전일종가 × 1.30 (호가 절사)
     limit_up_stop_floor_pct: 0.99   # 매도 실패 시 stop = 상한가 × 0.99 상향
 
+    # 시간연동 트레일링 — 장 후반 trail 폭 축소
+    # 마지막 phase(15:00)는 force_close(15:10)까지 연장 적용
+    time_decay_trailing_enabled: true
+    time_decay_min_pct_floor: 0.01      # 절대 하한 1.0% (인트라데이 노이즈 방어)
+    time_decay_phases:
+      - until: "12:00"
+        multiplier: 1.0
+      - until: "13:30"
+        multiplier: 0.7
+      - until: "14:30"
+        multiplier: 0.5
+      - until: "15:00"
+        multiplier: 0.3
+
+    # 모멘텀 둔화 청산 — 수익 포지션 + 보유 15분+ + ROC ≤ -0.5%
+    momentum_fade_exit_enabled: true
+    momentum_fade_lookback: 10           # 최근 10분봉
+    momentum_fade_threshold: -0.005      # ROC 임계 (-0.5%)
+    momentum_fade_min_hold_min: 15       # 진입 후 최소 15분 보유
+    momentum_fade_min_profit: 0.01       # 현재 수익률 +1% 이상
+
   # 전략 선택기 임계값 (StrategySelector — 현재 항상 momentum)
   selector:
     momentum_etf_threshold: 2.0     # 섹터 ETF 등락 ≥ 2.0% → 모멘텀 전략

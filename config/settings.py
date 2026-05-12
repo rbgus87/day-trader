@@ -12,6 +12,8 @@ from pathlib import Path
 import yaml
 from dotenv import load_dotenv
 
+from core.exit_logic import TimeDecayPhase
+
 load_dotenv()
 
 # config.yaml 기본 경로
@@ -142,6 +144,19 @@ class TradingConfig:
     # order_timeout_consecutive_threshold=3: 같은 ticker 연속 TIMEOUT 임계 (긴급 알림)
     order_confirmation_timeout_sec: float = 10.0
     order_timeout_consecutive_threshold: int = 3
+
+    # 시간연동 트레일링 — 장 후반 trail 폭 축소
+    # phases는 config.yaml strategy.momentum.time_decay_phases에서 주입
+    time_decay_trailing_enabled: bool = True
+    time_decay_min_pct_floor: float = 0.01     # 절대 하한 1.0%
+    time_decay_phases: tuple[TimeDecayPhase, ...] = ()
+
+    # 모멘텀 둔화 청산 — 수익 포지션 + 보유 15분+ 에서만
+    momentum_fade_exit_enabled: bool = True
+    momentum_fade_lookback: int = 10
+    momentum_fade_threshold: float = -0.005
+    momentum_fade_min_hold_min: int = 15
+    momentum_fade_min_profit: float = 0.01
 
 
 @dataclass(frozen=True)
@@ -307,6 +322,19 @@ class AppConfig:
             vi_suspected_duration_sec=t.get("vi_suspected_duration_sec", 60),
             order_confirmation_timeout_sec=t.get("order_confirmation_timeout_sec", 10.0),
             order_timeout_consecutive_threshold=t.get("order_timeout_consecutive_threshold", 3),
+            # time_decay (phases는 list → TimeDecayPhase tuple 변환)
+            time_decay_trailing_enabled=mom.get("time_decay_trailing_enabled", True),
+            time_decay_min_pct_floor=mom.get("time_decay_min_pct_floor", 0.01),
+            time_decay_phases=tuple(
+                TimeDecayPhase(until=p["until"], multiplier=float(p["multiplier"]))
+                for p in mom.get("time_decay_phases", [])
+            ),
+            # momentum_fade
+            momentum_fade_exit_enabled=mom.get("momentum_fade_exit_enabled", True),
+            momentum_fade_lookback=mom.get("momentum_fade_lookback", 10),
+            momentum_fade_threshold=mom.get("momentum_fade_threshold", -0.005),
+            momentum_fade_min_hold_min=mom.get("momentum_fade_min_hold_min", 15),
+            momentum_fade_min_profit=mom.get("momentum_fade_min_profit", 0.01),
         )
 
         # screener 섹션
