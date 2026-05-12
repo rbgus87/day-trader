@@ -762,6 +762,16 @@ class EngineWorker(QThread):
                 pos = self._risk_manager.get_position(ticker)
                 if pos is None or pos["remaining_qty"] <= 0:
                     continue
+                # 주문 진행 중이면 highest_price만 갱신, exit 스킵 (재진입 가드)
+                if self._order_tracker is not None:
+                    _pending = self._order_tracker.get_pending(ticker)
+                    if _pending is not None:
+                        if pos.get("highest_price", 0) < price:
+                            pos["highest_price"] = price
+                        logger.debug(
+                            f"[ORDER-TRACK] {ticker} pending {_pending.side} — exit 스킵"
+                        )
+                        continue
                 # 상한가 즉시 청산 (stop_loss 체크 전, 최우선)
                 if self._risk_manager.check_limit_up(ticker, price):
                     qty = pos["remaining_qty"]
@@ -775,24 +785,37 @@ class EngineWorker(QThread):
                         exit_reason="limit_up_exit",
                     )
                     if result is not None:
-                        self._risk_manager.settle_sell(ticker, price, qty)
-                        if pnl >= 0:
-                            self._rt_wins += 1
+                        is_paper = getattr(self._config, "paper_mode", True)
+                        if is_paper:
+                            # 페이퍼: 즉시 settle (현 동작)
+                            self._risk_manager.settle_sell(ticker, price, qty)
+                            if pnl >= 0:
+                                self._rt_wins += 1
+                            else:
+                                self._rt_losses += 1
+                            logger.info(
+                                f"limit_up_exit 실행: {ticker} {qty}주 @ {price:,} "
+                                f"PnL={pnl:+,.0f}"
+                            )
+                            strat_info = self._active_strategies.get(ticker)
+                            if strat_info:
+                                strat_info["strategy"].on_exit()
+                            self.signals.trade_executed.emit({
+                                "time": datetime.now().strftime("%H:%M:%S"),
+                                "side": "sell", "ticker": ticker,
+                                "price": int(price), "qty": qty,
+                                "pnl": int(pnl), "reason": "limit_up_exit",
+                            })
                         else:
-                            self._rt_losses += 1
-                        logger.info(
-                            f"limit_up_exit 실행: {ticker} {qty}주 @ {price:,} "
-                            f"PnL={pnl:+,.0f}"
-                        )
-                        strat_info = self._active_strategies.get(ticker)
-                        if strat_info:
-                            strat_info["strategy"].on_exit()
-                        self.signals.trade_executed.emit({
-                            "time": datetime.now().strftime("%H:%M:%S"),
-                            "side": "sell", "ticker": ticker,
-                            "price": int(price), "qty": qty,
-                            "pnl": int(pnl), "reason": "limit_up_exit",
-                        })
+                            # real_mode: tracker에 등록, 체결 확인 후 _handle_fill에서 settle
+                            self._order_tracker.submit(
+                                result["order_no"], ticker, "sell", qty,
+                            )
+                            self._limit_up_exit_pending.add(ticker)
+                            logger.info(
+                                f"[ORDER-TRACK] {result['order_no']} SUBMIT "
+                                f"{ticker} sell {qty} (limit_up_exit)"
+                            )
                         continue
                     else:
                         # 체결 실패 → stop을 상한가 × floor_pct 로 상향 (안전장치)
@@ -820,28 +843,40 @@ class EngineWorker(QThread):
                     else:
                         reason_code = "stop_loss"
                     prefer_best = self._vi_handler.should_use_best_limit(ticker)
-                    await self._order_manager.execute_sell_stop(
+                    result = await self._order_manager.execute_sell_stop(
                         ticker=ticker, qty=qty, price=int(price),
                         strategy=strategy_name, pnl=pnl, pnl_pct=pnl_pct,
                         exit_reason=reason_code,
                         prefer_best_limit=prefer_best,
                         on_rejection=lambda tk, rt: self._vi_handler.flag_suspected(tk, f"주문 거부 (rt_cd={rt})"),
                     )
-                    self._risk_manager.settle_sell(ticker, price, qty)
-                    if pnl >= 0:
-                        self._rt_wins += 1
+                    if result is None:
+                        continue  # 주문 자체 실패 (VI 등)
+                    is_paper = getattr(self._config, "paper_mode", True)
+                    if is_paper:
+                        self._risk_manager.settle_sell(ticker, price, qty)
+                        if pnl >= 0:
+                            self._rt_wins += 1
+                        else:
+                            self._rt_losses += 1
+                        logger.info(f"{reason_code} 실행: {ticker} {qty}주 @ {price:,} PnL={pnl:+,.0f}")
+                        strat_info = self._active_strategies.get(ticker)
+                        if strat_info:
+                            strat_info["strategy"].on_exit()
+                        self.signals.trade_executed.emit({
+                            "time": datetime.now().strftime("%H:%M:%S"),
+                            "side": "sell", "ticker": ticker,
+                            "price": int(price), "qty": qty,
+                            "pnl": int(pnl), "reason": reason_code,
+                        })
                     else:
-                        self._rt_losses += 1
-                    logger.info(f"{reason_code} 실행: {ticker} {qty}주 @ {price:,} PnL={pnl:+,.0f}")
-                    strat_info = self._active_strategies.get(ticker)
-                    if strat_info:
-                        strat_info["strategy"].on_exit()
-                    self.signals.trade_executed.emit({
-                        "time": datetime.now().strftime("%H:%M:%S"),
-                        "side": "sell", "ticker": ticker,
-                        "price": int(price), "qty": qty,
-                        "pnl": int(pnl), "reason": reason_code,
-                    })
+                        self._order_tracker.submit(
+                            result["order_no"], ticker, "sell", qty,
+                        )
+                        logger.info(
+                            f"[ORDER-TRACK] {result['order_no']} SUBMIT {ticker} sell {qty} "
+                            f"({reason_code})"
+                        )
                     continue
                 # TP1 체크
                 if self._risk_manager.check_tp1(ticker, price):
