@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime, time, timedelta
-from collections import deque
 
 import pytest
 
@@ -73,6 +72,12 @@ class TestTimeDecayMultiplier:
     def test_invalid_until_raises(self):
         bad_phases = (TimeDecayPhase(until="13", multiplier=0.5),)
         with pytest.raises(ValueError):
+            get_time_decay_multiplier(_at(14, 0), bad_phases, enabled=True)
+
+    def test_invalid_until_out_of_range_raises(self):
+        """'25:00' 같은 범위 초과 값 → ValueError + until 값이 메시지에 포함."""
+        bad_phases = (TimeDecayPhase(until="25:00", multiplier=0.5),)
+        with pytest.raises(ValueError, match="25:00"):
             get_time_decay_multiplier(_at(14, 0), bad_phases, enabled=True)
 
 

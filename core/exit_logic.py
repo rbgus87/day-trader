@@ -25,7 +25,10 @@ def _parse_until(until: str) -> time:
     parts = until.split(":")
     if len(parts) != 2:
         raise ValueError(f"잘못된 until 형식 (HH:MM 기대): {until!r}")
-    return time(int(parts[0]), int(parts[1]))
+    try:
+        return time(int(parts[0]), int(parts[1]))
+    except ValueError as exc:
+        raise ValueError(f"잘못된 until 값 {until!r}: {exc}") from exc
 
 
 def get_time_decay_multiplier(
