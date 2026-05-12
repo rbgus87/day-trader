@@ -425,6 +425,7 @@ class RiskManager:
                 "tp1_hit": row["remaining_qty"] < row["qty"],
                 "entry_time": entry_time,
                 "strategy": row["strategy"] or "",
+                "status": "confirmed",   # 복구된 포지션은 이미 체결됨
             }
         if rows:
             logger.warning(f"DB에서 오픈 포지션 {len(rows)}건 복원: {list(self._positions.keys())}")
