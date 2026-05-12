@@ -1064,6 +1064,8 @@ class EngineWorker(QThread):
                 if result:
                     # trailing_pct는 None으로 두면 register_position이
                     # 글로벌 trailing_stop_pct를 사용 (실전 ↔ 백테스트 통일)
+                    is_paper = getattr(self._config, "paper_mode", True)
+                    initial_status = "confirmed" if is_paper else "pending"
                     self._risk_manager.register_position(
                         ticker=signal.ticker,
                         entry_price=signal.price,
@@ -1072,7 +1074,19 @@ class EngineWorker(QThread):
                         tp1_price=tp1,
                         strategy=signal.strategy or "",
                         limit_up_price=self._limit_up_map.get(signal.ticker),
+                        status=initial_status,
                     )
+                    if not is_paper and self._order_tracker is not None:
+                        self._order_tracker.submit(
+                            order_no=result["order_no"],
+                            ticker=signal.ticker,
+                            side="buy",
+                            qty=result["qty"],
+                        )
+                        logger.info(
+                            f"[ORDER-TRACK] {result['order_no']} SUBMIT "
+                            f"{signal.ticker} buy {result['qty']}"
+                        )
                     strategy.on_entry()
                     # 진입 직후 [ATR-DBG] 1회 dump — trailing ATR 소스 검증용.
                     # daily는 _fetch_condition_search_top 캐시 (백테스트와 동일 일봉 스케일),
