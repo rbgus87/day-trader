@@ -4,6 +4,7 @@ PRD F-BT-01: intraday_candles DB에서 과거 분봉 로드, 전략 시뮬레이
 """
 
 import math
+from datetime import datetime
 from typing import Any
 
 import pandas as pd
@@ -11,6 +12,7 @@ from loguru import logger
 
 from config.settings import BacktestConfig, TradingConfig
 from core.cost_model import TradeCosts, apply_buy_costs, apply_sell_costs
+from core.exit_logic import compute_momentum_fade, get_time_decay_multiplier
 from data.db_manager import DbManager
 from strategy.base_strategy import BaseStrategy, Signal
 
@@ -327,6 +329,20 @@ class Backtester:
                     # 고점 갱신
                     if high > position.get("highest_price", 0):
                         position["highest_price"] = high
+                        # time_decay multiplier — candle ts 기준 (백테스트 결정성)
+                        candle_ts = row["ts"]
+                        if not isinstance(candle_ts, datetime):
+                            candle_ts = pd.to_datetime(candle_ts).to_pydatetime()
+                        decay = get_time_decay_multiplier(
+                            candle_ts,
+                            self._config.time_decay_phases,
+                            self._config.time_decay_trailing_enabled,
+                        )
+                        effective_multiplier = self._config.atr_trail_multiplier * decay
+                        floor = self._config.time_decay_min_pct_floor
+                        effective_min_pct = max(
+                            self._config.atr_trail_min_pct * decay, floor,
+                        )
                         # Phase 2 Day 7: ATR 기반 Chandelier 트레일링 (폴백: 고정 trailing_stop_pct)
                         new_stop = None
                         if getattr(self._config, "atr_trail_enabled", False):
@@ -354,15 +370,19 @@ class Backtester:
                                     new_stop = calculate_atr_trailing_stop(
                                         peak_price=position["highest_price"],
                                         atr_pct=atr_pct,
-                                        multiplier=self._config.atr_trail_multiplier,
-                                        min_pct=self._config.atr_trail_min_pct,
+                                        multiplier=effective_multiplier,
+                                        min_pct=effective_min_pct,
                                         max_pct=self._config.atr_trail_max_pct,
                                     )
                             except Exception as e:
                                 logger.warning(f"[BT] ATR 트레일 실패 폴백: {e}")
                                 new_stop = None
                         if new_stop is None:
-                            trailing_pct = self._config.trailing_stop_pct
+                            # time_decay 일관성 위해 effective_min_pct를 lower bound로
+                            trailing_pct = max(
+                                effective_min_pct,
+                                self._config.trailing_stop_pct,
+                            )
                             new_stop = position["highest_price"] * (1 - trailing_pct)
                         # 트레일링 스톱은 위로만 움직임 (기존 stop보다 낮아지면 유지)
                         position["stop_loss"] = max(position["stop_loss"], new_stop)
