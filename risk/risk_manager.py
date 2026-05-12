@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from loguru import logger
 
 from config.settings import TradingConfig
+from core.exit_logic import get_time_decay_multiplier
 from data.db_manager import DbManager
 from notification.telegram_bot import TelegramNotifier
 
@@ -132,6 +133,7 @@ class RiskManager:
         ticker: str,
         current_price: float,
         atr_pct: float | None = None,
+        now: datetime | None = None,
     ) -> None:
         pos = self._positions.get(ticker)
         if not pos:
@@ -141,6 +143,16 @@ class RiskManager:
             return
         if current_price > pos["highest_price"]:
             pos["highest_price"] = current_price
+
+            # time_decay multiplier (1.0 if disabled or empty phases)
+            decay = get_time_decay_multiplier(
+                now if now is not None else datetime.now(),
+                getattr(self._config, "time_decay_phases", ()),
+                getattr(self._config, "time_decay_trailing_enabled", False),
+            )
+            effective_multiplier = self._config.atr_trail_multiplier * decay
+            floor = getattr(self._config, "time_decay_min_pct_floor", 0.01)
+            effective_min_pct = max(self._config.atr_trail_min_pct * decay, floor)
 
             # ATR 기반 Chandelier 트레일링.
             # atr_pct는 호출자(engine_worker)가 candle_history에서 실시간 계산해 전달.
@@ -154,8 +166,8 @@ class RiskManager:
                     new_stop = calculate_atr_trailing_stop(
                         peak_price=current_price,
                         atr_pct=atr_pct,
-                        multiplier=self._config.atr_trail_multiplier,
-                        min_pct=self._config.atr_trail_min_pct,
+                        multiplier=effective_multiplier,
+                        min_pct=effective_min_pct,
                         max_pct=self._config.atr_trail_max_pct,
                     )
                     branch = "ATR"
@@ -167,11 +179,11 @@ class RiskManager:
             else:
                 branch = "FALLBACK(atr_pct=None)"
             if new_stop is None:
-                # ATR 미가용 폴백 — min/max 클램프 적용. 클램프 없으면 trailing_stop_pct
-                # 기본값 0.5%가 인트라바 변동성에 즉발 청산되는 버그 발생 (2026-05-07).
-                min_pct = getattr(self._config, "atr_trail_min_pct", 0.02)
+                # ATR 미가용 폴백 — effective_min_pct로 lower bound (time_decay 일관성).
+                # 클램프 없으면 trailing_stop_pct 기본값 0.5%가 인트라바 변동성에
+                # 즉발 청산되는 버그 발생 (2026-05-07).
                 max_pct = getattr(self._config, "atr_trail_max_pct", 0.10)
-                trail_pct = max(min_pct, min(max_pct, pos["trailing_pct"]))
+                trail_pct = max(effective_min_pct, min(max_pct, pos["trailing_pct"]))
                 new_stop = current_price * (1 - trail_pct)
 
             # 트레일링은 위로만 (기존 stop_loss 아래로 내려가지 않음)
