@@ -1,6 +1,6 @@
 # CLAUDE.md — day-trader
 
-> **최종 수정**: 2026-04-21 (ADR-018 상한가 즉시 청산 반영)
+> **최종 수정**: 2026-05-12 (거래세 0.20% 정정 — KOSPI/KOSDAQ 공통)
 > 이 문서는 **백테스트에서 검증된 사실만** 기재한다.
 
 ---
@@ -23,7 +23,7 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 
 1. **거래량 비율 2.0** — PF 영향 1.89 (비활성 시 PF 1.38)
 2. **오전 매수 제한 12:00** — PF 영향 2.03 (비활성 시 PF 1.24)
-3. **시장 필터 MA5** — PF 영향 1.08 (비활성 시 PF 2.19)
+3. **시장 필터 MA5** — PF 영향 1.60 (비활성 시 PF 2.85, 2026-05-11 재측정 / 41종목 baseline)
 
 ### 진입 조건
 
@@ -75,15 +75,16 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 
 ---
 
-## 백테스트 결과 (baseline, 2026-04-21 ADR-018 상한가 즉시 청산 반영)
+## 백테스트 결과 (baseline, 2026-05-12 거래세 0.20% 정정 반영)
 
-- **Profit Factor 4.56** (1주 가중, 41종목, Pure trailing + 고정 -8% 손절 + 돌파폭 ≥ 3% + BE3 + 상한가 청산)
+- **Profit Factor 4.36** (1주 가중, 41종목, Pure trailing + 고정 -8% 손절 + 돌파폭 ≥ 3% + BE3 + 상한가 청산)
 - 연 거래 건수 248건
-- 총 PnL +297,059
-- 거래당 PnL +1,198
+- 총 PnL +288,654
+- 거래당 PnL +1,164
 - 청산 분포: forced_close 134 (54.0%) / breakeven_stop 70 (28.2%) / stop_loss 25 (10.1%) / **limit_up_exit 15 (6.0%)** / trailing_stop 4 (1.6%)
-- `limit_up_exit` 세부: PnL +111,607 (전체 37.6%) / 거래당 평균 +8.64%
+- `limit_up_exit` 세부: PnL +110,980 (전체 38.4%) / 거래당 평균 +8.58%
 - **이전 baseline**
+  - 거래세 0.15% 시: PF 4.56 / 248건 / +297,059 (세율 과소 반영 — ADR-009 폐기 수치)
   - ADR-017 (BE3): PF 4.28 / 254건 / 강세 5.88 / 횡보 2.45 / 약세 3.11
   - ADR-016 (돌파폭 3%): PF 3.88 / 240건 / 약세 2.16
   - ADR-010 (base): PF 3.28 ~ 3.41 / 거래 273~279건
@@ -186,7 +187,7 @@ pytest tests/ --cov=. --cov-report=term-missing
 - [x] 일일 리셋 + 전일 OHLCV 자동화 (ADR-006)
 - [x] DB 기록 스펙 (ADR-007) — `positions` 활성화, `tp2_price`/`system_log` 제거
 - [x] 알림 정책 (ADR-008) — 12종 토글, 포맷 통일
-- [x] 비용 모델 통일 (ADR-009) — tax 0.15%, PaperOrderManager PnL 비용 반영
+- [x] 비용 모델 통일 (ADR-009) — tax 0.20% (KOSPI/KOSDAQ 공통, 2025 기준), PaperOrderManager PnL 비용 반영
 - [x] Pure trailing + ATR 6% (ADR-010)
 - [x] Walk-Forward 검증 (ADR-011)
 - [x] 유니버스 주간 자동 갱신 (ADR-012)
@@ -195,6 +196,8 @@ pytest tests/ --cov=. --cov-report=term-missing
 - [x] 돌파 폭 하한 3% (ADR-016) — PF 3.41 → 3.88, 약세 PF 1.55 → 2.16
 - [x] Breakeven Stop BE3 (ADR-017) — PF 3.88 → 4.28, 약세 PF 2.16 → 3.11
 - [x] 상한가 즉시 청산 (ADR-018) — PF 4.28 → 4.56 (+6.5%), limit_up_exit 15건 (6.0%, 거래당 +8.64%)
+  - 2026-05-12 거래세 0.15% → 0.20% 정정 후 동일 시스템 baseline PF 4.36 (−4.4%)
+- [x] VI 휴리스틱 대응 (2026-05-12) — 시장가 → 최유리지정가 자동 전환, VI 활성 종목 매수 차단. limit_up_exit / forced_close 보호. 백테스트 baseline PF 4.36 변동 없음.
 
 검증 명령어: `docs/verification_commands.md`
 후속 작업: [`docs/phase_followup_todo.md`](docs/phase_followup_todo.md)
