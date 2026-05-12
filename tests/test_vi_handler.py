@@ -75,3 +75,71 @@ class TestUpdateFromTick:
         h = _fresh_handler(static_pct=0.05)
         h.update_from_tick("000001", price=10510, prev_close=10000)  # +5.10%
         assert h.get_vi_state("000001") == VIState.STATIC_VI
+
+
+class TestExpiry:
+    def test_static_vi_expires(self):
+        """assumed_duration 경과 후 조회 → NORMAL 자동 복귀."""
+        from core.vi_handler import VIState
+        h = _fresh_handler(assumed_duration_sec=0)  # 즉시 만료
+        h.update_from_tick("000001", price=10950, prev_close=10000)
+        import time as _t
+        _t.sleep(0.01)
+        assert h.get_vi_state("000001") == VIState.NORMAL
+
+    def test_static_vi_not_expired_yet(self):
+        """assumed_duration 내 → STATIC_VI 유지."""
+        from core.vi_handler import VIState
+        h = _fresh_handler(assumed_duration_sec=60)
+        h.update_from_tick("000001", price=10950, prev_close=10000)
+        assert h.get_vi_state("000001") == VIState.STATIC_VI
+
+
+class TestSuspected:
+    def test_flag_suspected_activates(self):
+        """flag_suspected → SUSPECTED 상태."""
+        from core.vi_handler import VIState
+        h = _fresh_handler()
+        h.flag_suspected("000001", "rt_cd=9")
+        assert h.get_vi_state("000001") == VIState.SUSPECTED
+
+    def test_suspected_expires(self):
+        """suspected_duration 경과 → NORMAL."""
+        from core.vi_handler import VIState
+        h = _fresh_handler(suspected_duration_sec=0)
+        h.flag_suspected("000001", "rt_cd=9")
+        import time as _t
+        _t.sleep(0.01)
+        assert h.get_vi_state("000001") == VIState.NORMAL
+
+
+class TestQueries:
+    def test_is_vi_active_matrix(self):
+        from core.vi_handler import VIState
+        h = _fresh_handler()
+        # NORMAL: False
+        assert h.is_vi_active("a") is False
+        # STATIC_VI: True
+        h.update_from_tick("b", price=10950, prev_close=10000)
+        assert h.is_vi_active("b") is True
+        # SUSPECTED: True
+        h.flag_suspected("c", "test")
+        assert h.is_vi_active("c") is True
+
+    def test_should_use_best_limit_matrix(self):
+        h = _fresh_handler()
+        assert h.should_use_best_limit("a") is False
+        h.update_from_tick("b", price=10950, prev_close=10000)
+        assert h.should_use_best_limit("b") is True
+        h.flag_suspected("c", "test")
+        assert h.should_use_best_limit("c") is True
+
+
+class TestStubs:
+    def test_update_from_ws_0a_no_exception(self):
+        """현재는 스텁 — 호출만으로 예외 없음."""
+        h = _fresh_handler()
+        h.update_from_ws_0a("000001", {"any": "payload"})
+        # 상태 변동 없음 확인
+        from core.vi_handler import VIState
+        assert h.get_vi_state("000001") == VIState.NORMAL
