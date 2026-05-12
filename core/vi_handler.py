@@ -15,13 +15,18 @@ from enum import Enum
 from loguru import logger
 
 
+# KRX 상한가 / VI 제외 영역
+_LIMIT_UP_MULTIPLIER = 1.30   # KRX 일반 종목 상한가 +30%
+_LIMIT_UP_BUFFER = 0.99       # 상한가의 99% 이상은 limit_up_exit 영역으로 간주
+
+
 class VIState(Enum):
     NORMAL = "normal"
     STATIC_VI = "static_vi"
     SUSPECTED = "suspected"
 
 
-@dataclass
+@dataclass(frozen=True)
 class _Entry:
     state: VIState
     expires_at: datetime
@@ -60,11 +65,15 @@ class VIHandler:
     def update_from_tick(self, ticker: str, price: float, prev_close: float) -> None:
         if prev_close <= 0 or price <= 0:
             return
-        limit_up_price = prev_close * 1.30
-        if price >= limit_up_price * 0.99:
+        limit_up_price = prev_close * _LIMIT_UP_MULTIPLIER
+        if price >= limit_up_price * _LIMIT_UP_BUFFER:
             return
         change_pct = (price - prev_close) / prev_close
         if abs(change_pct) >= self._static_pct:
+            existing = self._entries.get(ticker)
+            if existing is not None and existing.state == VIState.SUSPECTED:
+                # SUSPECTED는 주문 거부 기반 확정 신호 → 휴리스틱으로 강등 금지
+                return
             expires = datetime.now() + self._assumed_duration
             self._entries[ticker] = _Entry(VIState.STATIC_VI, expires)
             logger.info(
