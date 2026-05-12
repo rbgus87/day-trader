@@ -431,6 +431,47 @@ class Backtester:
                         )
                         position = None
                         strategy.on_exit()
+                    # 모멘텀 둔화 청산 (수익 포지션 + 보유 15분+ + ROC ≤ -0.5%)
+                    elif compute_momentum_fade(
+                        entry_price=position["entry_price"],
+                        current_price=close,
+                        entry_time=(
+                            position["entry_ts"]
+                            if isinstance(position["entry_ts"], datetime)
+                            else pd.to_datetime(position["entry_ts"]).to_pydatetime()
+                        ),
+                        candle_closes=candles_so_far["close"].tolist()[
+                            -(self._config.momentum_fade_lookback + 1):
+                        ],
+                        now=(
+                            row["ts"]
+                            if isinstance(row["ts"], datetime)
+                            else pd.to_datetime(row["ts"]).to_pydatetime()
+                        ),
+                        lookback=self._config.momentum_fade_lookback,
+                        threshold=self._config.momentum_fade_threshold,
+                        min_hold_min=self._config.momentum_fade_min_hold_min,
+                        min_profit=self._config.momentum_fade_min_profit,
+                        enabled=self._config.momentum_fade_exit_enabled,
+                    ):
+                        exit_price_slipped, net_exit = apply_sell_costs(close, self._costs)
+                        pnl = (net_exit - position["net_entry"]) * remaining
+                        pnl_pct = (net_exit - position["net_entry"]) / position["net_entry"]
+                        trades.append({
+                            "entry_ts": position["entry_ts"],
+                            "exit_ts": row["ts"],
+                            "entry_price": position["entry_price"],
+                            "exit_price": exit_price_slipped,
+                            "pnl": pnl,
+                            "pnl_pct": pnl_pct,
+                            "exit_reason": "momentum_fade",
+                        })
+                        logger.debug(
+                            f"[BT] momentum_fade ts={row['ts']} exit={exit_price_slipped:.1f} "
+                            f"pnl={pnl:.1f} ({pnl_pct:.2%})"
+                        )
+                        position = None
+                        strategy.on_exit()
                     # 마지막 캔들 강제 청산 (나머지)
                     elif idx == len(candles) - 1:
                         exit_price_slipped, net_exit = apply_sell_costs(close, self._costs)
