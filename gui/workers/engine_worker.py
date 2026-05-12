@@ -1154,18 +1154,94 @@ class EngineWorker(QThread):
             except Exception as e:
                 logger.error(f"signal_consumer 오류: {e}")
 
+    async def _handle_fill(self, order_no: str) -> None:
+        """FILLED 상태 도달 시 risk_manager 상태 갱신 + 알림 emit.
+
+        매수: mark_confirmed
+        매도: settle_sell + trade_executed emit
+        공통: _timeout_counters 리셋 + _limit_up_exit_pending 정리
+        """
+        if self._order_tracker is None:
+            return
+        order = self._order_tracker.get_by_order_no(order_no)
+        if order is None:
+            logger.warning(f"[ORDER-TRACK] _handle_fill {order_no} 알 수 없음")
+            return
+        ticker = order.ticker
+        # limit_up_exit 추적 set 정리 (FILLED 시점 — 필수)
+        self._limit_up_exit_pending.discard(ticker)
+        # 연속 TIMEOUT 카운터 리셋
+        self._timeout_counters[ticker] = 0
+        if order.side == "buy":
+            self._risk_manager.mark_confirmed(ticker)
+            logger.info(
+                f"[ORDER-TRACK] {order_no} FILLED → mark_confirmed {ticker}"
+            )
+        elif order.side == "sell":
+            pos = self._risk_manager.get_position(ticker)
+            entry = pos.get("entry_price", 0) if pos else 0
+            pnl = (order.filled_price - entry) * order.filled_qty if entry > 0 else 0
+            pnl_pct = ((order.filled_price / entry) - 1) if entry > 0 else 0
+            self._risk_manager.settle_sell(
+                ticker, order.filled_price, order.filled_qty,
+            )
+            if pnl >= 0:
+                self._rt_wins += 1
+            else:
+                self._rt_losses += 1
+            logger.info(
+                f"[ORDER-TRACK] {order_no} FILLED → settle_sell {ticker} "
+                f"@ {order.filled_price:,.0f} PnL={pnl:+,.0f}"
+            )
+            strat_info = self._active_strategies.get(ticker)
+            if strat_info:
+                strat_info["strategy"].on_exit()
+            self.signals.trade_executed.emit({
+                "time": datetime.now().strftime("%H:%M:%S"),
+                "side": "sell", "ticker": ticker,
+                "price": int(order.filled_price), "qty": order.filled_qty,
+                "pnl": int(pnl), "reason": "ws_filled",
+            })
+
     async def _order_confirmation_consumer(self):
-        """WS 체결통보 처리."""
+        """WS '00' 체결통보 → OrderTracker 갱신 → FILLED 시 _handle_fill."""
+        from core.order_tracker import OrderStatus
         while self._running and not self._stop_event.is_set():
             try:
-                exec_data = await asyncio.wait_for(self._order_queue.get(), timeout=0.5)
-                logger.info(f"체결통보: {exec_data}")
+                exec_data = await asyncio.wait_for(
+                    self._order_queue.get(), timeout=0.5,
+                )
             except asyncio.TimeoutError:
                 continue
             except asyncio.CancelledError:
                 break
+            try:
+                if self._order_tracker is None:
+                    logger.debug(f"[ORDER-TRACK] tracker 미초기화 — skip: {exec_data}")
+                    continue
+                values = exec_data.get("values", {})
+                order_no = str(values.get(_WS_FIELD_ORDER_NO, ""))
+                filled_qty = abs(int(values.get(_WS_FIELD_FILLED_QTY, 0) or 0))
+                filled_price = abs(float(values.get(_WS_FIELD_FILLED_PRICE, 0) or 0))
+                if not order_no or filled_qty == 0:
+                    logger.warning(
+                        f"[ORDER-TRACK] 무효 체결 메시지 무시: order_no={order_no} qty={filled_qty}"
+                    )
+                    continue
+                updated = self._order_tracker.on_fill(
+                    order_no, filled_qty, filled_price,
+                )
+                if updated is None:
+                    continue  # 알 수 없는 주문 (on_fill에서 이미 warning 로그)
+                logger.info(
+                    f"[ORDER-TRACK] {order_no} FILL "
+                    f"{updated.filled_qty}/{updated.requested_qty} "
+                    f"@ {filled_price:,.0f} (status={updated.status.value})"
+                )
+                if updated.status == OrderStatus.FILLED:
+                    await self._handle_fill(order_no)
             except Exception as e:
-                logger.error(f"order_confirmation_consumer 오류: {e}")
+                logger.error(f"[ORDER-TRACK] _order_confirmation_consumer 오류: {e}")
 
     # ── Screening & force close ──
 
