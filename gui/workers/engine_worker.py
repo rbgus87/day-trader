@@ -1414,10 +1414,13 @@ class EngineWorker(QThread):
                     pnl = (close_price - entry) * qty if entry > 0 else 0
                     pnl_pct = ((close_price / entry) - 1) * 100 if entry > 0 else 0
                     strategy_name = pos.get("strategy", "") or "unknown"
+                    prefer_best = self._vi_handler.should_use_best_limit(ticker)
                     await self._order_manager.execute_sell_force_close(
                         ticker=ticker, qty=qty, price=close_price,
                         strategy=strategy_name, pnl=pnl, pnl_pct=pnl_pct,
                         exit_reason="forced_close",
+                        prefer_best_limit=prefer_best,
+                        on_rejection=lambda tk, rt: self._vi_handler.flag_suspected(tk, f"rt_cd={rt}"),
                     )
                     self._risk_manager.settle_sell(ticker, float(close_price), qty)
                     strat_info = self._active_strategies.get(ticker)
