@@ -79,6 +79,7 @@ class TestTimeDecayInTrailing:
             atr_trail_min_pct=0.02,
             atr_trail_max_pct=0.10,
             atr_tp_enabled=False,
+            breakeven_enabled=False,
         )
         rm.register_position(
             ticker="000001", entry_price=10000, qty=10, stop_loss=9200,
@@ -106,6 +107,7 @@ class TestTimeDecayInTrailing:
             atr_trail_min_pct=0.02,
             atr_trail_max_pct=0.10,
             atr_tp_enabled=False,
+            breakeven_enabled=False,
         )
         rm.register_position(
             ticker="000001", entry_price=10000, qty=10, stop_loss=9200,
