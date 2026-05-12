@@ -117,3 +117,28 @@ class TestQueries:
         t.get_by_order_no("ORD1").submitted_at = datetime.now() - timedelta(seconds=20)
         t.on_fill("ORD1", filled_qty=10, filled_price=1000.0)
         assert t.get_unfilled_older_than(10.0) == []
+
+
+class TestMarkStates:
+    def test_mark_failed_clears_ticker_index(self):
+        t = _tracker()
+        t.submit("ORD1", "000001", "buy", 10)
+        t.mark_failed("ORD1", "rt_cd=9")
+        order = t.get_by_order_no("ORD1")
+        assert order.status == OrderStatus.FAILED
+        assert t.get_pending("000001") is None  # 재진입 가능
+
+    def test_mark_timeout_clears_ticker_index(self):
+        t = _tracker()
+        t.submit("ORD1", "000001", "sell", 10)
+        t.mark_timeout("ORD1")
+        order = t.get_by_order_no("ORD1")
+        assert order.status == OrderStatus.TIMEOUT
+        assert t.get_pending("000001") is None  # 자연 재시도 가능
+
+    def test_remove_deletes_completely(self):
+        t = _tracker()
+        t.submit("ORD1", "000001", "buy", 10)
+        t.remove("ORD1")
+        assert t.get_by_order_no("ORD1") is None
+        assert t.get_pending("000001") is None
