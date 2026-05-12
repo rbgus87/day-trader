@@ -1,4 +1,4 @@
-"""scripts/grid_combo_be3_nts.py — BE3 + NTS 조합 그리드.
+﻿"""scripts/grid_combo_be3_nts.py — BE3 + NTS 조합 그리드.
 
 시나리오 7종:
   D0             : control
@@ -342,7 +342,7 @@ async def main():
     bt_raw = yaml.safe_load(open("config.yaml", encoding="utf-8")).get("backtest", {})
     bcfg = BacktestConfig(
         commission=bt_raw.get("commission", 0.00015),
-        tax=bt_raw.get("tax", 0.0015),
+        tax=bt_raw.get("tax", 0.0020),
         slippage=bt_raw.get("slippage", 0.0003),
     )
     uni = yaml.safe_load(open("config/universe_backtest.yaml", encoding="utf-8"))

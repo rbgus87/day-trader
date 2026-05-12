@@ -5,9 +5,14 @@ backtester와 PaperOrderManager 양쪽이 공유하는 단일 비용 함수.
 
 수수료·세금 규격:
 - commission: 매수/매도 각 편도 (예: 0.00015 = 0.015%)
-- tax: 매도 시에만 (예: 0.0015 = 0.15%)
+- tax: 매도 시에만 (예: 0.0020 = 0.20%, 2025 기준 KOSPI/KOSDAQ 공통)
+  - KOSPI: 증권거래세 0.05% + 농어촌특별세 0.15% = 0.20%
+  - KOSDAQ: 증권거래세 0.20% (농특세 없음) = 0.20%
 - slippage: 편도 추정치 (예: 0.0003 = 0.03%)
   - 매수 시 불리 방향(가격 상승), 매도 시 불리 방향(가격 하락)
+
+TODO: 향후 시장별 세율 차등 시 apply_sell_costs에 market 파라미터를 추가하고
+      TradeCosts에 tax_rate_kospi / tax_rate_kosdaq 분리 필드 도입.
 """
 
 from __future__ import annotations

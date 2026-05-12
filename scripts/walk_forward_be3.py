@@ -1,4 +1,4 @@
-"""scripts/walk_forward_be3.py — BE3 + min_bp 3% 기준 Walk-Forward 간이 검증.
+﻿"""scripts/walk_forward_be3.py — BE3 + min_bp 3% 기준 Walk-Forward 간이 검증.
 
 ADR-011 / walk_forward_simple.md 와 동일 3분할 방식.
 현재 baseline (min_breakout 3% + BE3) 으로 기간별 분리 실행, 재최적화 없음.
@@ -566,7 +566,7 @@ async def main() -> None:
     bt_cfg = yaml.safe_load(open("config.yaml", encoding="utf-8")).get("backtest", {})
     backtest_config = BacktestConfig(
         commission=bt_cfg.get("commission", 0.00015),
-        tax=bt_cfg.get("tax", 0.0015),
+        tax=bt_cfg.get("tax", 0.0020),
         slippage=bt_cfg.get("slippage", 0.0003),
     )
     uni = yaml.safe_load(open("config/universe_backtest.yaml", encoding="utf-8"))

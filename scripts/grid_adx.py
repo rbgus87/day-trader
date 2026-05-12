@@ -1,4 +1,4 @@
-"""scripts/grid_adx.py — ADX 임계값 그리드."""
+﻿"""scripts/grid_adx.py — ADX 임계값 그리드."""
 import asyncio, copy, os, pickle, sqlite3, sys, yaml
 from collections import Counter, defaultdict
 from concurrent.futures import ProcessPoolExecutor
@@ -160,7 +160,7 @@ async def main():
     app = AppConfig.from_yaml(); cfg = app.trading
     bt_raw = yaml.safe_load(open("config.yaml", encoding="utf-8")).get("backtest", {})
     bcfg = BacktestConfig(commission=bt_raw.get("commission",0.00015),
-                          tax=bt_raw.get("tax",0.0015), slippage=bt_raw.get("slippage",0.0003))
+                          tax=bt_raw.get("tax", 0.0020), slippage=bt_raw.get("slippage",0.0003))
     uni = yaml.safe_load(open("config/universe_backtest.yaml", encoding="utf-8"))
     stocks = uni["stocks"]
     tkm = {s["ticker"]: s.get("market","?") for s in stocks}

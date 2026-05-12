@@ -1,4 +1,4 @@
-"""scripts/analyze_entry_signal_quality.py — 진입 지표 vs PnL 상관 분석.
+﻿"""scripts/analyze_entry_signal_quality.py — 진입 지표 vs PnL 상관 분석.
 
 동시 시그널 처리 시 priority score 설계 기초 데이터.
 각 baseline trade의 (breakout_pct, volume_ratio, adx, entry_minute)와 pnl_pct 관계.
@@ -68,7 +68,7 @@ async def collect_all_trades(start: str, end: str) -> list[dict]:
     bt_cfg = yaml.safe_load(open("config.yaml", encoding="utf-8")).get("backtest", {})
     backtest_config = BacktestConfig(
         commission=bt_cfg.get("commission", 0.00015),
-        tax=bt_cfg.get("tax", 0.0015),
+        tax=bt_cfg.get("tax", 0.0020),
         slippage=bt_cfg.get("slippage", 0.0003),
     )
     uni = yaml.safe_load(open("config/universe_backtest.yaml", encoding="utf-8"))

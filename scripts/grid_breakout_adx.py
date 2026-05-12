@@ -1,4 +1,4 @@
-"""scripts/grid_breakout_adx.py — 돌파 하한 × ADX 상한 5×4 그리드.
+﻿"""scripts/grid_breakout_adx.py — 돌파 하한 × ADX 상한 5×4 그리드.
 
 - min_breakout_pct: 0.03 / 0.04 / 0.05 / 0.06 / 0.08
 - adx_max (상한): None(현재) / 50 / 40 / 35
@@ -168,7 +168,7 @@ async def run_grid(args) -> list[dict]:
     bt_cfg = yaml.safe_load(open("config.yaml", encoding="utf-8")).get("backtest", {})
     backtest_config = BacktestConfig(
         commission=bt_cfg.get("commission", 0.00015),
-        tax=bt_cfg.get("tax", 0.0015),
+        tax=bt_cfg.get("tax", 0.0020),
         slippage=bt_cfg.get("slippage", 0.0003),
     )
     uni = yaml.safe_load(open("config/universe_backtest.yaml", encoding="utf-8"))

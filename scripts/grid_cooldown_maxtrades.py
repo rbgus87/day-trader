@@ -1,4 +1,4 @@
-"""scripts/grid_cooldown_maxtrades.py — 쿨다운 × 일일 최대거래 그리드.
+﻿"""scripts/grid_cooldown_maxtrades.py — 쿨다운 × 일일 최대거래 그리드.
 
 현재 baseline (cooldown 120, max_trades 2)에서 재진입이 사실상 0에 가까움.
 쿨다운을 30/60/90으로 줄이고 max_trades 2/3 조합으로 재진입 효과 측정.
@@ -142,7 +142,7 @@ async def main():
     bt_raw = yaml.safe_load(open("config.yaml", encoding="utf-8")).get("backtest", {})
     bcfg = BacktestConfig(
         commission=bt_raw.get("commission", 0.00015),
-        tax=bt_raw.get("tax", 0.0015),
+        tax=bt_raw.get("tax", 0.0020),
         slippage=bt_raw.get("slippage", 0.0003),
     )
     uni = yaml.safe_load(open("config/universe_backtest.yaml", encoding="utf-8"))

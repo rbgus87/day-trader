@@ -1,4 +1,4 @@
-"""scripts/capital_comparison.py — 자본별 전체 지표 비교 (max_positions=3 고정).
+﻿"""scripts/capital_comparison.py — 자본별 전체 지표 비교 (max_positions=3 고정).
 
 1주 가중 backtester 결과에 자본 사이징을 후적용하여 자본 가중 지표 산출.
 """
@@ -62,7 +62,7 @@ async def main():
     cfg = app.trading
     bt_raw = yaml.safe_load(open("config.yaml", encoding="utf-8")).get("backtest", {})
     bcfg = BacktestConfig(commission=bt_raw.get("commission",0.00015),
-                          tax=bt_raw.get("tax",0.0015), slippage=bt_raw.get("slippage",0.0003))
+                          tax=bt_raw.get("tax", 0.0020), slippage=bt_raw.get("slippage",0.0003))
     uni = yaml.safe_load(open("config/universe_backtest.yaml", encoding="utf-8"))
     stocks = uni["stocks"]
     tkm = {s["ticker"]: s.get("market","?") for s in stocks}

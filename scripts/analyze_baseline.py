@@ -87,7 +87,7 @@ async def collect_all_trades(start: str, end: str) -> list[dict]:
     ).get("backtest", {})
     backtest_config = BacktestConfig(
         commission=bt_cfg_raw.get("commission", 0.00015),
-        tax=bt_cfg_raw.get("tax", 0.0018),
+        tax=bt_cfg_raw.get("tax", 0.0020),
         slippage=bt_cfg_raw.get("slippage", 0.0003),
     )
 
@@ -147,7 +147,7 @@ def analyze_position_occupancy(trades: list[dict], db_path: str) -> dict:
     print(f"[분석1] 자리 점유: forced_close {len(forced)}건 분석")
 
     conn = sqlite3.connect(db_path)
-    costs = TradeCosts(commission_rate=0.00015, slippage_rate=0.0003, tax_rate=0.0015)
+    costs = TradeCosts(commission_rate=0.00015, slippage_rate=0.0003, tax_rate=0.0020)
 
     results = []
     for t in forced:

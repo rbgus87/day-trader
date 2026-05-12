@@ -1,4 +1,4 @@
-"""scripts/per_ticker_analysis.py — 종목별 성과 분석.
+﻿"""scripts/per_ticker_analysis.py — 종목별 성과 분석.
 
 현재 config (min_breakout_pct=3%, BE3 ON) 기준 41종목 개별 백테스트.
 PF 상위/하위 비교, 가격대/시장별 통계, 상관 분석.
@@ -117,7 +117,7 @@ async def main():
     bt_raw = yaml.safe_load(open("config.yaml", encoding="utf-8")).get("backtest", {})
     bcfg = BacktestConfig(
         commission=bt_raw.get("commission", 0.00015),
-        tax=bt_raw.get("tax", 0.0015),
+        tax=bt_raw.get("tax", 0.0020),
         slippage=bt_raw.get("slippage", 0.0003),
     )
     uni = yaml.safe_load(open("config/universe_backtest.yaml", encoding="utf-8"))

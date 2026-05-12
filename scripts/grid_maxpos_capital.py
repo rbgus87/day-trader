@@ -1,4 +1,4 @@
-"""scripts/grid_maxpos_capital.py — max_positions × 자본 그리드.
+﻿"""scripts/grid_maxpos_capital.py — max_positions × 자본 그리드.
 
 backtester는 종목별 독립 실행이므로 max_positions를 시뮬하려면
 전 종목 trades를 시간순 정렬 후 동시 포지션 수 제한을 적용해야 함.
@@ -207,7 +207,7 @@ async def main():
     app = AppConfig.from_yaml(); cfg = app.trading
     bt_raw = yaml.safe_load(open("config.yaml", encoding="utf-8")).get("backtest", {})
     bcfg = BacktestConfig(commission=bt_raw.get("commission",0.00015),
-                          tax=bt_raw.get("tax",0.0015), slippage=bt_raw.get("slippage",0.0003))
+                          tax=bt_raw.get("tax", 0.0020), slippage=bt_raw.get("slippage",0.0003))
     uni = yaml.safe_load(open("config/universe_backtest.yaml", encoding="utf-8"))
     stocks = uni["stocks"]
     tkm = {s["ticker"]: s.get("market","?") for s in stocks}

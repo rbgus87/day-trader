@@ -1,4 +1,4 @@
-"""scripts/grid_seat_occupation.py — 자리 차지 해결 방안 비교.
+﻿"""scripts/grid_seat_occupation.py — 자리 차지 해결 방안 비교.
 
 시나리오 10종 (D0 control + A×3 + B×3 + C×3):
   D0         : control (현재 로직)
@@ -310,7 +310,7 @@ async def main():
     bt_raw = yaml.safe_load(open("config.yaml", encoding="utf-8")).get("backtest", {})
     bcfg = BacktestConfig(
         commission=bt_raw.get("commission", 0.00015),
-        tax=bt_raw.get("tax", 0.0015),
+        tax=bt_raw.get("tax", 0.0020),
         slippage=bt_raw.get("slippage", 0.0003),
     )
     uni = yaml.safe_load(open("config/universe_backtest.yaml", encoding="utf-8"))

@@ -1,4 +1,4 @@
-"""scripts/grid_breakout_threshold.py — 돌파 폭 하한 그리드.
+﻿"""scripts/grid_breakout_threshold.py — 돌파 폭 하한 그리드.
 
 6 시나리오: B00(0%), B03(0.3%), B05(0.5%), B10(1.0%), B20(2.0%), B30(3.0%)
 
@@ -232,7 +232,7 @@ async def main():
     bt_raw = yaml.safe_load(open("config.yaml", encoding="utf-8")).get("backtest", {})
     bcfg = BacktestConfig(
         commission=bt_raw.get("commission", 0.00015),
-        tax=bt_raw.get("tax", 0.0015),
+        tax=bt_raw.get("tax", 0.0020),
         slippage=bt_raw.get("slippage", 0.0003),
     )
     uni = yaml.safe_load(open("config/universe_backtest.yaml", encoding="utf-8"))
