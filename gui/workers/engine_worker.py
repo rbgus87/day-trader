@@ -789,7 +789,7 @@ class EngineWorker(QThread):
                         exit_reason="limit_up_exit",
                     )
                     if result is not None:
-                        is_paper = getattr(self._config, "paper_mode", True)
+                        is_paper = self._mode == "paper"
                         if is_paper:
                             # 페이퍼: 즉시 settle (현 동작)
                             self._risk_manager.settle_sell(ticker, price, qty)
@@ -856,7 +856,7 @@ class EngineWorker(QThread):
                     )
                     if result is None:
                         continue  # 주문 자체 실패 (VI 등)
-                    is_paper = getattr(self._config, "paper_mode", True)
+                    is_paper = self._mode == "paper"
                     if is_paper:
                         self._risk_manager.settle_sell(ticker, price, qty)
                         if pnl >= 0:
@@ -1106,7 +1106,7 @@ class EngineWorker(QThread):
                 if result:
                     # trailing_pct는 None으로 두면 register_position이
                     # 글로벌 trailing_stop_pct를 사용 (실전 ↔ 백테스트 통일)
-                    is_paper = getattr(self._config, "paper_mode", True)
+                    is_paper = self._mode == "paper"
                     initial_status = "confirmed" if is_paper else "pending"
                     self._risk_manager.register_position(
                         ticker=signal.ticker,
@@ -1279,6 +1279,9 @@ class EngineWorker(QThread):
                     return {"qty": order.requested_qty, "price": price}
                 if order.side == "sell" and qty == 0:
                     # 잔량 0 (희귀 — 일반적으론 ticker 자체가 잔고에서 제거됨)
+                    # TODO(real_mode): fallback_price가 0.0이 될 가능성 있음
+                    # (해당 ticker에 tick이 도착하지 않은 경우). settle_sell PnL 부정확.
+                    # 운영 전 _latest_prices 최소값(entry_price * 0.5 등)으로 sanity check 추가 권장.
                     fallback_price = self._latest_prices.get(order.ticker, 0.0)
                     return {"qty": order.requested_qty, "price": fallback_price}
         # sell + ticker가 잔고에 없음 → 매도 완료로 간주 (일반적 경로)
@@ -1686,7 +1689,7 @@ class EngineWorker(QThread):
                     if result is None:
                         logger.error(f"[ORDER-TRACK] force_close 주문 실패: {ticker}")
                         continue
-                    is_paper = getattr(self._config, "paper_mode", True)
+                    is_paper = self._mode == "paper"
                     if is_paper:
                         self._risk_manager.settle_sell(ticker, float(close_price), qty)
                         strat_info = self._active_strategies.get(ticker)
@@ -1701,6 +1704,12 @@ class EngineWorker(QThread):
                             f"{ticker} sell {qty} (forced_close)"
                         )
                         # forced_close은 다음 _handle_fill에서 settle (정상 흐름)
+                        # strategy.on_exit()는 _active_strategies 클리어 전에 즉시 호출
+                        # (real_mode에서 _handle_fill이 호출될 때는 _active_strategies가
+                        # 이미 비워져 있을 가능성)
+                        strat_info = self._active_strategies.get(ticker)
+                        if strat_info:
+                            strat_info["strategy"].on_exit()
             await self._candle_builder.flush()
             self._candle_builder.reset()
             await self._risk_manager.save_daily_summary()
