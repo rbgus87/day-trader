@@ -1014,6 +1014,14 @@ class EngineWorker(QThread):
                     logger.info(f"포지션 한도 ({self._config.trading.max_positions}), 무시: {signal.ticker}")
                     continue
 
+                # VI 활성 종목 매수 차단 (spec §5.5.3)
+                if self._vi_handler.is_vi_active(signal.ticker):
+                    logger.info(
+                        f"[VI] {signal.ticker} 매수 차단 — "
+                        f"state={self._vi_handler.get_vi_state(signal.ticker).value}"
+                    )
+                    continue
+
                 strategy = self._active_strategies[signal.ticker]["strategy"]
                 sl = strategy.get_stop_loss(signal.price)
                 tp1 = strategy.get_take_profit(signal.price)
