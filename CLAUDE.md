@@ -198,6 +198,7 @@ pytest tests/ --cov=. --cov-report=term-missing
 - [x] 상한가 즉시 청산 (ADR-018) — PF 4.28 → 4.56 (+6.5%), limit_up_exit 15건 (6.0%, 거래당 +8.64%)
   - 2026-05-12 거래세 0.15% → 0.20% 정정 후 동일 시스템 baseline PF 4.36 (−4.4%)
 - [x] VI 휴리스틱 대응 (2026-05-12) — 시장가 → 최유리지정가 자동 전환, VI 활성 종목 매수 차단. limit_up_exit / forced_close 보호. 백테스트 baseline PF 4.36 변동 없음.
+- [x] Order Confirmation Pipeline (2026-05-12) — real_mode WS '00' 체결통보까지 settle_sell 보류. OrderTracker 재진입 가드. paper_mode/backtester 영향 없음. 백테스트 baseline PF 4.36 변동 없음.
 
 검증 명령어: `docs/verification_commands.md`
 후속 작업: [`docs/phase_followup_todo.md`](docs/phase_followup_todo.md)
