@@ -156,6 +156,24 @@ class KiwoomRestClient:
         }
         return await self.request("POST", EP_ORDER, API_STOCK_ORDER, data=body)
 
+    async def cancel_order(self, order_no: str, ticker: str, qty: int) -> dict:
+        """미체결 주문 취소 (kt10001). 매수 TIMEOUT 시 사용.
+
+        키움 cancel API는 원주문번호(orig_ord_no) + 종목코드 + 수량을 요구.
+        엔드포인트는 주문과 동일한 EP_ORDER 경로.
+        """
+        if not re.match(r"^\d{6}$", ticker):
+            raise ValueError(f"잘못된 종목코드: {ticker}")
+        if qty < 1:
+            raise ValueError(f"취소 수량은 1 이상: {qty}")
+        body = {
+            "orig_ord_no": order_no,
+            "stk_cd": ticker,
+            "ord_qty": qty,
+            "acnt_no": self._config.account_no,
+        }
+        return await self.request("POST", EP_ORDER, API_STOCK_CANCEL, data=body)
+
     async def get_account_balance(self) -> dict:
         """계좌 잔고 조회."""
         body = {"acnt_no": self._config.account_no}
