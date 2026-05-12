@@ -124,9 +124,9 @@ strategy:
     # 모멘텀 둔화 청산 — 수익 포지션 + 보유 15분+ + ROC ≤ -0.5%
     momentum_fade_exit_enabled: true
     momentum_fade_lookback: 10           # 최근 10분봉
-    momentum_fade_threshold: -0.005      # ROC 임계 (-0.5%)
+    momentum_fade_threshold: -0.008      # ROC 임계 (-0.8%)
     momentum_fade_min_hold_min: 15       # 진입 후 최소 15분 보유
-    momentum_fade_min_profit: 0.01       # 현재 수익률 +1% 이상
+    momentum_fade_min_profit: 0.03       # 현재 수익률 +3% 이상
 
   # 전략 선택기 임계값 (StrategySelector — 현재 항상 momentum)
   selector:

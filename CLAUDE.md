@@ -42,7 +42,7 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 | `stop_loss` | 고정 -8% 손절 (`stop_loss_pct: -0.080`) |
 | `trailing_stop` | 진입 즉시 Chandelier (최고가 − ATR × 1.0), 하한 2% / 상한 10%. **time_decay 적용**: 12:00~ ATR×0.7, 13:30~ 0.5, 14:30~ 0.3 (hard floor 1.0%) |
 | `breakeven_stop` | **ADR-017**: peak_return ≥ 3% 도달 시 stop을 entry+1%로 상향, 이후 되돌림 |
-| `momentum_fade` | **2026-05-12**: 수익 ≥ +1% + 보유 ≥ 15분 + ROC(10분) ≤ −0.5% 시 즉시 청산. 손실 포지션 미적용 |
+| `momentum_fade` | **2026-05-12**: 수익 ≥ +3% + 보유 ≥ 15분 + ROC(10분) ≤ −0.8% 시 즉시 청산. 손실 포지션 미적용 |
 | `forced_close` | 15:10 미청산 포지션 일괄 청산 |
 
 > TP1 분할매도(`tp1_hit`)는 ADR-010에서 폐기. `atr_tp_enabled: false`.
@@ -76,15 +76,16 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 
 ---
 
-## 백테스트 결과 (baseline, 2026-05-12 time_decay + momentum_fade 반영)
+## 백테스트 결과 (baseline, 2026-05-13 momentum_fade 파라미터 갱신)
 
-- **Profit Factor 3.80** (1주 가중, 41종목, time_decay 트레일링 + momentum_fade + Pure trailing + 고정 -8% 손절 + 돌파폭 ≥ 3% + BE3 + 상한가 청산)
-- 연 거래 건수 250건
-- 총 PnL +225,523
-- 거래당 PnL +902
-- 청산 분포: forced_close 69 (27.6%) / **momentum_fade 104 (41.6%, 신규)** / stop_loss 33 (13.2%) / breakeven_stop 31 (12.4%) / limit_up_exit 7 (2.8%) / trailing_stop 6 (2.4%)
-- `limit_up_exit` 세부: PnL +98,733 (전체 43.8%) / 거래당 평균 +6.02%
+- **Profit Factor 3.73** (1주 가중, 41종목, time_decay 트레일링 + momentum_fade + Pure trailing + 고정 -8% 손절 + 돌파폭 ≥ 3% + BE3 + 상한가 청산)
+- 연 거래 건수 247건
+- 총 PnL +278,979
+- 거래당 PnL +1,130
+- 청산 분포: forced_close 94 (38.1%) / breakeven_stop 54 (21.9%) / **momentum_fade 45 (18.2%)** / stop_loss 37 (15.0%) / limit_up_exit 9 (3.6%) / trailing_stop 8 (3.2%)
+- `limit_up_exit` 세부: PnL +99,590 / 거래당 평균 +6.92%
 - **이전 baseline**
+  - time_decay + momentum_fade(thr=-0.005, mp=0.01) (2026-05-12): PF 3.80 / 250건 / +225,523 / forced_close 27.6% / fade 104건
   - 거래세 0.20% / VI + Order Confirmation (2026-05-12 직전): PF 4.36 / 248건 / forced_close 134 (54%) / trailing_stop 4 (1.6%)
   - 거래세 0.15% 시: PF 4.56 / 248건 / +297,059 (세율 과소 반영 — ADR-009 폐기 수치)
   - ADR-017 (BE3): PF 4.28 / 254건 / 강세 5.88 / 횡보 2.45 / 약세 3.11
@@ -202,6 +203,7 @@ pytest tests/ --cov=. --cov-report=term-missing
 - [x] VI 휴리스틱 대응 (2026-05-12) — 시장가 → 최유리지정가 자동 전환, VI 활성 종목 매수 차단. limit_up_exit / forced_close 보호. 백테스트 baseline PF 4.36 변동 없음.
 - [x] Order Confirmation Pipeline (2026-05-12) — real_mode WS '00' 체결통보까지 settle_sell 보류. OrderTracker 재진입 가드. paper_mode/backtester 영향 없음. 백테스트 baseline PF 4.36 변동 없음.
 - [x] Time-Decayed Trailing + Momentum Fade Exit (2026-05-12) — forced_close 비율 27.6% (이전 54%), 신규 청산 경로 momentum_fade 104건 (41.6%). PF 3.80 (이전 4.36 대비 −12.8%, PnL +225,523 — 자리 점유 해소 vs 수익 감소 트레이드오프).
+- [x] Momentum Fade 파라미터 갱신 (2026-05-13) — threshold −0.005→−0.008, min_profit 0.01→0.03. PF 3.73 / forced_close 38.1% / PnL +278,979 / fade 45건(18.2%). 이전 대비 PnL +53K(+23%) 개선, fade 건수 −59건 감소.
 
 검증 명령어: `docs/verification_commands.md`
 후속 작업: [`docs/phase_followup_todo.md`](docs/phase_followup_todo.md)
