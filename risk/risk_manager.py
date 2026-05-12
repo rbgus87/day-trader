@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from loguru import logger
 
 from config.settings import TradingConfig
-from core.exit_logic import get_time_decay_multiplier
+from core.exit_logic import compute_momentum_fade, get_time_decay_multiplier
 from data.db_manager import DbManager
 from notification.telegram_bot import TelegramNotifier
 
@@ -214,6 +214,44 @@ class RiskManager:
                     f"[BE3] 발동: {ticker} entry={entry:,.0f} peak={peak:,.0f} "
                     f"stop→{pos['stop_loss']:,.0f} (+{(peak - entry) / entry * 100:.2f}%)"
                 )
+
+    def check_momentum_fade(
+        self,
+        ticker: str,
+        current_price: float,
+        candle_history,
+        now: datetime | None = None,
+    ) -> bool:
+        """모멘텀 둔화 청산 발동 여부.
+
+        candle_history는 close 키를 가진 dict 객체의 deque/list.
+        조건 평가는 core.exit_logic.compute_momentum_fade에 위임.
+        """
+        if not getattr(self._config, "momentum_fade_exit_enabled", False):
+            return False
+        pos = self._positions.get(ticker)
+        if not pos:
+            return False
+        if now is None:
+            now = datetime.now()
+        entry_time = pos.get("entry_time")
+        if entry_time is None:
+            return False
+        if candle_history is None:
+            return False
+        closes = [c.get("close", 0) for c in candle_history]
+        return compute_momentum_fade(
+            entry_price=pos.get("entry_price", 0),
+            current_price=current_price,
+            entry_time=entry_time,
+            candle_closes=closes,
+            now=now,
+            lookback=self._config.momentum_fade_lookback,
+            threshold=self._config.momentum_fade_threshold,
+            min_hold_min=self._config.momentum_fade_min_hold_min,
+            min_profit=self._config.momentum_fade_min_profit,
+            enabled=True,  # 위에서 이미 enabled 체크
+        )
 
     def check_tp1(self, ticker: str, current_price: float) -> bool:
         pos = self._positions.get(ticker)
