@@ -267,7 +267,7 @@ class EngineWorker(QThread):
         from core.order_manager import OrderManager
         from core.paper_order_manager import PaperOrderManager
         from core.rate_limiter import AsyncRateLimiter
-        from core.vi_handler import VIHandler
+        from core.vi_handler import VIHandler, VIState
         from data.candle_builder import CandleBuilder
         from data.db_manager import DbManager
         from notification.telegram_bot import TelegramNotifier
@@ -809,7 +809,7 @@ class EngineWorker(QThread):
                         strategy=strategy_name, pnl=pnl, pnl_pct=pnl_pct,
                         exit_reason=reason_code,
                         prefer_best_limit=prefer_best,
-                        on_rejection=lambda tk, rt: self._vi_handler.flag_suspected(tk, f"rt_cd={rt}"),
+                        on_rejection=lambda tk, rt: self._vi_handler.flag_suspected(tk, f"주문 거부 (rt_cd={rt})"),
                     )
                     self._risk_manager.settle_sell(ticker, price, qty)
                     if pnl >= 0:
@@ -1014,12 +1014,11 @@ class EngineWorker(QThread):
                     logger.info(f"포지션 한도 ({self._config.trading.max_positions}), 무시: {signal.ticker}")
                     continue
 
-                # VI 활성 종목 매수 차단 (spec §5.5.3)
-                if self._vi_handler.is_vi_active(signal.ticker):
-                    logger.info(
-                        f"[VI] {signal.ticker} 매수 차단 — "
-                        f"state={self._vi_handler.get_vi_state(signal.ticker).value}"
-                    )
+                # VI 활성 종목 매수 차단 (spec §5.5.3) — single get_vi_state로 lazy expiry race 회피
+                from core.vi_handler import VIState
+                vi_state = self._vi_handler.get_vi_state(signal.ticker)
+                if vi_state != VIState.NORMAL:
+                    logger.info(f"[VI] {signal.ticker} 매수 차단 — state={vi_state.value}")
                     continue
 
                 strategy = self._active_strategies[signal.ticker]["strategy"]
@@ -1420,7 +1419,7 @@ class EngineWorker(QThread):
                         strategy=strategy_name, pnl=pnl, pnl_pct=pnl_pct,
                         exit_reason="forced_close",
                         prefer_best_limit=prefer_best,
-                        on_rejection=lambda tk, rt: self._vi_handler.flag_suspected(tk, f"rt_cd={rt}"),
+                        on_rejection=lambda tk, rt: self._vi_handler.flag_suspected(tk, f"주문 거부 (rt_cd={rt})"),
                     )
                     self._risk_manager.settle_sell(ticker, float(close_price), qty)
                     strat_info = self._active_strategies.get(ticker)

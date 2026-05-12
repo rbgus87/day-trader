@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime
+from typing import Callable
 
 from loguru import logger
 
@@ -149,16 +150,28 @@ class PaperOrderManager:
         self, ticker: str, qty: int, price: int = 0,
         strategy: str = "unknown", pnl: float | None = None, pnl_pct: float | None = None,
         exit_reason: str = "stop_loss",
+        prefer_best_limit: bool = False,
+        on_rejection: Callable[[str, str], None] | None = None,
     ) -> dict | None:
-        """손절 시뮬레이션 (exit_reason으로 stop_loss/trailing_stop 구분 가능)."""
+        """손절 시뮬레이션 (exit_reason으로 stop_loss/trailing_stop 구분 가능).
+
+        VI 대응 파라미터(prefer_best_limit, on_rejection)는 페이퍼 모드에서는
+        무시한다. 시뮬레이션이라 REST 거부가 발생하지 않으므로 콜백 호출 X.
+        """
+        if prefer_best_limit:
+            logger.info(f"[VI][PAPER] {ticker} 매도 → 최유리지정가 전환 (시뮬: 가격 영향 없음)")
         return await self._simulate_order(ticker, qty, price, "sell", reason=exit_reason, strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
 
     async def execute_sell_force_close(
         self, ticker: str, qty: int, price: int = 0,
         strategy: str = "unknown", pnl: float | None = None, pnl_pct: float | None = None,
         exit_reason: str = "forced_close",
+        prefer_best_limit: bool = False,
+        on_rejection: Callable[[str, str], None] | None = None,
     ) -> dict | None:
-        """강제 청산 시뮬레이션."""
+        """강제 청산 시뮬레이션. VI 파라미터는 페이퍼에서 무시."""
+        if prefer_best_limit:
+            logger.info(f"[VI][PAPER] {ticker} 강제청산 → 최유리지정가 (시뮬: 가격 영향 없음)")
         logger.warning(f"[PAPER] 강제 청산({exit_reason}): {ticker} {qty}주")
         return await self._simulate_order(ticker, qty, price, "sell", reason=exit_reason, strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
 
