@@ -176,3 +176,20 @@ class TestMarkStates:
         t.remove("ORD1")
         assert t.get_by_order_no("ORD1") is None
         assert t.get_pending("000001") is None
+
+    def test_mark_timeout_after_filled_no_op(self):
+        """이미 FILLED 상태에서 mark_timeout 호출 → 상태 보존 (race 방지)."""
+        t = _tracker()
+        t.submit("ORD1", "000001", "sell", 10)
+        t.on_fill("ORD1", filled_qty=10, filled_price=1000.0)
+        # FILLED 상태에서 mark_timeout 시도 → 무시되어야 함
+        t.mark_timeout("ORD1")
+        assert t.get_by_order_no("ORD1").status == OrderStatus.FILLED
+
+    def test_mark_failed_after_filled_no_op(self):
+        """이미 FILLED 상태에서 mark_failed 호출 → 상태 보존."""
+        t = _tracker()
+        t.submit("ORD1", "000001", "buy", 10)
+        t.on_fill("ORD1", filled_qty=10, filled_price=1000.0)
+        t.mark_failed("ORD1", "race")
+        assert t.get_by_order_no("ORD1").status == OrderStatus.FILLED

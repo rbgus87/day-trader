@@ -103,6 +103,12 @@ class OrderTracker:
         order = self._orders.get(order_no)
         if order is None:
             return
+        if order.status not in self._ACTIVE_STATES:
+            logger.debug(
+                f"[ORDER-TRACK] {order_no} already terminal "
+                f"({order.status.value}) — mark_failed skipped"
+            )
+            return
         order.status = OrderStatus.FAILED
         order.last_updated = datetime.now()
         if self._ticker_index.get(order.ticker) == order_no:
@@ -112,6 +118,12 @@ class OrderTracker:
     def mark_timeout(self, order_no: str) -> None:
         order = self._orders.get(order_no)
         if order is None:
+            return
+        if order.status not in self._ACTIVE_STATES:
+            logger.debug(
+                f"[ORDER-TRACK] {order_no} already terminal "
+                f"({order.status.value}) — mark_timeout skipped"
+            )
             return
         order.status = OrderStatus.TIMEOUT
         order.last_updated = datetime.now()

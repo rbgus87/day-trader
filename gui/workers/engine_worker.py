@@ -882,7 +882,10 @@ class EngineWorker(QThread):
                             f"({reason_code})"
                         )
                     continue
-                # TP1 체크
+                # TP1 체크 (현재 atr_tp_enabled:false로 비활성 — dead path)
+                # TODO(real_mode): TP1 재활성 시 OrderTracker 통합 필요.
+                # 현재는 paper/real 모두 즉시 mark_tp1_hit 호출 — real_mode에서 미체결 시
+                # 포지션 상태 분리 위험.
                 if self._risk_manager.check_tp1(ticker, price):
                     sell_qty = int(pos["remaining_qty"] * self._config.trading.tp1_sell_ratio)
                     entry = pos["entry_price"]
@@ -1263,8 +1266,10 @@ class EngineWorker(QThread):
         items = (raw or {}).get("output", []) or (raw or {}).get("output1", [])
         if not isinstance(items, list):
             return None
+        ticker_found = False
         for item in items:
             if str(item.get("stk_cd", "")).strip() == order.ticker:
+                ticker_found = True
                 try:
                     qty = abs(int(item.get("hldn_qty", 0) or 0))
                     price = abs(float(item.get("avg_pric", 0) or 0))
@@ -1273,7 +1278,13 @@ class EngineWorker(QThread):
                 if order.side == "buy" and qty >= order.requested_qty:
                     return {"qty": order.requested_qty, "price": price}
                 if order.side == "sell" and qty == 0:
-                    return {"qty": order.requested_qty, "price": price}
+                    # 잔량 0 (희귀 — 일반적으론 ticker 자체가 잔고에서 제거됨)
+                    fallback_price = self._latest_prices.get(order.ticker, 0.0)
+                    return {"qty": order.requested_qty, "price": fallback_price}
+        # sell + ticker가 잔고에 없음 → 매도 완료로 간주 (일반적 경로)
+        if order.side == "sell" and not ticker_found:
+            fallback_price = self._latest_prices.get(order.ticker, 0.0)
+            return {"qty": order.requested_qty, "price": fallback_price}
         return None
 
     async def _order_tracker_timeout_checker(self):
@@ -1290,6 +1301,14 @@ class EngineWorker(QThread):
                 timeout_sec = self._config.trading.order_confirmation_timeout_sec
                 stale = self._order_tracker.get_unfilled_older_than(timeout_sec)
                 for order in stale:
+                    # await 가능성 있는 작업 전 재확인 (이미 다른 경로에서 처리됐을 수 있음)
+                    current = self._order_tracker.get_by_order_no(order.order_no)
+                    if current is None:
+                        continue
+                    if current.status in (
+                        OrderStatus.FILLED, OrderStatus.FAILED, OrderStatus.TIMEOUT,
+                    ):
+                        continue  # 이미 다른 경로(WS 등)에서 종결 — skip
                     logger.warning(
                         f"[ORDER-TRACK] {order.order_no} TIMEOUT — REST 폴백"
                     )
