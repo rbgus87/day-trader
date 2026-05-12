@@ -85,6 +85,17 @@ class TestExitReasonPaper:
         assert args[1] == "momentum"
         assert args[8] == "forced_close"
 
+    @pytest.mark.asyncio
+    async def test_momentum_fade(self, paper_om, mock_db):
+        """momentum_fade 청산도 동일하게 exit_reason 기록."""
+        await paper_om.execute_sell_stop(
+            "005930", 10, price=71000, strategy="momentum",
+            exit_reason="momentum_fade",
+        )
+        _, args = _last_trade_insert(mock_db)
+        assert args[1] == "momentum"
+        assert args[8] == "momentum_fade"
+
 
 class TestExitReasonReal:
     """실매매 OrderManager도 동일하게 exit_reason을 기록한다."""
