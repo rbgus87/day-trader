@@ -1,6 +1,6 @@
 # CLAUDE.md — day-trader
 
-> **최종 수정**: 2026-05-12 (거래세 0.20% 정정 — KOSPI/KOSDAQ 공통)
+> **최종 수정**: 2026-05-12 (time_decay + momentum_fade — forced_close 감소)
 > 이 문서는 **백테스트에서 검증된 사실만** 기재한다.
 
 ---
@@ -75,15 +75,16 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 
 ---
 
-## 백테스트 결과 (baseline, 2026-05-12 거래세 0.20% 정정 반영)
+## 백테스트 결과 (baseline, 2026-05-12 time_decay + momentum_fade 반영)
 
-- **Profit Factor 4.36** (1주 가중, 41종목, Pure trailing + 고정 -8% 손절 + 돌파폭 ≥ 3% + BE3 + 상한가 청산)
-- 연 거래 건수 248건
-- 총 PnL +288,654
-- 거래당 PnL +1,164
-- 청산 분포: forced_close 134 (54.0%) / breakeven_stop 70 (28.2%) / stop_loss 25 (10.1%) / **limit_up_exit 15 (6.0%)** / trailing_stop 4 (1.6%)
-- `limit_up_exit` 세부: PnL +110,980 (전체 38.4%) / 거래당 평균 +8.58%
+- **Profit Factor 3.80** (1주 가중, 41종목, time_decay 트레일링 + momentum_fade + Pure trailing + 고정 -8% 손절 + 돌파폭 ≥ 3% + BE3 + 상한가 청산)
+- 연 거래 건수 250건
+- 총 PnL +225,523
+- 거래당 PnL +902
+- 청산 분포: forced_close 69 (27.6%) / **momentum_fade 104 (41.6%, 신규)** / stop_loss 33 (13.2%) / breakeven_stop 31 (12.4%) / limit_up_exit 7 (2.8%) / trailing_stop 6 (2.4%)
+- `limit_up_exit` 세부: PnL +98,733 (전체 43.8%) / 거래당 평균 +6.02%
 - **이전 baseline**
+  - 거래세 0.20% / VI + Order Confirmation (2026-05-12 직전): PF 4.36 / 248건 / forced_close 134 (54%) / trailing_stop 4 (1.6%)
   - 거래세 0.15% 시: PF 4.56 / 248건 / +297,059 (세율 과소 반영 — ADR-009 폐기 수치)
   - ADR-017 (BE3): PF 4.28 / 254건 / 강세 5.88 / 횡보 2.45 / 약세 3.11
   - ADR-016 (돌파폭 3%): PF 3.88 / 240건 / 약세 2.16
@@ -199,6 +200,7 @@ pytest tests/ --cov=. --cov-report=term-missing
   - 2026-05-12 거래세 0.15% → 0.20% 정정 후 동일 시스템 baseline PF 4.36 (−4.4%)
 - [x] VI 휴리스틱 대응 (2026-05-12) — 시장가 → 최유리지정가 자동 전환, VI 활성 종목 매수 차단. limit_up_exit / forced_close 보호. 백테스트 baseline PF 4.36 변동 없음.
 - [x] Order Confirmation Pipeline (2026-05-12) — real_mode WS '00' 체결통보까지 settle_sell 보류. OrderTracker 재진입 가드. paper_mode/backtester 영향 없음. 백테스트 baseline PF 4.36 변동 없음.
+- [x] Time-Decayed Trailing + Momentum Fade Exit (2026-05-12) — forced_close 비율 27.6% (이전 54%), 신규 청산 경로 momentum_fade 104건 (41.6%). PF 3.80 (이전 4.36 대비 −12.8%, PnL +225,523 — 자리 점유 해소 vs 수익 감소 트레이드오프).
 
 검증 명령어: `docs/verification_commands.md`
 후속 작업: [`docs/phase_followup_todo.md`](docs/phase_followup_todo.md)
