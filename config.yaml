@@ -56,6 +56,12 @@ trading:
   vi_assumed_duration_sec: 150
   vi_suspected_duration_sec: 60
 
+  # 주문 체결 확인 파이프라인 (real_mode 전용; paper_mode는 무시)
+  # order_confirmation_timeout_sec: WS '00' 체결통보 미수신 시 REST 폴백 시각
+  # order_timeout_consecutive_threshold: 같은 ticker 연속 TIMEOUT 임계 (긴급 알림 발사)
+  order_confirmation_timeout_sec: 10.0
+  order_timeout_consecutive_threshold: 3
+
 # --- 전략 파라미터 ---
 strategy:
   force: "momentum"                     # 비어있으면 selector 로직, 값 있으면 해당 전략 강제

@@ -137,6 +137,12 @@ class TradingConfig:
     vi_assumed_duration_sec: int = 150
     vi_suspected_duration_sec: int = 60
 
+    # 주문 체결 확인 파이프라인 (real_mode 전용)
+    # order_confirmation_timeout_sec=10.0: WS '00' 체결통보 미수신 시 REST 폴백 트리거 시각
+    # order_timeout_consecutive_threshold=3: 같은 ticker 연속 TIMEOUT 임계 (긴급 알림)
+    order_confirmation_timeout_sec: float = 10.0
+    order_timeout_consecutive_threshold: int = 3
+
 
 @dataclass(frozen=True)
 class ScreenerConfig:
@@ -299,6 +305,8 @@ class AppConfig:
             vi_static_pct=t.get("vi_static_pct", 0.095),
             vi_assumed_duration_sec=t.get("vi_assumed_duration_sec", 150),
             vi_suspected_duration_sec=t.get("vi_suspected_duration_sec", 60),
+            order_confirmation_timeout_sec=t.get("order_confirmation_timeout_sec", 10.0),
+            order_timeout_consecutive_threshold=t.get("order_timeout_consecutive_threshold", 3),
         )
 
         # screener 섹션

@@ -54,6 +54,14 @@ def test_trading_config_vi_defaults():
     assert tc.vi_suspected_duration_sec == 60
 
 
+def test_trading_config_order_tracking_defaults():
+    """OrderTracker 관련 기본값."""
+    from config.settings import TradingConfig
+    tc = TradingConfig()
+    assert tc.order_confirmation_timeout_sec == 10.0
+    assert tc.order_timeout_consecutive_threshold == 3
+
+
 def test_market_calendar_2027():
     """2027년 공휴일이 거래일에서 제외."""
     from datetime import date
