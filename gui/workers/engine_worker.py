@@ -736,6 +736,13 @@ class EngineWorker(QThread):
                 ticker = tick["ticker"]
                 price = tick["price"]
                 self._latest_prices[ticker] = price
+                # VI 휴리스틱 업데이트 (prev_close 캐시 미스 시 조용히 스킵)
+                _prev = self._prev_close.get(ticker)
+                if _prev:
+                    try:
+                        self._vi_handler.update_from_tick(ticker, price, _prev)
+                    except Exception as _e:
+                        logger.warning(f"[VI] {ticker} update_from_tick 예외: {_e}")
                 pos = self._risk_manager.get_position(ticker)
                 if pos is None or pos["remaining_qty"] <= 0:
                     continue
@@ -796,10 +803,13 @@ class EngineWorker(QThread):
                         reason_code = "trailing_stop"
                     else:
                         reason_code = "stop_loss"
+                    prefer_best = self._vi_handler.should_use_best_limit(ticker)
                     await self._order_manager.execute_sell_stop(
                         ticker=ticker, qty=qty, price=int(price),
                         strategy=strategy_name, pnl=pnl, pnl_pct=pnl_pct,
                         exit_reason=reason_code,
+                        prefer_best_limit=prefer_best,
+                        on_rejection=lambda tk, rt: self._vi_handler.flag_suspected(tk, f"rt_cd={rt}"),
                     )
                     self._risk_manager.settle_sell(ticker, price, qty)
                     if pnl >= 0:
