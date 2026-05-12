@@ -48,6 +48,14 @@ trading:
   market_filter_enabled: true       # true면 약세 시장 종목 매수 차단
   market_ma_length: 5               # MA 기간 (일)
 
+  # VI(변동성완화장치) 휴리스틱 — 시장가 → 최유리지정가 자동 전환용
+  # vi_static_pct: 전일종가 대비 |change_pct| ≥ 9.5% → STATIC_VI 추정 (보수적)
+  # vi_assumed_duration_sec: 단일가 매매 2분 + 랜덤종료 30초
+  # vi_suspected_duration_sec: REST 주문 거부(rt_cd≠"0") 기반 SUSPECTED 만료
+  vi_static_pct: 0.095
+  vi_assumed_duration_sec: 150
+  vi_suspected_duration_sec: 60
+
 # --- 전략 파라미터 ---
 strategy:
   force: "momentum"                     # 비어있으면 selector 로직, 값 있으면 해당 전략 강제
@@ -120,7 +128,11 @@ broker:
 # --- 백테스트 비용 모델 ---
 backtest:
   commission: 0.00015               # 수수료 0.015% (매수/매도 각각)
-  tax: 0.0015                       # 거래세 0.15% (2024 정책)
+  # 거래세 — KOSPI: 증권거래세 0.05% + 농어촌특별세 0.15% = 0.20%
+  #          KOSDAQ: 증권거래세 0.20% (농특세 없음) = 0.20%
+  # 현재는 시장 합계가 동일(0.20%)이라 단일 값으로 충분.
+  # TODO: 세율 차등 시 cost_model에 market 파라미터 추가 필요.
+  tax: 0.0020                       # 거래세 0.20% (2025 기준, KOSPI/KOSDAQ 공통)
   slippage: 0.0003                  # 슬리피지 0.03% (추정값)
   initial_capital: 5_000_000        # (dead: 참조 코드 없음, ADR-013 baseline 비교용 상수)
 

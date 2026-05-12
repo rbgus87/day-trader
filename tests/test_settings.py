@@ -40,9 +40,18 @@ def test_backtest_config_defaults():
     from config.settings import BacktestConfig
     bc = BacktestConfig()
     assert bc.commission == 0.00015
-    assert bc.tax == 0.0015
+    assert bc.tax == 0.0020
     assert bc.slippage == 0.0003
     assert bc.initial_capital == 1_000_000
+
+
+def test_trading_config_vi_defaults():
+    """VI 관련 기본값이 spec 값과 일치."""
+    from config.settings import TradingConfig
+    tc = TradingConfig()
+    assert tc.vi_static_pct == 0.095
+    assert tc.vi_assumed_duration_sec == 150
+    assert tc.vi_suspected_duration_sec == 60
 
 
 def test_market_calendar_2027():

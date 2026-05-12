@@ -129,6 +129,14 @@ class TradingConfig:
     market_filter_enabled: bool = True
     market_ma_length: int = 5
 
+    # VI(변동성완화장치) 휴리스틱
+    # static_pct=0.095: 전일종가 대비 ±9.5% 이상이면 정적VI 추정
+    # assumed_duration_sec=150: 단일가 매매 2분 + 랜덤종료 30초
+    # suspected_duration_sec=60: REST 주문 거부 기반 SUSPECTED 만료 (키움 일시 장애 대비)
+    vi_static_pct: float = 0.095
+    vi_assumed_duration_sec: int = 150
+    vi_suspected_duration_sec: int = 60
+
 
 @dataclass(frozen=True)
 class ScreenerConfig:
@@ -180,7 +188,11 @@ class ConditionSearchConfig:
 @dataclass(frozen=True)
 class BacktestConfig:
     commission: float = 0.00015     # 매수/매도 각 0.015%
-    tax: float = 0.0015             # 증권거래세 0.15% (ADR-009 2024 정책 반영)
+    # 거래세 0.20% (2025 기준, KOSPI/KOSDAQ 공통)
+    # - KOSPI: 증권거래세 0.05% + 농어촌특별세 0.15% = 0.20%
+    # - KOSDAQ: 증권거래세 0.20% (농특세 없음) = 0.20%
+    # TODO: 시장별 세율 차등 시 cost_model에 market 파라미터 추가 필요.
+    tax: float = 0.0020
     slippage: float = 0.0003        # 슬리피지 0.03% (추정값)
     initial_capital: int = 1_000_000  # (dead: 참조 경로 없음, ADR-013 baseline 비교용)
 
@@ -284,6 +296,9 @@ class AppConfig:
             initial_capital=t.get("initial_capital", 1_000_000),
             market_filter_enabled=t.get("market_filter_enabled", True),
             market_ma_length=t.get("market_ma_length", 5),
+            vi_static_pct=t.get("vi_static_pct", 0.095),
+            vi_assumed_duration_sec=t.get("vi_assumed_duration_sec", 150),
+            vi_suspected_duration_sec=t.get("vi_suspected_duration_sec", 60),
         )
 
         # screener 섹션
