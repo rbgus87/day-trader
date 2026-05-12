@@ -82,6 +82,7 @@ class EngineWorker(QThread):
         self._candle_builder = None
         self._risk_manager = None
         self._order_manager = None
+        self._vi_handler = None  # VI 휴리스틱 핸들러 (config 로드 후 _run_engine에서 초기화)
         self._scheduler = None
         self._active_strategy = None
         self._active_strategies: dict = {}  # {ticker: {"strategy": ..., "name": ..., "score": ...}}
@@ -266,6 +267,7 @@ class EngineWorker(QThread):
         from core.order_manager import OrderManager
         from core.paper_order_manager import PaperOrderManager
         from core.rate_limiter import AsyncRateLimiter
+        from core.vi_handler import VIHandler
         from data.candle_builder import CandleBuilder
         from data.db_manager import DbManager
         from notification.telegram_bot import TelegramNotifier
@@ -277,6 +279,13 @@ class EngineWorker(QThread):
         # 1. Config
         self._config = AppConfig.from_yaml()
         paper_mode = self._mode == "paper"
+
+        # VI 휴리스틱 핸들러 (spec §5.5)
+        self._vi_handler = VIHandler(
+            static_pct=self._config.trading.vi_static_pct,
+            assumed_duration_sec=self._config.trading.vi_assumed_duration_sec,
+            suspected_duration_sec=self._config.trading.vi_suspected_duration_sec,
+        )
 
         # 2. Infrastructure
         self._db = DbManager(self._config.db_path)
