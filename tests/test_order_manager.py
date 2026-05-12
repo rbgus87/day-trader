@@ -146,3 +146,20 @@ async def test_rejection_callback_exception_swallowed(order_mgr):
         on_rejection=boom,
     )
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_prefer_best_limit_ignored_for_limit_order(order_mgr):
+    """prefer_best_limit=True + order_type='limit' → 변환 없음, 키움 코드 '00' 유지.
+
+    가드(market에서만 best_limit 전환)가 깨지지 않는지 회귀 방어.
+    """
+    order_mgr._rest_client.send_order = AsyncMock(
+        return_value={"output": {"ODNO": "99999"}, "rt_cd": "0"}
+    )
+    await order_mgr._send_order(
+        ticker="005930", qty=10, price=70000, side="sell",
+        order_type="limit", prefer_best_limit=True,
+    )
+    call_args = order_mgr._rest_client.send_order.call_args
+    assert call_args.kwargs["order_type"] == "00"  # PRICE_LIMIT — 전환 없음

@@ -10,6 +10,7 @@ from notification.telegram_bot import TelegramNotifier
 
 # DB에 저장하는 order_type 도메인은 'limit' / 'market' / 'best_limit' (영문).
 # 키움 REST API 호출 시 _kiwoom_code() 로 '00' / '03' / '06' 변환.
+# 'best_limit'은 VI(변동성완화장치) 대응으로 시장가가 거부될 가능성이 있을 때 사용.
 _ORDER_TYPE_TO_KIWOOM = {
     "limit": PRICE_LIMIT,
     "market": PRICE_MARKET,
@@ -18,7 +19,7 @@ _ORDER_TYPE_TO_KIWOOM = {
 
 
 def _kiwoom_code(order_type: str) -> str:
-    """DB 도메인 값('limit'/'market')을 키움 REST 코드('00'/'03')로 변환."""
+    """DB 도메인 값('limit'/'market'/'best_limit')을 키움 REST 코드('00'/'03'/'06')로 변환."""
     return _ORDER_TYPE_TO_KIWOOM.get(order_type, PRICE_LIMIT)
 
 
