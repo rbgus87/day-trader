@@ -193,3 +193,44 @@ async def test_save_daily_summary_no_trades(risk_mgr):
 
     summary = await risk_mgr.save_daily_summary()
     assert summary is None
+
+
+# ---------------------------------------------------------------------------
+# Task 3 (Order Confirmation Pipeline): status 필드 + mark_confirmed
+# ---------------------------------------------------------------------------
+
+def test_register_position_default_status_pending(risk_mgr):
+    """status 기본값은 'pending' (real_mode 안전 기본)."""
+    risk_mgr.register_position(
+        ticker="000001", entry_price=10000, qty=10, stop_loss=9200,
+    )
+    pos = risk_mgr.get_position("000001")
+    assert pos is not None
+    assert pos["status"] == "pending"
+
+
+def test_register_position_status_confirmed(risk_mgr):
+    """status='confirmed' 명시 호출 (paper_mode / backtester 패턴)."""
+    risk_mgr.register_position(
+        ticker="000001", entry_price=10000, qty=10, stop_loss=9200,
+        status="confirmed",
+    )
+    pos = risk_mgr.get_position("000001")
+    assert pos is not None
+    assert pos["status"] == "confirmed"
+
+
+def test_mark_confirmed_flips_status(risk_mgr):
+    """mark_confirmed: pending → confirmed."""
+    risk_mgr.register_position(
+        ticker="000001", entry_price=10000, qty=10, stop_loss=9200,
+    )
+    assert risk_mgr.get_position("000001")["status"] == "pending"
+    risk_mgr.mark_confirmed("000001")
+    assert risk_mgr.get_position("000001")["status"] == "confirmed"
+
+
+def test_mark_confirmed_unknown_ticker_noop(risk_mgr):
+    """알 수 없는 ticker → 예외 없이 무시."""
+    risk_mgr.mark_confirmed("UNKNOWN")  # 예외 없어야 함
+    assert risk_mgr.get_position("UNKNOWN") is None

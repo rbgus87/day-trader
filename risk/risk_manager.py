@@ -32,6 +32,7 @@ class RiskManager:
         self, ticker: str, entry_price: float, qty: int, stop_loss: float,
         tp1_price: float | None = None, trailing_pct: float | None = None,
         strategy: str = "", limit_up_price: float | None = None,
+        status: str = "pending",
     ) -> None:
         now = datetime.now()
         self._positions[ticker] = {
@@ -47,6 +48,7 @@ class RiskManager:
             "strategy": strategy,
             "limit_up_price": limit_up_price,
             "limit_up_exit_failed": False,
+            "status": status,  # 신규: "pending" | "confirmed"
         }
         # 자본 차감
         cost = entry_price * qty
@@ -69,6 +71,12 @@ class RiskManager:
             conn.close()
         except Exception as e:
             logger.warning(f"positions INSERT 실패 ({ticker}): {e}")
+
+    def mark_confirmed(self, ticker: str) -> None:
+        """주문 체결 확인 후 status를 'confirmed'로 갱신. 알 수 없는 ticker는 무시."""
+        pos = self._positions.get(ticker)
+        if pos is not None:
+            pos["status"] = "confirmed"
 
     def remove_position(self, ticker: str) -> None:
         self._positions.pop(ticker, None)
