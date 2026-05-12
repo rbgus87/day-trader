@@ -587,6 +587,10 @@ class EngineWorker(QThread):
             asyncio.create_task(self._candle_consumer(), name="candle_consumer"),
             asyncio.create_task(self._signal_consumer(), name="signal_consumer"),
             asyncio.create_task(self._order_confirmation_consumer(), name="order_consumer"),
+            asyncio.create_task(
+                self._order_tracker_timeout_checker(),
+                name="order_timeout_checker",
+            ),
         ]
 
         logger.info("파이프라인 시작 -- 매매 대기 중 (GUI)")
@@ -608,7 +612,7 @@ class EngineWorker(QThread):
                 alive_tasks = len([t for t in self._pipeline_tasks if not t.done()])
                 pos_count = len(self._risk_manager.get_open_positions()) if self._risk_manager else 0
                 logger.info(
-                    f"[HEARTBEAT] 스케줄러={sched_ok}, 파이프라인={alive_tasks}/4, 포지션={pos_count}"
+                    f"[HEARTBEAT] 스케줄러={sched_ok}, 파이프라인={alive_tasks}/5, 포지션={pos_count}"
                 )
 
             # 헬스 체크 (30초마다)
@@ -1242,6 +1246,104 @@ class EngineWorker(QThread):
                     await self._handle_fill(order_no)
             except Exception as e:
                 logger.error(f"[ORDER-TRACK] _order_confirmation_consumer 오류: {e}")
+
+    async def _verify_fill_via_rest(self, order) -> dict | None:
+        """REST ka10070 잔고 폴백 1회. 체결 확인 시 {qty, price} 반환.
+
+        잔고에서 해당 ticker의 보유 수량으로 체결 여부 추론. 정밀한 매핑이
+        불가능하므로 보수적: 매수→qty>=requested, 매도→qty==0.
+        실 응답 구조 확정 후 정교화 필요.
+        """
+        try:
+            raw = await self._rest_client.get_account_balance()
+        except Exception as e:
+            logger.error(f"[ORDER-TRACK] ka10070 폴백 실패: {e}")
+            return None
+        # TODO: 실 응답 구조 확정 필요. 키움 ka10070은 output 리스트 형태 추정.
+        items = (raw or {}).get("output", []) or (raw or {}).get("output1", [])
+        if not isinstance(items, list):
+            return None
+        for item in items:
+            if str(item.get("stk_cd", "")).strip() == order.ticker:
+                try:
+                    qty = abs(int(item.get("hldn_qty", 0) or 0))
+                    price = abs(float(item.get("avg_pric", 0) or 0))
+                except (ValueError, TypeError):
+                    return None
+                if order.side == "buy" and qty >= order.requested_qty:
+                    return {"qty": order.requested_qty, "price": price}
+                if order.side == "sell" and qty == 0:
+                    return {"qty": order.requested_qty, "price": price}
+        return None
+
+    async def _order_tracker_timeout_checker(self):
+        """1초 주기 타임아웃 감지 + REST 폴백 + cancel/알림."""
+        from core.order_tracker import OrderStatus
+        while self._running and not self._stop_event.is_set():
+            try:
+                await asyncio.sleep(1.0)
+            except asyncio.CancelledError:
+                break
+            try:
+                if self._order_tracker is None:
+                    continue
+                timeout_sec = self._config.trading.order_confirmation_timeout_sec
+                stale = self._order_tracker.get_unfilled_older_than(timeout_sec)
+                for order in stale:
+                    logger.warning(
+                        f"[ORDER-TRACK] {order.order_no} TIMEOUT — REST 폴백"
+                    )
+                    confirmed = await self._verify_fill_via_rest(order)
+                    if confirmed is not None:
+                        self._order_tracker.on_fill(
+                            order.order_no,
+                            confirmed["qty"],
+                            confirmed["price"],
+                        )
+                        updated = self._order_tracker.get_by_order_no(order.order_no)
+                        if updated and updated.status == OrderStatus.FILLED:
+                            await self._handle_fill(order.order_no)
+                    else:
+                        # 미체결 확정
+                        self._order_tracker.mark_timeout(order.order_no)
+                        # limit_up_exit 정리 — 자연 재시도 경로 (필수)
+                        if order.ticker in self._limit_up_exit_pending:
+                            self._limit_up_exit_pending.discard(order.ticker)
+                            new_stop = self._risk_manager.raise_stop_to_limit_up_floor(
+                                order.ticker
+                            )
+                            logger.warning(
+                                f"[ORDER-TRACK] limit_up_exit TIMEOUT → stop 상향: "
+                                f"{order.ticker} new_stop={new_stop:,.0f}"
+                            )
+                        # 매수 TIMEOUT: 취소 시도
+                        if order.side == "buy":
+                            try:
+                                await self._rest_client.cancel_order(
+                                    order.order_no, order.ticker, order.requested_qty,
+                                )
+                            except Exception as e:
+                                logger.error(
+                                    f"[ORDER-TRACK] cancel_order 실패 "
+                                    f"{order.order_no}: {e}"
+                                )
+                        # 연속 TIMEOUT 카운터 + 텔레그램
+                        self._timeout_counters[order.ticker] = (
+                            self._timeout_counters.get(order.ticker, 0) + 1
+                        )
+                        if self._notifier:
+                            self._notifier.send_urgent(
+                                f"[ORDER-TRACK] {order.ticker} {order.side} TIMEOUT "
+                                f"({order.order_no})"
+                            )
+                        threshold = self._config.trading.order_timeout_consecutive_threshold
+                        if self._timeout_counters[order.ticker] >= threshold and self._notifier:
+                            self._notifier.send_urgent(
+                                f"[ORDER-TRACK][CRITICAL] {order.ticker} 연속 TIMEOUT "
+                                f"{self._timeout_counters[order.ticker]}회"
+                            )
+            except Exception as e:
+                logger.error(f"[ORDER-TRACK] timeout_checker 오류: {e}")
 
     # ── Screening & force close ──
 
@@ -2208,6 +2310,7 @@ class EngineWorker(QThread):
         "candle_consumer": "_candle_consumer",
         "signal_consumer": "_signal_consumer",
         "order_consumer": "_order_confirmation_consumer",
+        "order_timeout_checker": "_order_tracker_timeout_checker",
     }
 
     def _health_check(self):
