@@ -882,6 +882,55 @@ class EngineWorker(QThread):
                             f"({reason_code})"
                         )
                     continue
+                # 모멘텀 둔화 청산 (수익 포지션 + 보유 min_hold_min+ + ROC ≤ threshold)
+                hist = self._candle_history.get(ticker)
+                if hist and self._risk_manager.check_momentum_fade(
+                    ticker, price, hist, now=datetime.now(),
+                ):
+                    qty = pos["remaining_qty"]
+                    entry = pos["entry_price"]
+                    pnl = (price - entry) * qty
+                    pnl_pct = ((price / entry) - 1) * 100 if entry > 0 else 0
+                    strategy_name = pos.get("strategy", "") or "unknown"
+                    prefer_best = self._vi_handler.should_use_best_limit(ticker)
+                    result = await self._order_manager.execute_sell_stop(
+                        ticker=ticker, qty=qty, price=int(price),
+                        strategy=strategy_name, pnl=pnl, pnl_pct=pnl_pct,
+                        exit_reason="momentum_fade",
+                        prefer_best_limit=prefer_best,
+                        on_rejection=lambda tk, rt: self._vi_handler.flag_suspected(tk, f"주문 거부 (rt_cd={rt})"),
+                    )
+                    if result is None:
+                        continue
+                    is_paper = self._mode == "paper"
+                    if is_paper:
+                        self._risk_manager.settle_sell(ticker, price, qty)
+                        if pnl >= 0:
+                            self._rt_wins += 1
+                        else:
+                            self._rt_losses += 1
+                        logger.info(
+                            f"momentum_fade 실행: {ticker} {qty}주 @ {price:,} "
+                            f"PnL={pnl:+,.0f}"
+                        )
+                        strat_info = self._active_strategies.get(ticker)
+                        if strat_info:
+                            strat_info["strategy"].on_exit()
+                        self.signals.trade_executed.emit({
+                            "time": datetime.now().strftime("%H:%M:%S"),
+                            "side": "sell", "ticker": ticker,
+                            "price": int(price), "qty": qty,
+                            "pnl": int(pnl), "reason": "momentum_fade",
+                        })
+                    else:
+                        self._order_tracker.submit(
+                            result["order_no"], ticker, "sell", qty,
+                        )
+                        logger.info(
+                            f"[ORDER-TRACK] {result['order_no']} SUBMIT {ticker} sell {qty} "
+                            f"(momentum_fade)"
+                        )
+                    continue
                 # TP1 체크 (현재 atr_tp_enabled:false로 비활성 — dead path)
                 # TODO(real_mode): TP1 재활성 시 OrderTracker 통합 필요.
                 # 현재는 paper/real 모두 즉시 mark_tp1_hit 호출 — real_mode에서 미체결 시
