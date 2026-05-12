@@ -1,15 +1,20 @@
 """core/order_manager.py — 주문 실행기."""
 
 import asyncio
+from typing import Callable
 from loguru import logger
 from config.settings import TradingConfig
-from core.kiwoom_rest import KiwoomRestClient, PRICE_LIMIT, PRICE_MARKET
+from core.kiwoom_rest import KiwoomRestClient, PRICE_LIMIT, PRICE_MARKET, PRICE_BEST_LIMIT
 from data.db_manager import DbManager
 from notification.telegram_bot import TelegramNotifier
 
-# DB에 저장하는 order_type 도메인은 'limit' / 'market' (영문).
-# 키움 REST API 호출 시 _kiwoom_code() 로 '00' / '03' 변환.
-_ORDER_TYPE_TO_KIWOOM = {"limit": PRICE_LIMIT, "market": PRICE_MARKET}
+# DB에 저장하는 order_type 도메인은 'limit' / 'market' / 'best_limit' (영문).
+# 키움 REST API 호출 시 _kiwoom_code() 로 '00' / '03' / '06' 변환.
+_ORDER_TYPE_TO_KIWOOM = {
+    "limit": PRICE_LIMIT,
+    "market": PRICE_MARKET,
+    "best_limit": PRICE_BEST_LIMIT,
+}
 
 
 def _kiwoom_code(order_type: str) -> str:
@@ -127,26 +132,53 @@ class OrderManager:
         self, ticker: str, qty: int, price: int = 0,
         strategy: str = "unknown", pnl: float | None = None, pnl_pct: float | None = None,
         exit_reason: str = "stop_loss",
+        prefer_best_limit: bool = False,
+        on_rejection: Callable[[str, str], None] | None = None,
     ) -> dict | None:
-        return await self._send_order(ticker, qty, price, "sell", order_type="market", reason=exit_reason, strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
+        return await self._send_order(
+            ticker, qty, price, "sell",
+            order_type="market",
+            prefer_best_limit=prefer_best_limit,
+            on_rejection=on_rejection,
+            reason=exit_reason, strategy=strategy, pnl=pnl, pnl_pct=pnl_pct,
+        )
 
     async def execute_sell_force_close(
         self, ticker: str, qty: int, price: int = 0,
         strategy: str = "unknown", pnl: float | None = None, pnl_pct: float | None = None,
         exit_reason: str = "forced_close",
+        prefer_best_limit: bool = False,
+        on_rejection: Callable[[str, str], None] | None = None,
     ) -> dict | None:
         logger.warning(f"강제 청산({exit_reason}): {ticker} {qty}주")
-        return await self._send_order(ticker, qty, price, "sell", order_type="market", reason=exit_reason, strategy=strategy, pnl=pnl, pnl_pct=pnl_pct)
+        return await self._send_order(
+            ticker, qty, price, "sell",
+            order_type="market",
+            prefer_best_limit=prefer_best_limit,
+            on_rejection=on_rejection,
+            reason=exit_reason, strategy=strategy, pnl=pnl, pnl_pct=pnl_pct,
+        )
 
     async def _send_order(
-        self, ticker, qty, price, side, order_type="limit", reason: str = "",
+        self, ticker, qty, price, side, order_type="limit",
+        prefer_best_limit: bool = False,
+        on_rejection: Callable[[str, str], None] | None = None,
+        reason: str = "",
         strategy: str = "unknown", pnl: float | None = None, pnl_pct: float | None = None,
     ) -> dict | None:
-        """order_type: 'limit' / 'market' (DB 도메인). 키움 코드 변환은 내부."""
+        """order_type: 'limit' / 'market' / 'best_limit' (DB 도메인). 키움 코드 변환은 내부.
+
+        prefer_best_limit=True + order_type='market' 시 키움 코드 '06'(최유리지정가)로 전환.
+        응답 rt_cd ≠ '0' 시 on_rejection(ticker, rt_cd) 호출 (VI 의심 감지용).
+        """
+        effective_type = order_type
+        if prefer_best_limit and order_type == "market":
+            effective_type = "best_limit"
+            logger.info(f"[VI] {ticker} 매도 → 최유리지정가 전환")
         try:
             result = await self._rest_client.send_order(
                 ticker=ticker, qty=qty, price=price,
-                side=side, order_type=_kiwoom_code(order_type),
+                side=side, order_type=_kiwoom_code(effective_type),
             )
             if result.get("rt_cd") == "0":
                 # DB 기록
@@ -157,7 +189,7 @@ class OrderManager:
                         "INSERT INTO trades (ticker, strategy, side, order_type, "
                         "price, qty, amount, pnl, pnl_pct, exit_reason, traded_at) "
                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        (ticker, strategy, side, order_type, price, qty, price * qty, pnl, pnl_pct, reason, now),
+                        (ticker, strategy, side, effective_type, price, qty, price * qty, pnl, pnl_pct, reason, now),
                     )
                 # 체결 텔레그램 알림 (ADR-008 trade_execution 토글)
                 if self._notifier and self._trade_notify_enabled():
@@ -171,7 +203,14 @@ class OrderManager:
                     except Exception as e:
                         logger.warning(f"체결 알림 실패 ({ticker}): {e}")
                 return {"order_no": result["output"]["ODNO"], "qty": qty}
+            # rt_cd != "0" → 주문 거부. on_rejection 콜백이 있으면 호출 (VI 의심 감지).
             logger.error(f"주문 실패: {result}")
+            rt = result.get("rt_cd")
+            if on_rejection is not None and rt is not None:
+                try:
+                    on_rejection(ticker, str(rt))
+                except Exception as e:
+                    logger.warning(f"[VI] {ticker} on_rejection 콜백 예외: {e}")
             return None
         except Exception as e:
             logger.error(f"주문 예외: {e}")

@@ -89,3 +89,60 @@ async def test_send_order_records_to_db(order_mgr, mock_db):
     args = mock_db.execute_safe.call_args[0][1]
     assert args[1] == "orb"
     assert args[2] == "sell"
+
+
+@pytest.mark.asyncio
+async def test_prefer_best_limit_converts_market_to_06(order_mgr):
+    """prefer_best_limit=True + order_type='market' → 키움 코드 '06' 전송."""
+    order_mgr._rest_client.send_order = AsyncMock(
+        return_value={"output": {"ODNO": "77777"}, "rt_cd": "0"}
+    )
+    result = await order_mgr.execute_sell_stop(
+        ticker="005930", qty=10, price=70000,
+        prefer_best_limit=True,
+    )
+    assert result is not None
+    call_args = order_mgr._rest_client.send_order.call_args
+    assert call_args.kwargs["order_type"] == "06"  # PRICE_BEST_LIMIT
+
+
+@pytest.mark.asyncio
+async def test_market_without_prefer_best_limit_stays_03(order_mgr):
+    """prefer_best_limit=False(기본) → 시장가 '03' 유지."""
+    order_mgr._rest_client.send_order = AsyncMock(
+        return_value={"output": {"ODNO": "77778"}, "rt_cd": "0"}
+    )
+    await order_mgr.execute_sell_stop(ticker="005930", qty=10, price=70000)
+    call_args = order_mgr._rest_client.send_order.call_args
+    assert call_args.kwargs["order_type"] == "03"  # PRICE_MARKET
+
+
+@pytest.mark.asyncio
+async def test_rejection_callback_invoked_on_rt_cd_nonzero(order_mgr):
+    """rt_cd ≠ '0' 응답 시 on_rejection(ticker, rt_cd) 콜백 호출."""
+    order_mgr._rest_client.send_order = AsyncMock(
+        return_value={"output": {}, "rt_cd": "9", "msg1": "거부"}
+    )
+    rejections: list[tuple[str, str]] = []
+    result = await order_mgr.execute_sell_stop(
+        ticker="005930", qty=10, price=70000,
+        on_rejection=lambda tk, rt: rejections.append((tk, rt)),
+    )
+    assert result is None  # rt_cd != "0" → 실패 반환 유지
+    assert rejections == [("005930", "9")]
+
+
+@pytest.mark.asyncio
+async def test_rejection_callback_exception_swallowed(order_mgr):
+    """on_rejection 콜백 자체 예외는 로그만 + 정상 진행."""
+    order_mgr._rest_client.send_order = AsyncMock(
+        return_value={"output": {}, "rt_cd": "9"}
+    )
+    def boom(tk, rt):
+        raise RuntimeError("callback fail")
+    # 예외가 _send_order 밖으로 전파되면 안 됨
+    result = await order_mgr.execute_sell_stop(
+        ticker="005930", qty=10, price=70000,
+        on_rejection=boom,
+    )
+    assert result is None

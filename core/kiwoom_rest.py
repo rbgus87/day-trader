@@ -34,6 +34,7 @@ ORDER_SELL = 2
 # 호가 구분
 PRICE_LIMIT = "00"   # 지정가
 PRICE_MARKET = "03"  # 시장가
+PRICE_BEST_LIMIT = "06"  # 최유리지정가 (VI 단일가 매매 대응)
 
 # 시장 지수 / ETF 종목코드
 KOSPI_ETF = "069500"       # KODEX 200 (KOSPI 대표 ETF)
