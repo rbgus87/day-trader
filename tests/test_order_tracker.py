@@ -81,6 +81,27 @@ class TestOnFill:
         assert order.filled_qty == 10
         assert order.filled_price == 1000.0
 
+    def test_fill_after_failed_ignored(self):
+        """FAILED 상태 후 on_fill → 무시 (필드 변동 없음)."""
+        t = _tracker()
+        t.submit("ORD1", "000001", "buy", 10)
+        t.mark_failed("ORD1", "rt_cd=9")
+        order = t.on_fill("ORD1", filled_qty=5, filled_price=1000.0)
+        assert order is not None
+        assert order.status == OrderStatus.FAILED
+        assert order.filled_qty == 0
+        assert order.filled_price == 0.0
+
+    def test_fill_after_timeout_ignored(self):
+        """TIMEOUT 상태 후 on_fill → 무시."""
+        t = _tracker()
+        t.submit("ORD1", "000001", "buy", 10)
+        t.mark_timeout("ORD1")
+        order = t.on_fill("ORD1", filled_qty=5, filled_price=1000.0)
+        assert order is not None
+        assert order.status == OrderStatus.TIMEOUT
+        assert order.filled_qty == 0
+
     def test_fill_unknown_order_returns_none(self):
         t = _tracker()
         assert t.on_fill("UNKNOWN", 1, 1000.0) is None
@@ -117,6 +138,19 @@ class TestQueries:
         t.get_by_order_no("ORD1").submitted_at = datetime.now() - timedelta(seconds=20)
         t.on_fill("ORD1", filled_qty=10, filled_price=1000.0)
         assert t.get_unfilled_older_than(10.0) == []
+
+    def test_get_unfilled_older_than_zero_includes_just_submitted(self):
+        """get_unfilled_older_than(0): submitted_at < now (시간 진행) → 포함.
+
+        실 운영에서는 timeout=10s 등 양수만 사용. 본 테스트는 boundary 규약을 고정.
+        """
+        t = _tracker()
+        t.submit("ORD1", "000001", "buy", 10)
+        # 같은 microsecond에 호출되더라도 datetime.now()는 strict less than 보장.
+        # 만약 동등 비교라 실패한다면 boundary 규약(< vs <=)을 명확히 해야 함.
+        stale = t.get_unfilled_older_than(0)
+        assert len(stale) == 1
+        assert stale[0].order_no == "ORD1"
 
 
 class TestMarkStates:

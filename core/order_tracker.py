@@ -51,6 +51,14 @@ class OrderTracker:
         if order_no in self._orders:
             logger.warning(f"[ORDER-TRACK] {order_no} submit 중복 — 무시")
             return
+        existing_no = self._ticker_index.get(ticker)
+        if existing_no and existing_no in self._orders:
+            existing = self._orders[existing_no]
+            if existing.status in self._ACTIVE_STATES:
+                logger.warning(
+                    f"[ORDER-TRACK] {ticker} 이전 주문 {existing_no}"
+                    f"({existing.status.value}) 활성 중 — {order_no} 덮어쓰기"
+                )
         now = datetime.now()
         self._orders[order_no] = PendingOrder(
             order_no=order_no, ticker=ticker, side=side,
