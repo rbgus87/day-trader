@@ -1657,17 +1657,31 @@ class EngineWorker(QThread):
                     pnl_pct = ((close_price / entry) - 1) * 100 if entry > 0 else 0
                     strategy_name = pos.get("strategy", "") or "unknown"
                     prefer_best = self._vi_handler.should_use_best_limit(ticker)
-                    await self._order_manager.execute_sell_force_close(
+                    result = await self._order_manager.execute_sell_force_close(
                         ticker=ticker, qty=qty, price=close_price,
                         strategy=strategy_name, pnl=pnl, pnl_pct=pnl_pct,
                         exit_reason="forced_close",
                         prefer_best_limit=prefer_best,
                         on_rejection=lambda tk, rt: self._vi_handler.flag_suspected(tk, f"주문 거부 (rt_cd={rt})"),
                     )
-                    self._risk_manager.settle_sell(ticker, float(close_price), qty)
-                    strat_info = self._active_strategies.get(ticker)
-                    if strat_info:
-                        strat_info["strategy"].on_exit()
+                    if result is None:
+                        logger.error(f"[ORDER-TRACK] force_close 주문 실패: {ticker}")
+                        continue
+                    is_paper = getattr(self._config, "paper_mode", True)
+                    if is_paper:
+                        self._risk_manager.settle_sell(ticker, float(close_price), qty)
+                        strat_info = self._active_strategies.get(ticker)
+                        if strat_info:
+                            strat_info["strategy"].on_exit()
+                    else:
+                        self._order_tracker.submit(
+                            result["order_no"], ticker, "sell", qty,
+                        )
+                        logger.info(
+                            f"[ORDER-TRACK] {result['order_no']} SUBMIT "
+                            f"{ticker} sell {qty} (forced_close)"
+                        )
+                        # forced_close은 다음 _handle_fill에서 settle (정상 흐름)
             await self._candle_builder.flush()
             self._candle_builder.reset()
             await self._risk_manager.save_daily_summary()
