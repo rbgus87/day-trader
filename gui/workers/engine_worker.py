@@ -17,6 +17,13 @@ from loguru import logger
 from gui.workers.signals import EngineSignals
 
 
+# TODO: 키움 WS '00'(주문체결) 메시지 필드 코드는 미검증.
+# 실 페이로드 캡처 후 확정 필요. 운영 전 raw 로그 1회 수집 필수.
+_WS_FIELD_ORDER_NO = "9001"      # 주문번호 (추정)
+_WS_FIELD_FILLED_PRICE = "10"    # 체결가 (추정)
+_WS_FIELD_FILLED_QTY = "900"     # 체결량 (추정)
+
+
 def _write_universe_yaml(
     top: list[dict],
     path: Path | str = "config/universe.yaml",
@@ -145,6 +152,10 @@ class EngineWorker(QThread):
         # 전일 종가/고가 맵 (watchlist 표시용)
         self._prev_close: dict[str, float] = {}
         self._prev_high_map: dict[str, float] = {}
+
+        self._order_tracker = None  # _run_engine에서 인스턴스화
+        self._timeout_counters: dict[str, int] = {}    # ticker → 연속 TIMEOUT 카운터
+        self._limit_up_exit_pending: set[str] = set()  # limit_up_exit submit된 ticker
 
         self.signals = EngineSignals()
 
@@ -285,6 +296,11 @@ class EngineWorker(QThread):
             static_pct=self._config.trading.vi_static_pct,
             assumed_duration_sec=self._config.trading.vi_assumed_duration_sec,
             suspected_duration_sec=self._config.trading.vi_suspected_duration_sec,
+        )
+
+        from core.order_tracker import OrderTracker
+        self._order_tracker = OrderTracker(
+            timeout_seconds=self._config.trading.order_confirmation_timeout_sec,
         )
 
         # 2. Infrastructure
