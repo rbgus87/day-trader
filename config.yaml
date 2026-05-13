@@ -84,11 +84,12 @@ strategy:
     buy_time_end: "12:00"
 
     # 시간대별 거래량 비율 — 전일 동시간대 누적 대비 배수 (fallback: volume_ratio 2.0)
-    volume_by_time_enabled: true
+    # 그리드 결과: true 시 오전 저임계로 거래 3~4배 증가 → PF 3.73→1.2. 비활성 유지.
+    volume_by_time_enabled: false
     volume_by_time_ratio: 1.5
 
     # 돌파 캔들 거래량 서지 — 직전 5분봉 평균의 N배 이상이어야 유효 돌파
-    breakout_volume_surge_enabled: true
+    breakout_volume_surge_enabled: false
     breakout_volume_surge_ratio: 2.0
 
     # ADR-010: 고정 -8% 손절 (이전 ATR max와 동일, 41종목 전부 클램핑이었으므로 동작 동일)

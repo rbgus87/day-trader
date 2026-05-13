@@ -248,7 +248,7 @@ def run_grid(start: str, end: str, workers: int):
         asyncio.run(load_candles_and_market(start, end))
 
     combos = list(product(VBT_RATIOS, SURGE_RATIOS))
-    print(f"\n[GRID] {len(combos)}조합 × {len(candles_cache)}종목 — workers={workers}", flush=True)
+    print(f"\n[GRID] {len(combos)}combos x {len(candles_cache)}tickers -- workers={workers}", flush=True)
 
     candles_bytes = pickle.dumps(candles_cache)
     market_map_bytes = pickle.dumps(market_map)
