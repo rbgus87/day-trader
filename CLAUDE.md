@@ -25,6 +25,29 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 2. **오전 매수 제한 12:00** — PF 영향 2.03 (비활성 시 PF 1.24)
 3. **시장 필터 MA5** — PF 영향 1.52 (비활성 시 PF 2.459, 2026-05-13 3-scenario 재측정 / 기존 구간 ~04-10 기준)
 
+### 현재 활성 파라미터 전체 (2026-05-14)
+
+| 파라미터 | 값 | 비고 |
+|---------|---|------|
+| `momentum_volume_ratio` | 2.0 | 전일 전체 거래량 대비 |
+| `min_breakout_pct` | 0.03 | 돌파폭 ≥ 3% |
+| `max_entry_above_breakout_pct` | 0.10 | 돌파 후 최대 추격 10% |
+| `buy_time_end` | 12:00 | 오전 매수 제한 |
+| `max_positions` | 3 | 동시 보유 상한 |
+| `atr_stop_enabled` | true | ATR×2.0 비례 손절 (clamp 4~15%) |
+| `atr_trail_min_pct` | 0.025 | Chandelier trail 하한 2.5% |
+| `atr_trail_max_pct` | 0.080 | Chandelier trail 상한 8% |
+| `momentum_fade_threshold` | -0.008 | fade 진입 ROC 임계값 |
+| `momentum_fade_min_profit` | 0.03 | fade 발동 최소 수익 3% |
+| `breakeven_stop_trigger` | 0.03 | BE 발동 수익 3% |
+| `intraday_block_threshold` | -0.01 | 장중 필터 차단 -1% |
+| `intraday_resume_threshold` | -0.005 | 장중 필터 해제 -0.5% |
+| `intraday_check_interval_min` | 10 | 장중 필터 갱신 주기 (분) |
+| `stale_position_exit_enabled` | false | 비활성 확정 |
+| `afternoon_entry_enabled` | false | 비활성 확정 |
+| `volatility_sizing_enabled` | false | 비활성 확정 |
+| `obi_filter_enabled` | false | 0D 필드 코드 확인 전 |
+
 ### 진입 조건
 
 - 전일 고가 돌파 (**ADR-016**: 돌파폭 ≥ 3%, `min_breakout_pct: 0.03`)
@@ -76,13 +99,13 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 
 ---
 
-## 백테스트 결과 (baseline, 2026-05-13)
+## 백테스트 결과 (baseline, 2026-05-14)
 
-- **Profit Factor 4.881** (1주 가중, 41종목, 2025-04-01 ~ 2026-04-10, ATR×2.0 손절 + trail_min 2.5%/max 8% + time_decay + momentum_fade + 돌파폭 ≥ 3% + BE3 + 상한가 청산 + max_entry_above_breakout_pct 10%)
-- 연 거래 건수 228건 / 총 PnL +295,690 / 거래당 PnL +1,297
-- 청산 분포: stop_loss 27건 (baseline 32 대비 -15.6%, ATR 비례 손절로 노이즈 손절 감소)
-- `limit_up_exit` 세부: PnL +99,590 / 거래당 평균 +6.92%
-- **확장 기간 측정** (2025-04-01 ~ 2026-05-12, index_candles 수집 후): PF 2.451 / 262건 / +226,587 — 2026-04-11 ~ 05-12 구간(15건, 시장필터 3건 차단) PnL -52K, KOSPI +31.58% 상승장 환경
+- **Profit Factor 4.798** (1주 가중, 41종목, 2025-04-01 ~ 2026-04-10, **장중 필터 포함** — ATR×2.0 손절 + trail_min 2.5%/max 8% + time_decay + momentum_fade + 돌파폭 ≥ 3% + BE3 + 상한가 청산 + max_entry_above_breakout_pct 10% + intraday_market_filter)
+- 연 거래 건수 221건 / 총 PnL +287,892 / 거래당 PnL +1,302
+- 청산 분포: forced_close 92 / breakeven_stop 49 / momentum_fade 42 / stop_loss 26 / trailing_stop 7 / limit_up_exit 5
+- **장중 필터 제외 PF 4.881** (228건, PnL +295,690) — 필터 적용으로 7건 차단, PF −1.7%
+- **확장 기간 측정** (2026-04-11 ~ 05-12): baseline PF 0.022 / 14건 / PnL −52,619 → 장중 필터 PF 0.031 / 12건 / **PnL −38,296** (2건 차단, 27% 개선). KOSPI +31.58% 상승장 환경.
 - **거래량 필터 그리드 검증** (2026-05-13): volume_by_time / breakout_surge 모두 baseline PF 3.5 미달 → 비활성 확정. 전일 전체×2.0 거래량 필터가 핵심 엣지.
 - **max_entry_above_breakout_pct 그리드** (2026-05-13): [3%→PF 2.544 / 5%→3.162 / 7%→4.032 / **10%→PF 4.817 / PnL 293K**]. 10%만 기준(PF≥3.5, PnL≥250K) 통과. `max_entry_above_breakout_pct: 0.05 → 0.10` 갱신.
 - **stale_exit 그리드** (2026-05-13): 16조합 전체 PF < baseline×0.95 → 비활성 확정. 최고 PF 3.142(60min/0.01) — PnL +177K로 baseline +294K 대비 −40%. `stale_position_exit_enabled: false` 유지.
@@ -90,7 +113,8 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 - **변동성 기반 포지션 사이징 그리드** (2026-05-13): 12조합 전체 MDD 기준 미달. `volatility_sizing_enabled: false` 유지. `reports/volatility_sizing_grid.md`.
 - **ATR 비례 손절 + trail 그리드** (2026-05-13): Stage1 mult=2.0 → PF 4.791 / Stage2 trail_min=0.025/max=0.08 → PF 4.881 / Stage3 breakeven 현행 유지. `atr_stop_enabled: true`, `atr_trail_min_pct: 0.025`, `atr_trail_max_pct: 0.08` 확정. SL# 32→27. `reports/atr_stop_grid.md`.
 - **장중 시장 필터 검증** (2026-05-14): 일봉 close/open 근사 기준 기존 구간 PF 4.881 → **4.798** (7건 차단, −1.7%). 확장 구간(2026-04-11~05-12) PnL **-52,619 → -38,296** (2건 차단, 27% 개선). `intraday_market_filter_enabled: true`, `block_threshold: -0.01`, `resume_threshold: -0.005`, `check_interval: 10min`.
-- **이전 baseline**
+- **이전 baseline** (장중 필터 미포함)
+  - 장중 필터 제외 (2026-05-14): PF 4.881 / 228건 / +295,690 / SL# 27
   - 고정 -8% 손절 + trail_min=0.02/max=0.10 (2026-05-13): PF 4.817 / 229건 / +293,532 / SL# 32
   - momentum_fade(thr=-0.008, mp=0.03) + max_entry=5% (2026-05-13): PF 3.73 / 247건 / +278,979 / fc% 38.1%
   - time_decay + momentum_fade(thr=-0.005, mp=0.01) (2026-05-12): PF 3.80 / 250건 / +225,523 / forced_close 27.6% / fade 104건
