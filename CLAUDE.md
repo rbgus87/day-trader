@@ -84,7 +84,7 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 - 거래당 PnL +1,130
 - 청산 분포: forced_close 94 (38.1%) / breakeven_stop 54 (21.9%) / **momentum_fade 45 (18.2%)** / stop_loss 37 (15.0%) / limit_up_exit 9 (3.6%) / trailing_stop 8 (3.2%)
 - `limit_up_exit` 세부: PnL +99,590 / 거래당 평균 +6.92%
-- **확장 기간 측정** (2025-04-01 ~ 2026-05-12, 2026-05-13 측정): PF 2.407 / 265건 / +223,723 — 2026-04-11 ~ 05-12 구간(18건) PnL -55K, 해당 기간 시장 환경 불리
+- **확장 기간 측정** (2025-04-01 ~ 2026-05-12, index_candles 수집 후): PF 2.451 / 262건 / +226,587 — 2026-04-11 ~ 05-12 구간(15건, 시장필터 3건 차단) PnL -52K, KOSPI +31.58% 상승장 환경
 - **이전 baseline**
   - time_decay + momentum_fade(thr=-0.005, mp=0.01) (2026-05-12): PF 3.80 / 250건 / +225,523 / forced_close 27.6% / fade 104건
   - 거래세 0.20% / VI + Order Confirmation (2026-05-12 직전): PF 4.36 / 248건 / forced_close 134 (54%) / trailing_stop 4 (1.6%)
