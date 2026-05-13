@@ -19,6 +19,7 @@ class MomentumStrategy(BaseStrategy):
         self._config = config
         self._prev_day_high: float = 0.0
         self._prev_day_volume: int = 0
+        self._prev_day_candles: "pd.DataFrame | None" = None  # 시간대별 거래량 비율용
         # Phase 2 Day 6: ATR 손절 컨텍스트
         self._ticker: str = ""
         self._last_signal_date: str = ""  # YYYY-MM-DD
@@ -37,6 +38,7 @@ class MomentumStrategy(BaseStrategy):
             "breakout_fail": 0,
             "breakout_pass": 0,
             "no_candle": 0,
+            "breakout_surge_fail": 0,
             "volume_fail": 0,
             "breakout_last_fail": 0,
             "adx_no_bars": 0,
@@ -56,6 +58,17 @@ class MomentumStrategy(BaseStrategy):
         """전일 고가·거래량 기준값 저장."""
         self._prev_day_high = high
         self._prev_day_volume = volume
+
+    def set_prev_day_candles(self, candles: "pd.DataFrame | None") -> None:
+        """전일 분봉 데이터 주입 — 시간대별 거래량 비율 계산용.
+        backtester._setup_strategy_day에서 호출. ts 컬럼은 datetime64 보장.
+        """
+        if candles is not None and not candles.empty:
+            self._prev_day_candles = candles.copy()
+            if "ts" in self._prev_day_candles.columns:
+                self._prev_day_candles["ts"] = pd.to_datetime(self._prev_day_candles["ts"])
+        else:
+            self._prev_day_candles = None
 
     def set_ticker(self, ticker: str) -> None:
         """ATR 조회용 종목 코드 주입 (backtester/engine_worker에서 호출)."""
@@ -111,7 +124,43 @@ class MomentumStrategy(BaseStrategy):
             return None
 
         cum_volume: float = candles["volume"].sum()
-        required_volume: float = self._prev_day_volume * self._config.momentum_volume_ratio
+
+        # 2a) 돌파 캔들 거래량 서지 — 직전 5분 평균의 N배 이상이어야 유효
+        if getattr(self._config, "breakout_volume_surge_enabled", False) and len(candles) >= 6:
+            last_vol = float(candles.iloc[-1]["volume"])
+            prev5_avg = float(candles.iloc[-6:-1]["volume"].mean())
+            surge_req = getattr(self._config, "breakout_volume_surge_ratio", 2.0)
+            if prev5_avg > 0 and last_vol < prev5_avg * surge_req:
+                self.diag_counters["breakout_surge_fail"] += 1
+                logger.debug(
+                    f"[SURGE] 미달: {tick['ticker']} "
+                    f"last={last_vol:.0f} < prev5×{surge_req}={prev5_avg * surge_req:.0f}"
+                )
+                return None
+
+        # 2b) 거래량 기준: 시간대별(time-based) 또는 전일 전체 대비 fallback
+        if (
+            getattr(self._config, "volume_by_time_enabled", False)
+            and self._prev_day_candles is not None
+            and not self._prev_day_candles.empty
+        ):
+            from datetime import datetime as _dt
+            current_time = (
+                self._backtest_time if self._backtest_time else _dt.now().time()
+            )
+            prev_up_to_now = self._prev_day_candles[
+                self._prev_day_candles["ts"].dt.time <= current_time
+            ]
+            if not prev_up_to_now.empty:
+                prev_vol_up_to_now = int(prev_up_to_now["volume"].sum())
+                required_volume: float = prev_vol_up_to_now * getattr(
+                    self._config, "volume_by_time_ratio", 1.5
+                )
+            else:
+                required_volume = self._prev_day_volume * self._config.momentum_volume_ratio
+        else:
+            required_volume = self._prev_day_volume * self._config.momentum_volume_ratio
+
         if cum_volume < required_volume:
             self.diag_counters["volume_fail"] += 1
             logger.debug(

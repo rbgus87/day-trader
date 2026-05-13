@@ -124,6 +124,25 @@ class CandidateCollector:
         if df is None or len(df) < 20:
             return None
 
+        # 전일 기준 후보 품질 필터 (전일 = df.iloc[-1])
+        prev_close_raw = float(df.iloc[-1]["close"]) if len(df) >= 1 else 0.0
+        prev_high_raw = float(df.iloc[-1]["high"]) if len(df) >= 1 else 0.0
+        prev_open_raw = float(df.iloc[-1]["open"]) if len(df) >= 1 else 0.0
+
+        # 돌파 임박 필터: 전일 종가 >= 전일 고가 × 97% (고가 근처 마감)
+        if prev_high_raw > 0 and prev_close_raw < prev_high_raw * 0.97:
+            return None
+
+        # 전일 상한가 제외 (상한가 이후 되돌림 위험)
+        if prev_open_raw > 0 and prev_close_raw >= prev_open_raw * 1.29:
+            return None
+
+        # 전일 거래대금 30억 미만 제외 (유동성 부족)
+        if "tr_amount" in df.columns:
+            prev_day_amount = int(df.iloc[-1]["tr_amount"])
+            if prev_day_amount < 3_000_000_000:
+                return None
+
         # 지표 계산
         ma20_trend = self._calc_ma20_trend(df)
         atr_pct = self._calc_atr_pct(df)

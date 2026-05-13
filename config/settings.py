@@ -158,6 +158,14 @@ class TradingConfig:
     momentum_fade_min_hold_min: int = 15
     momentum_fade_min_profit: float = 0.01
 
+    # 시간대별 거래량 비율 — 전일 동시간대 누적 대비 배수 (False면 기존 전일 전체 대비)
+    volume_by_time_enabled: bool = False
+    volume_by_time_ratio: float = 1.5
+
+    # 돌파 캔들 거래량 서지 — 직전 5분봉 평균 대비 N배 이상이어야 유효 돌파
+    breakout_volume_surge_enabled: bool = False
+    breakout_volume_surge_ratio: float = 2.0
+
 
 @dataclass(frozen=True)
 class ScreenerConfig:
@@ -335,6 +343,11 @@ class AppConfig:
             momentum_fade_threshold=mom.get("momentum_fade_threshold", -0.005),
             momentum_fade_min_hold_min=mom.get("momentum_fade_min_hold_min", 15),
             momentum_fade_min_profit=mom.get("momentum_fade_min_profit", 0.01),
+            # volume filters
+            volume_by_time_enabled=mom.get("volume_by_time_enabled", False),
+            volume_by_time_ratio=mom.get("volume_by_time_ratio", 1.5),
+            breakout_volume_surge_enabled=mom.get("breakout_volume_surge_enabled", False),
+            breakout_volume_surge_ratio=mom.get("breakout_volume_surge_ratio", 2.0),
         )
 
         # screener 섹션

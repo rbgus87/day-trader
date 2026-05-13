@@ -745,6 +745,10 @@ class Backtester:
             prev_volume = int(prev_day_df["volume"].sum())
             strategy.set_prev_day_data(prev_high, prev_volume)
 
+        # 시간대별 거래량 비율용 전일 분봉 주입
+        if hasattr(strategy, "set_prev_day_candles") and prev_day_df is not None:
+            strategy.set_prev_day_candles(prev_day_df)
+
         # 당일 상한가 계산 (전일 종가 × 1.30, 호가 절사)
         self._current_limit_up = None
         if (
