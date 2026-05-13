@@ -84,6 +84,7 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 - `limit_up_exit` 세부: PnL +99,590 / 거래당 평균 +6.92%
 - **확장 기간 측정** (2025-04-01 ~ 2026-05-12, index_candles 수집 후): PF 2.451 / 262건 / +226,587 — 2026-04-11 ~ 05-12 구간(15건, 시장필터 3건 차단) PnL -52K, KOSPI +31.58% 상승장 환경
 - **거래량 필터 그리드 검증** (2026-05-13): volume_by_time / breakout_surge 모두 baseline PF 3.5 미달 → 비활성 확정. 전일 전체×2.0 거래량 필터가 핵심 엣지.
+- **max_entry_above_breakout_pct 그리드** (2026-05-13): [3%→PF 2.544 / 5%→3.162 / 7%→4.032 / **10%→PF 4.817 / PnL 293K**]. 10%만 기준(PF≥3.5, PnL≥250K) 통과. `max_entry_above_breakout_pct: 0.05 → 0.10` 갱신.
 - **이전 baseline**
   - time_decay + momentum_fade(thr=-0.005, mp=0.01) (2026-05-12): PF 3.80 / 250건 / +225,523 / forced_close 27.6% / fade 104건
   - 거래세 0.20% / VI + Order Confirmation (2026-05-12 직전): PF 4.36 / 248건 / forced_close 134 (54%) / trailing_stop 4 (1.6%)
@@ -206,6 +207,7 @@ pytest tests/ --cov=. --cov-report=term-missing
 - [x] Momentum Fade 파라미터 갱신 (2026-05-13) — threshold −0.005→−0.008, min_profit 0.01→0.03. PF 3.73 / forced_close 38.1% / PnL +278,979 / fade 45건(18.2%). 이전 대비 PnL +53K(+23%) 개선, fade 건수 −59건 감소.
 - [x] 거래량 필터 그리드 + 스크리너 강화 (2026-05-13) — volume_by_time·breakout_surge 비활성 확정. 스크리너: prev_close≥prev_high×97% / 전일 상한가 제외 / 거래대금≥30억 / min_market_cap 1000억 / min_atr_pct 4%.
 - [x] 시장 필터 전략 3-Scenario 검증 (2026-05-13) — A)완전차단 PF 3.727 / B)비활성 PF 2.459 / C)50%축소 PF 2.937 (기존 구간 ~04-10 기준). A) 완전 차단 유지 확정. 약세 시장 거래(C: 88건) PF=0.494 — 사이즈 축소도 손실. `reports/market_filter_strategy.md` 참조.
+- [x] 틱 레벨 돌파 감지 + max_entry_above_breakout_pct 그리드 (2026-05-13) — BreakoutInfo 데이터클래스, _tick_consumer 즉시 진입 경로, 백테스트 breakout_price 반영. 그리드 10%→PF 4.817/PnL 293K 통과 → `max_entry_above_breakout_pct: 0.10` 확정.
 
 검증 명령어: `docs/verification_commands.md`
 후속 작업: [`docs/phase_followup_todo.md`](docs/phase_followup_todo.md)

@@ -121,6 +121,9 @@ strategy:
       - until: "15:00"
         multiplier: 0.3
 
+    # 틱 레벨 돌파 감지: 돌파 시점 대비 진입 가격 상한 (+10% 초과 시 진입 차단)
+    max_entry_above_breakout_pct: 0.10
+
     # 모멘텀 둔화 청산 — 수익 포지션 + 보유 15분+ + ROC ≤ -0.5%
     momentum_fade_exit_enabled: true
     momentum_fade_lookback: 10           # 최근 10분봉

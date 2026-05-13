@@ -41,8 +41,17 @@ class BaseStrategy(ABC):
         self._cooldown_minutes = cooldown_minutes
 
     @abstractmethod
-    def generate_signal(self, candles: pd.DataFrame, tick: dict) -> Signal | None:
-        """매수/매도 신호 생성."""
+    def generate_signal(
+        self,
+        candles: pd.DataFrame,
+        tick: dict,
+        *,
+        breakout_price: float | None = None,
+    ) -> Signal | None:
+        """매수/매도 신호 생성.
+
+        breakout_price: 틱 레벨에서 감지된 돌파 시점 가격 (None이면 검사 생략).
+        """
 
     @abstractmethod
     def get_stop_loss(self, entry_price: float) -> float:

@@ -8,6 +8,7 @@ QThread 내 asyncio 이벤트 루프에서 실행.
 import asyncio
 import sys
 from collections import deque
+from dataclasses import dataclass
 from datetime import datetime, time as dt_time
 from pathlib import Path
 
@@ -15,6 +16,14 @@ from PyQt6.QtCore import QThread
 from loguru import logger
 
 from gui.workers.signals import EngineSignals
+
+
+@dataclass
+class BreakoutInfo:
+    """틱 레벨 돌파 감지 결과."""
+    ticker: str
+    breakout_price: float
+    detected_at: datetime
 
 
 # TODO: 키움 WS '00'(주문체결) 메시지 필드 코드는 미검증.
@@ -127,6 +136,10 @@ class EngineWorker(QThread):
         # deque(maxlen=N) — append만으로 자동 truncate, list 슬라이스 비용 제거.
         self._candle_history: dict[str, deque] = {}
         self._MAX_HISTORY = 500
+        # 틱 레벨 돌파 감지: 당일 최초 돌파 시점 가격 기록
+        self._breakout_detected: dict[str, BreakoutInfo] = {}
+        # 틱 경로로 이미 신호를 발행한 종목 (candle_consumer 중복 방지)
+        self._tick_signaled: set[str] = set()
         # 실시간 ATR% 캐시 — candle_history 길이가 변하지 않으면 직전 값 재사용.
         # tick마다 wilder_atr 재계산 비용 회피.
         self._atr_pct_cache: dict[str, tuple[int, float | None]] = {}
@@ -721,6 +734,79 @@ class EngineWorker(QThread):
         self._atr_pct_cache[ticker] = (cur_len, atr_pct)
         return atr_pct
 
+    async def _on_tick_no_position(self, ticker: str, price: float, tick: dict) -> None:
+        """포지션 없는 종목의 틱: 돌파 감지 + 즉시 진입 평가.
+
+        1. 전일 고가 × (1 + min_breakout_pct) 돌파 시 _breakout_detected에 태깅.
+        2. 모든 진입 조건(거래량/ADX/게이트) 충족 시 signal_queue에 즉시 발행.
+        """
+        import pandas as _pd
+
+        if not self._active_strategies:
+            return
+        strat_info = self._active_strategies.get(ticker)
+        if strat_info is None:
+            return
+
+        strategy = strat_info["strategy"]
+        prev_high = getattr(strategy, "_prev_day_high", 0.0)
+        if prev_high <= 0:
+            return
+
+        min_bp = getattr(self._config.trading, "min_breakout_pct", 0.03)
+        breakout_threshold = prev_high * (1 + min_bp)
+
+        # 1) 돌파 태깅 (당일 최초 1회)
+        if price >= breakout_threshold and ticker not in self._breakout_detected:
+            self._breakout_detected[ticker] = BreakoutInfo(
+                ticker=ticker,
+                breakout_price=price,
+                detected_at=datetime.now(),
+            )
+            logger.info(
+                f"[BREAKOUT_TICK] {ticker} @ {price:,} "
+                f"(prev_high={prev_high:,} threshold={breakout_threshold:,.0f})"
+            )
+
+        if ticker not in self._breakout_detected:
+            return
+        if ticker in self._tick_signaled:
+            return
+
+        # 2) 즉시 진입 게이트 체크
+        if self._risk_manager.is_trading_halted():
+            return
+        if self._risk_manager.is_ticker_blacklisted(ticker):
+            return
+        if self._risk_manager.is_in_loss_rest():
+            return
+        open_pos = self._risk_manager.get_open_positions()
+        if len(open_pos) >= self._config.trading.max_positions:
+            return
+        if not strategy.can_trade():
+            return
+        # VI 활성 종목 차단
+        if self._vi_handler.is_vi_active(ticker):
+            return
+        # OrderTracker pending 체크
+        if self._order_tracker is not None and self._order_tracker.get_pending(ticker) is not None:
+            return
+
+        # 캔들 히스토리 (ADX 계산 최소 봉 필요)
+        hist = self._candle_history.get(ticker)
+        if not hist or len(hist) < 30:
+            return
+
+        df = _pd.DataFrame(hist)
+        breakout_info = self._breakout_detected[ticker]
+        signal = strategy.generate_signal(
+            df, tick, breakout_price=breakout_info.breakout_price
+        )
+        if signal:
+            self._tick_signaled.add(ticker)
+            await self._signal_queue.put(signal)
+            logger.info(f"[TICK_ENTRY] {ticker} 즉시 진입 신호 @ {price:,}")
+
     async def _tick_consumer(self):
         """틱 -> 캔들 빌더 + 포지션 모니터링."""
         import time as _time
@@ -765,6 +851,7 @@ class EngineWorker(QThread):
                         logger.warning(f"[VI] {ticker} update_from_tick 예외: {_e}")
                 pos = self._risk_manager.get_position(ticker)
                 if pos is None or pos["remaining_qty"] <= 0:
+                    await self._on_tick_no_position(ticker, price, tick)
                     continue
                 # 주문 진행 중이면 highest_price만 갱신, exit 스킵 (재진입 가드)
                 if self._order_tracker is not None:
@@ -1085,10 +1172,18 @@ class EngineWorker(QThread):
                 if candle.get("tf") == "5m" and hasattr(strategy, "on_candle_5m"):
                     strategy.on_candle_5m(candle)
 
+                # 틱 경로로 이미 신호 발행 → 중복 방지
+                if ticker in self._tick_signaled:
+                    gate_counts.setdefault("tick_signaled", 0)
+                    gate_counts["tick_signaled"] += 1
+                    continue
+
                 candle["price"] = candle.get("close", 0)
                 df = pd.DataFrame(self._candle_history[ticker])
+                breakout_info = self._breakout_detected.get(ticker)
+                bp = breakout_info.breakout_price if breakout_info else None
                 signal_eval_count += 1
-                signal = strategy.generate_signal(df, candle)
+                signal = strategy.generate_signal(df, candle, breakout_price=bp)
                 if signal:
                     await self._signal_queue.put(signal)
             except Exception as e:
@@ -2075,6 +2170,8 @@ class EngineWorker(QThread):
         if self._candle_builder is not None:
             self._candle_builder.reset()
         self._candle_history.clear()
+        self._breakout_detected.clear()
+        self._tick_signaled.clear()
 
         stocks = self._load_universe()
         if not self._active_strategies:
@@ -2598,6 +2695,8 @@ class EngineWorker(QThread):
         if self._candle_builder:
             self._candle_builder.reset()
         self._candle_history.clear()
+        self._breakout_detected.clear()
+        self._tick_signaled.clear()
         self._active_strategy = None
         logger.info("일일 리셋 완료")
         self._emit_status()

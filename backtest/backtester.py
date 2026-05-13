@@ -163,6 +163,7 @@ class Backtester:
 
         trades: list[dict] = []
         position: dict | None = None          # 현재 보유 포지션
+        breakout_price_day: float | None = None  # 당일 최초 돌파 시점 가격
 
         for idx, row in candles.iterrows():
             ts = row["ts"]
@@ -185,7 +186,15 @@ class Backtester:
 
             # ── 포지션 없음 → 진입 신호 탐색 ──────────────────────────
             if position is None:
-                signal: Signal | None = strategy.generate_signal(candles_so_far, tick)
+                # 당일 최초 돌파 시점 가격 추적 (고점 진입 방지용 breakout_price)
+                if breakout_price_day is None:
+                    _pday_high = getattr(strategy, "_prev_day_high", 0.0)
+                    _min_bp = getattr(self._config, "min_breakout_pct", 0.0)
+                    if _pday_high > 0 and float(row.get("high", 0)) >= _pday_high * (1 + _min_bp):
+                        breakout_price_day = _pday_high * (1 + _min_bp)
+                signal: Signal | None = strategy.generate_signal(
+                    candles_so_far, tick, breakout_price=breakout_price_day
+                )
                 if signal is not None and signal.side == "buy":
                     strategy.on_entry()
                     entry_price_raw = float(row["close"])

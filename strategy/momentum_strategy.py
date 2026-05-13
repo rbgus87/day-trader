@@ -47,6 +47,7 @@ class MomentumStrategy(BaseStrategy):
             "rvol_fail": 0,
             "vwap_fail": 0,
             "signal_emit": 0,
+            "entry_too_high": 0,
         }
 
     def reset_diag_counters(self) -> None:
@@ -91,8 +92,18 @@ class MomentumStrategy(BaseStrategy):
         now = self._backtest_time if self._backtest_time else datetime.now().time()
         return now >= limit
 
-    def generate_signal(self, candles: pd.DataFrame, tick: dict) -> Signal | None:
-        """매수 신호 생성."""
+    def generate_signal(
+        self,
+        candles: pd.DataFrame,
+        tick: dict,
+        *,
+        breakout_price: float | None = None,
+    ) -> Signal | None:
+        """매수 신호 생성.
+
+        breakout_price: 틱 레벨 돌파 감지 시점 가격.
+            설정 시 현재가와의 괴리가 max_entry_above_breakout_pct 초과하면 차단.
+        """
         if not self.can_trade():
             return None
 
@@ -116,6 +127,19 @@ class MomentumStrategy(BaseStrategy):
             )
             return None
         self.diag_counters["breakout_pass"] += 1
+
+        # 1b) 돌파 시점 가격 대비 현재 괴리 제한 (고점 진입 방지)
+        if breakout_price is not None and breakout_price > 0:
+            max_gap = getattr(self._config, "max_entry_above_breakout_pct", 0.05)
+            gap = (current_price - breakout_price) / breakout_price
+            if gap > max_gap:
+                self.diag_counters["entry_too_high"] += 1
+                logger.debug(
+                    f"[ENTRY_TOO_HIGH] {tick['ticker']} "
+                    f"gap={gap:.2%} > {max_gap:.2%} "
+                    f"(cur={current_price:,.0f} bp={breakout_price:,.0f})"
+                )
+                return None
 
         # 2) 거래량 필터
         if candles is None or candles.empty:

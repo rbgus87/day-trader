@@ -214,7 +214,7 @@ class _MockBuyStrategy(BaseStrategy):
         self._config = config
         self._fired = False
 
-    def generate_signal(self, candles: pd.DataFrame, tick: dict) -> Signal | None:
+    def generate_signal(self, candles: pd.DataFrame, tick: dict, **kwargs) -> Signal | None:
         if not self._fired:
             self._fired = True
             return Signal(
@@ -326,7 +326,7 @@ def test_run_backtest_no_signal():
     """신호 없는 전략 → 거래 없음."""
 
     class _NoSignalStrategy(BaseStrategy):
-        def generate_signal(self, candles, tick) -> None:
+        def generate_signal(self, candles, tick, **kwargs) -> None:
             return None
 
         def get_stop_loss(self, entry_price: float) -> float:

@@ -170,6 +170,9 @@ class TradingConfig:
     market_regime_reduce_enabled: bool = False
     market_regime_reduce_size: float = 0.5
 
+    # 틱 레벨 돌파 감지: 돌파 시점 대비 진입 가격 상한 (초과 시 진입 차단)
+    max_entry_above_breakout_pct: float = 0.10
+
 
 @dataclass(frozen=True)
 class ScreenerConfig:
@@ -352,6 +355,7 @@ class AppConfig:
             volume_by_time_ratio=mom.get("volume_by_time_ratio", 1.5),
             breakout_volume_surge_enabled=mom.get("breakout_volume_surge_enabled", False),
             breakout_volume_surge_ratio=mom.get("breakout_volume_surge_ratio", 2.0),
+            max_entry_above_breakout_pct=mom.get("max_entry_above_breakout_pct", 0.05),
         )
 
         # screener 섹션
