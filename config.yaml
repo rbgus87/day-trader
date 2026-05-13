@@ -83,9 +83,13 @@ strategy:
     buy_time_limit_enabled: true
     buy_time_end: "12:00"
 
-    # ADR-010: 고정 -8% 손절 (이전 ATR max와 동일, 41종목 전부 클램핑이었으므로 동작 동일)
-    atr_stop_enabled: false
-    stop_loss_pct: -0.080
+    # ATR 비례 손절 (2026-05-13 그리드 확정: mult=2.0, min=4%, max=15%)
+    # stop_pct = clamp(ATR × mult, min_pct, max_pct). fallback: stop_loss_pct -8%
+    atr_stop_enabled: true
+    atr_stop_multiplier: 2.0          # ATR × 2.0 (PF 4.881, SL# 27)
+    atr_stop_min_pct: 0.04            # 최소 손절폭 4%
+    atr_stop_max_pct: 0.15            # 최대 손절폭 15%
+    stop_loss_pct: -0.080             # ATR 미가용 시 fallback
 
     # ADR-010: TP1 시스템 폐기 (Pure trailing 채택)
     # TP1 분할매도 비활성 — 진입 즉시 trailing 활성
@@ -94,8 +98,8 @@ strategy:
     # ADR-010: Chandelier 트레일링 스톱 (진입 즉시 활성)
     atr_trail_enabled: true         # 최고가 - ATR × N 방식
     atr_trail_multiplier: 1.0       # ADR-010: 2.5 → 1.0 (시뮬 최적)
-    atr_trail_min_pct: 0.02         # 하한 2%
-    atr_trail_max_pct: 0.10         # 상한 10%
+    atr_trail_min_pct: 0.025        # 하한 2.5% (0.02 → 0.025, 2026-05-13 그리드)
+    atr_trail_max_pct: 0.08         # 상한 8% (0.10 → 0.08, 2026-05-13 그리드)
 
     # ADR-017: Breakeven Stop (BE3) — peak_return 3% 도달 시 stop을 진입가+1%로
     breakeven_enabled: true         # 활성화

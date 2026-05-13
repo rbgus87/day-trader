@@ -39,14 +39,14 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 | reason | 트리거 |
 |------|------|
 | `limit_up_exit` | **ADR-018**: 상한가 (키움 ka10001 `upl_pric`, 실패 시 전일종가 × 1.30 호가 절사 fallback) 도달 시 즉시 시장가 매도. 체결 실패 시 stop을 상한가 × 0.99로 상향 |
-| `stop_loss` | 고정 -8% 손절 (`stop_loss_pct: -0.080`) |
-| `trailing_stop` | 진입 즉시 Chandelier (최고가 − ATR × 1.0), 하한 2% / 상한 10%. **time_decay 적용**: 12:00~ ATR×0.7, 13:30~ 0.5, 14:30~ 0.3 (hard floor 1.0%) |
+| `stop_loss` | ATR×2.0 비례 손절 (clamp 4%~15%). ATR 미가용 시 fallback -8% (`stop_loss_pct: -0.080`) |
+| `trailing_stop` | 진입 즉시 Chandelier (최고가 − ATR × 1.0), 하한 2.5% / 상한 8%. **time_decay 적용**: 12:00~ ATR×0.7, 13:30~ 0.5, 14:30~ 0.3 (hard floor 1.0%) |
 | `breakeven_stop` | **ADR-017**: peak_return ≥ 3% 도달 시 stop을 entry+1%로 상향, 이후 되돌림 |
 | `momentum_fade` | **2026-05-12**: 수익 ≥ +3% + 보유 ≥ 15분 + ROC(10분) ≤ −0.8% 시 즉시 청산. 손실 포지션 미적용 |
 | `forced_close` | 15:10 미청산 포지션 일괄 청산 |
 
 > TP1 분할매도(`tp1_hit`)는 ADR-010에서 폐기. `atr_tp_enabled: false`.
-> ATR 기반 손절(`atr_stop_enabled`)도 ADR-010에서 폐기 (고정 -8%로 단순화).
+> ATR 기반 손절 2026-05-13 그리드에서 재활성화 (`atr_stop_enabled: true`, mult=2.0). ADR-010 폐기 당시는 ATR≥6% 유니버스라 전부 클램핑이었으나 현재 ATR≥4%로 확대되어 재검토.
 
 ---
 
@@ -78,17 +78,19 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 
 ## 백테스트 결과 (baseline, 2026-05-13)
 
-- **Profit Factor 4.817** (1주 가중, 41종목, 2025-04-01 ~ 2026-04-10, time_decay 트레일링 + momentum_fade + Pure trailing + 고정 -8% 손절 + 돌파폭 ≥ 3% + BE3 + 상한가 청산 + max_entry_above_breakout_pct 10%)
-- 연 거래 건수 229건 / 총 PnL +293,532 / 거래당 PnL +1,282
-- 청산 분포: forced_close 90 (39.3%) / breakeven_stop 53 (23.1%) / **momentum_fade 41 (17.9%)** / stop_loss 32 (14.0%) / trailing_stop 8 (3.5%) / limit_up_exit 5 (2.2%)
+- **Profit Factor 4.881** (1주 가중, 41종목, 2025-04-01 ~ 2026-04-10, ATR×2.0 손절 + trail_min 2.5%/max 8% + time_decay + momentum_fade + 돌파폭 ≥ 3% + BE3 + 상한가 청산 + max_entry_above_breakout_pct 10%)
+- 연 거래 건수 228건 / 총 PnL +295,690 / 거래당 PnL +1,297
+- 청산 분포: stop_loss 27건 (baseline 32 대비 -15.6%, ATR 비례 손절로 노이즈 손절 감소)
 - `limit_up_exit` 세부: PnL +99,590 / 거래당 평균 +6.92%
 - **확장 기간 측정** (2025-04-01 ~ 2026-05-12, index_candles 수집 후): PF 2.451 / 262건 / +226,587 — 2026-04-11 ~ 05-12 구간(15건, 시장필터 3건 차단) PnL -52K, KOSPI +31.58% 상승장 환경
 - **거래량 필터 그리드 검증** (2026-05-13): volume_by_time / breakout_surge 모두 baseline PF 3.5 미달 → 비활성 확정. 전일 전체×2.0 거래량 필터가 핵심 엣지.
 - **max_entry_above_breakout_pct 그리드** (2026-05-13): [3%→PF 2.544 / 5%→3.162 / 7%→4.032 / **10%→PF 4.817 / PnL 293K**]. 10%만 기준(PF≥3.5, PnL≥250K) 통과. `max_entry_above_breakout_pct: 0.05 → 0.10` 갱신.
 - **stale_exit 그리드** (2026-05-13): 16조합 전체 PF < baseline×0.95 → 비활성 확정. 최고 PF 3.142(60min/0.01) — PnL +177K로 baseline +294K 대비 −40%. `stale_position_exit_enabled: false` 유지.
 - **afternoon_entry 그리드** (2026-05-13): 8조합 전체 PF < baseline×0.95 → 비활성 확정. 최고 조합(end=14:00/bp=7%/vr=3.0): PF 4.544 / PnL +306K / aft# 46 / aft_PF 2.314 — PF 기준 0.03 미달. `afternoon_entry_enabled: false` 유지.
-- **변동성 기반 포지션 사이징 그리드** (2026-05-13): 12조합(risk 0.5~2.0% × min_pct 10~20%) 전체 MDD 기준 미달 — baseline MDD 0.41% 대비 3.78%~7.87%, PF 1.938~2.001 (baseline 4.817의 42% 수준). 균등 분배 유지 확정. `volatility_sizing_enabled: false` 유지. `reports/volatility_sizing_grid.md`.
+- **변동성 기반 포지션 사이징 그리드** (2026-05-13): 12조합 전체 MDD 기준 미달. `volatility_sizing_enabled: false` 유지. `reports/volatility_sizing_grid.md`.
+- **ATR 비례 손절 + trail 그리드** (2026-05-13): Stage1 mult=2.0 → PF 4.791 / Stage2 trail_min=0.025/max=0.08 → PF 4.881 / Stage3 breakeven 현행 유지. `atr_stop_enabled: true`, `atr_trail_min_pct: 0.025`, `atr_trail_max_pct: 0.08` 확정. SL# 32→27. `reports/atr_stop_grid.md`.
 - **이전 baseline**
+  - 고정 -8% 손절 + trail_min=0.02/max=0.10 (2026-05-13): PF 4.817 / 229건 / +293,532 / SL# 32
   - momentum_fade(thr=-0.008, mp=0.03) + max_entry=5% (2026-05-13): PF 3.73 / 247건 / +278,979 / fc% 38.1%
   - time_decay + momentum_fade(thr=-0.005, mp=0.01) (2026-05-12): PF 3.80 / 250건 / +225,523 / forced_close 27.6% / fade 104건
   - 거래세 0.20% / VI + Order Confirmation (2026-05-12 직전): PF 4.36 / 248건 / forced_close 134 (54%) / trailing_stop 4 (1.6%)
@@ -216,6 +218,7 @@ pytest tests/ --cov=. --cov-report=term-missing
 - [x] max_positions × capital 그리드 (2026-05-13) — equal-capital PF: max_pos=3 PF 1.989(최고) / max_pos=2 PF 1.818 / MDD 19%→13%→10%→8%. 현재 max_pos=3 최적 확정. `reports/positions_capital_grid.md`.
 - [x] stale_exit + afternoon_entry 파라미터 그리드 (2026-05-13) — stale_exit 16조합 전체 PF < baseline×0.95 비활성 확정. afternoon_entry 8조합 전체 비활성 확정 (최고 조합 PF 4.544, 기준 4.576 미달). baseline 갱신: PF 4.817 / 229건 / PnL +293,532. `reports/stale_exit_grid.md`, `reports/afternoon_entry_grid.md`.
 - [x] 변동성 기반 포지션 사이징 구현 + 그리드 (2026-05-13) — settings.py/config.yaml 5개 필드 추가, backtester.py ATR 계산+PnL 재산정, engine_worker.py 사이징 블록. 그리드 12조합 전체 MDD 기준(< baseline 0.41%) 미달 → `volatility_sizing_enabled: false` 유지. `reports/volatility_sizing_grid.md`.
+- [x] ATR 비례 손절 + trail 범위 3단계 그리드 (2026-05-13) — Stage1 atr_stop(36조합): mult=2.0 → PF 4.791/SL#30. Stage2 trail범위(9조합): min=0.025/max=0.08 → PF 4.881/SL#27. Stage3 breakeven(9조합): 현행(3%/1%) 유지. baseline PF 4.817 → **4.881** (+1.3%), SL# 32→27(-15.6%). `reports/atr_stop_grid.md`.
 
 검증 명령어: `docs/verification_commands.md`
 후속 작업: [`docs/phase_followup_todo.md`](docs/phase_followup_todo.md)
