@@ -40,6 +40,7 @@ class KiwoomWebSocketClient:
         risk_manager=None,
         order_manager=None,
         notifications_config=None,
+        orderbook_manager=None,
     ):
         self._ws_url = ws_url
         self._token_manager = token_manager
@@ -49,6 +50,7 @@ class KiwoomWebSocketClient:
         self._risk_manager = risk_manager
         self._order_manager = order_manager
         self._notifications = notifications_config  # Phase 3-B ADR-008
+        self._orderbook_manager = orderbook_manager
         self._ws = None
         self._subscriptions: dict[str, list[str]] = {}  # {real_type: [codes]}
         self._listen_task: asyncio.Task | None = None
@@ -314,6 +316,8 @@ class KiwoomWebSocketClient:
                     tick = self._parse_tick_from_item(item_data)
                     if tick:
                         await self._dispatch_tick(tick)
+                elif msg_type == WS_TYPE_ORDERBOOK:
+                    self._dispatch_orderbook(item_data)
                 elif msg_type == WS_TYPE_ORDER:
                     if self._order_queue:
                         await self._order_queue.put(item_data)
@@ -325,6 +329,8 @@ class KiwoomWebSocketClient:
             tick = self._parse_tick(data)
             if tick:
                 await self._dispatch_tick(tick)
+        elif msg_type == WS_TYPE_ORDERBOOK:
+            self._dispatch_orderbook(data)
         elif msg_type == WS_TYPE_ORDER:
             if self._order_queue:
                 await self._order_queue.put(data)
@@ -378,6 +384,21 @@ class KiwoomWebSocketClient:
             logger.warning(f"틱 파싱 실패: {e}")
             return None
 
+    def _dispatch_orderbook(self, data: dict) -> None:
+        """0D 호가 메시지 → OrderbookManager 갱신 (동기, 논블로킹)."""
+        if self._orderbook_manager is None:
+            return
+        try:
+            values = data.get("values", {})
+            if isinstance(values, str):
+                import json as _json
+                values = _json.loads(values)
+            ticker = data.get("item", "")
+            if ticker:
+                self._orderbook_manager.update(ticker, values)
+        except Exception as e:
+            logger.warning(f"[OB] 호가 파싱 실패: {e}")
+
     async def _dispatch_tick(self, tick: dict) -> None:
         """틱 데이터를 Queue로 전달 (논블로킹)."""
         if self._tick_queue:
@@ -417,6 +438,18 @@ class KiwoomWebSocketClient:
                     await self._ws.send(msg)
                 self._subscriptions[WS_TYPE_TICK] = list(tickers)
                 logger.info(f"구독 복원(provider): {len(tickers)}종목")
+                # 0D 구독도 함께 복원 (0B와 동일 종목)
+                if self._subscriptions.get(WS_TYPE_ORDERBOOK):
+                    ob_msg = json.dumps({
+                        "trnm": "REG",
+                        "grp_no": "1",
+                        "refresh": "1",
+                        "data": [{"item": tickers, "type": [WS_TYPE_ORDERBOOK]}],
+                    })
+                    if self._ws:
+                        await self._ws.send(ob_msg)
+                    self._subscriptions[WS_TYPE_ORDERBOOK] = list(tickers)
+                    logger.info(f"구독 복원(provider+OB): {len(tickers)}종목")
                 return
 
         for real_type, codes in self._subscriptions.items():

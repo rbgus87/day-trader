@@ -194,6 +194,13 @@ class TradingConfig:
     sizing_min_pct: float = 0.15
     sizing_max_pct: float = 0.50
 
+    # 호가(OBI) 필터 — 실시간 전용, 백테스트 무영향
+    # 0D 미수신 시 OBI=None → 필터 비적용 (기존대로 진입 허용)
+    obi_filter_enabled: bool = False
+    obi_min: float = 0.55              # OBI >= 0.55 (매수 우위) 시에만 진입
+    spread_max_pct: float = 0.005      # 스프레드 0.5% 이하에서만 진입
+    ask_wall_block_enabled: bool = False  # 현재가 근처 매도벽 감지 시 진입 차단
+
 
 @dataclass(frozen=True)
 class ScreenerConfig:
@@ -390,6 +397,11 @@ class AppConfig:
             sizing_atr_multiplier=mom.get("sizing_atr_multiplier", 1.0),
             sizing_min_pct=mom.get("sizing_min_pct", 0.15),
             sizing_max_pct=mom.get("sizing_max_pct", 0.50),
+            # OBI 필터
+            obi_filter_enabled=mom.get("obi_filter_enabled", False),
+            obi_min=mom.get("obi_min", 0.55),
+            spread_max_pct=mom.get("spread_max_pct", 0.005),
+            ask_wall_block_enabled=mom.get("ask_wall_block_enabled", False),
         )
 
         # screener 섹션

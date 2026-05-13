@@ -167,6 +167,7 @@ class EngineWorker(QThread):
         self._prev_high_map: dict[str, float] = {}
 
         self._order_tracker = None  # _run_engine에서 인스턴스화
+        self._orderbook_manager = None  # OBI 필터용 호가 스냅샷 관리자
         self._timeout_counters: dict[str, int] = {}    # ticker → 연속 TIMEOUT 카운터
         self._limit_up_exit_pending: set[str] = set()  # limit_up_exit submit된 ticker
 
@@ -350,6 +351,10 @@ class EngineWorker(QThread):
         self._signal_queue = asyncio.Queue(maxsize=100)
         self._order_queue = asyncio.Queue(maxsize=100)
 
+        # OBI 필터용 호가 스냅샷 관리자
+        from core.orderbook import OrderbookManager
+        self._orderbook_manager = OrderbookManager()
+
         # Components
         self._ws_client = KiwoomWebSocketClient(
             ws_url=self._config.kiwoom.ws_url,
@@ -358,6 +363,7 @@ class EngineWorker(QThread):
             order_queue=self._order_queue,
             notifier=self._notifier,
             notifications_config=self._config.notifications,
+            orderbook_manager=self._orderbook_manager,
         )
         # WS 재연결 시 universe.yaml 코어가 아닌 현재 감시 목록 전체로 복원.
         # condition_search가 추가한 종목까지 포함되도록 _active_strategies 키를 사용.
@@ -551,7 +557,15 @@ class EngineWorker(QThread):
             await self._ws_client.connect()
             final_tickers = [s["ticker"] for s in final_stocks]
             if final_tickers:
+                from core.kiwoom_ws import WS_TYPE_ORDERBOOK
                 await self._ws_client.subscribe(final_tickers)
+                # OBI 필터 활성 시 0D(호가)도 함께 구독 — 실패해도 0B 구독에 영향 없음
+                if self._config.trading.obi_filter_enabled:
+                    try:
+                        await self._ws_client.subscribe(final_tickers, WS_TYPE_ORDERBOOK)
+                        logger.info(f"WS 0D(호가) 구독: {len(final_tickers)}종목")
+                    except Exception as e:
+                        logger.warning(f"[OBI] 0D 구독 실패 (0B 구독 유지): {e}")
                 logger.info(
                     f"WS 구독: {len(final_tickers)}종목 (source={source})"
                 )
@@ -1270,6 +1284,25 @@ class EngineWorker(QThread):
                 if vi_state != VIState.NORMAL:
                     logger.info(f"[VI] {signal.ticker} 매수 차단 — state={vi_state.value}")
                     continue
+
+                # OBI 필터 (실시간 전용, 0D 미수신 시 None → 비적용)
+                if self._config.trading.obi_filter_enabled and self._orderbook_manager is not None:
+                    obi = self._orderbook_manager.get_obi(signal.ticker)
+                    if obi is not None and obi < self._config.trading.obi_min:
+                        logger.info(
+                            f"[OBI] 매수세 부족 차단: {signal.ticker} OBI={obi:.3f}"
+                        )
+                        continue
+                    spread = self._orderbook_manager.get_spread(signal.ticker)
+                    if spread is not None and spread > self._config.trading.spread_max_pct:
+                        logger.info(
+                            f"[OBI] 스프레드 과대 차단: {signal.ticker} spread={spread:.4f}"
+                        )
+                        continue
+                    if self._config.trading.ask_wall_block_enabled:
+                        if self._orderbook_manager.has_ask_wall(signal.ticker, signal.price):
+                            logger.info(f"[OBI] 매도벽 감지 차단: {signal.ticker}")
+                            continue
 
                 strategy = self._active_strategies[signal.ticker]["strategy"]
                 sl = strategy.get_stop_loss(signal.price)

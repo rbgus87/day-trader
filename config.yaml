@@ -149,6 +149,13 @@ strategy:
     sizing_min_pct: 0.15               # 최소 포지션: 자본의 15%
     sizing_max_pct: 0.50               # 최대 포지션: 자본의 50%
 
+    # 호가(OBI) 필터 — 실시간 전용 (0D 미수신 시 필터 비적용)
+    # obi_filter_enabled: true 시 매수세 부재 종목 진입 차단
+    obi_filter_enabled: false         # 페이퍼 검증 후 활성화
+    obi_min: 0.55                     # OBI >= 0.55 (매수 우위) 시에만 진입
+    spread_max_pct: 0.005             # 스프레드 0.5% 이하에서만 진입
+    ask_wall_block_enabled: false     # 현재가 근처 매도벽 감지 시 진입 차단
+
     # 모멘텀 둔화 청산 — 수익 포지션 + 보유 15분+ + ROC ≤ -0.5%
     momentum_fade_exit_enabled: true
     momentum_fade_lookback: 10           # 최근 10분봉
