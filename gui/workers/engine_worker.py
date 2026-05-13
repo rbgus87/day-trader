@@ -491,6 +491,14 @@ class EngineWorker(QThread):
             "cron", day_of_week="mon-fri", hour=10, minute=0, misfire_grace_time=300,
             id="market_filter_refresh_mid", replace_existing=True,
         )
+        # 장중 시장 필터 — 10분 간격 (09:05~15:00, 메서드 내부에서 시간 가드)
+        if getattr(self._config.trading, "intraday_market_filter_enabled", False):
+            self._scheduler.add_job(
+                _schedule_async(self._safe_intraday_filter_refresh, "intraday_filter_refresh"),
+                "interval",
+                minutes=self._config.trading.intraday_check_interval_min,
+                id="intraday_filter_refresh", replace_existing=True,
+            )
         self._scheduler.start()
         logger.debug(f"BackgroundScheduler 시작됨, running={self._scheduler.running}")
 
@@ -1306,6 +1314,21 @@ class EngineWorker(QThread):
                             reason="market_filter",
                             detail=market,
                         ).info(f"[MARKET] 매수 차단: {signal.ticker} ({market})")
+                        continue
+
+                # 장중 시장 필터 (당일 지수 등락률 기반 — MA5와 독립 레이어)
+                if (
+                    getattr(self._config.trading, "intraday_market_filter_enabled", False)
+                    and self._market_filter is not None
+                ):
+                    _intraday_market = self._ticker_markets.get(signal.ticker, "unknown")
+                    if self._market_filter.is_intraday_blocked(_intraday_market):
+                        logger.bind(
+                            event="signal_blocked",
+                            ticker=signal.ticker,
+                            reason="intraday_market",
+                            detail=_intraday_market,
+                        ).info(f"[INTRADAY] 장중 차단: {signal.ticker} ({_intraday_market})")
                         continue
 
                 # 포지션 한도 재확인
@@ -2483,6 +2506,56 @@ class EngineWorker(QThread):
             )
         except Exception as e:
             logger.error(f"[SCHED] 시장 필터 재갱신 실패: {e}")
+
+    async def _safe_intraday_filter_refresh(self):
+        """10분 간격 장중 필터 갱신 — 당일 지수 등락률 기반 매수 차단/해제."""
+        if self._market_filter is None:
+            return
+        if not getattr(self._config.trading, "intraday_market_filter_enabled", False):
+            return
+        # 장 시간 외 스킵 (09:05~15:00)
+        now_t = datetime.now().time()
+        from datetime import time as dt_time
+        if not (dt_time(9, 5) <= now_t <= dt_time(15, 0)):
+            return
+        try:
+            prev_kospi = self._market_filter.is_intraday_blocked("kospi")
+            prev_kosdaq = self._market_filter.is_intraday_blocked("kosdaq")
+
+            await self._market_filter.refresh_intraday(
+                block_threshold=self._config.trading.intraday_block_threshold,
+                resume_threshold=self._config.trading.intraday_resume_threshold,
+                cooldown_minutes=20,
+            )
+
+            now_kospi = self._market_filter.is_intraday_blocked("kospi")
+            now_kosdaq = self._market_filter.is_intraday_blocked("kosdaq")
+            change = self._market_filter.intraday_change
+
+            logger.bind(
+                event="intraday_market_filter",
+                kospi_blocked=now_kospi,
+                kosdaq_blocked=now_kosdaq,
+                kospi_change_pct=change.get("001"),
+                kosdaq_change_pct=change.get("101"),
+            ).info(
+                f"[INTRADAY] 필터 갱신: KOSPI={'차단' if now_kospi else '허용'} "
+                f"KOSDAQ={'차단' if now_kosdaq else '허용'}"
+            )
+
+            # 상태 변화 시에만 텔레그램 알림 (1회)
+            if (prev_kospi != now_kospi or prev_kosdaq != now_kosdaq) and self._notifier:
+                try:
+                    hhmm = datetime.now().strftime("%H:%M")
+                    k = "차단" if now_kospi else "허용"
+                    q = "차단" if now_kosdaq else "허용"
+                    self._notifier.send(
+                        f"[INTRADAY] {hhmm} 장중 필터 상태 변경 — KOSPI {k} / KOSDAQ {q}"
+                    )
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.error(f"[SCHED] 장중 필터 갱신 실패: {e}")
 
     async def _refresh_index_candles(self) -> None:
         """KOSPI(001)/KOSDAQ(101) 지수 일봉을 index_candles에 갱신 (INSERT OR REPLACE).

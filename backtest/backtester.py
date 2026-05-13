@@ -61,6 +61,50 @@ def calc_sizing_position_value(
     return max(min_val, min(max_val, pos_val))
 
 
+def build_intraday_blocked_by_date(
+    db_path: str,
+    block_threshold: float = -0.01,
+    resume_threshold: float = -0.005,
+) -> dict[str, dict[str, bool]]:
+    """index_candles 일봉 기반 날짜별 장중 차단 여부 근사.
+
+    근사 방법: 당일 (close - open) / open 으로 등락률 산출.
+    히스테리시스는 일 단위로 적용 (일봉이라 분 단위 쿨다운 불필요).
+
+    Returns:
+        {"20260410": {"kospi": True, "kosdaq": False}, ...}
+        True = 차단(신규 매수 불가), False = 허용
+    """
+    import sqlite3
+
+    result: dict[str, dict[str, bool]] = {}
+    conn = sqlite3.connect(db_path)
+    try:
+        for index_code, market in (("001", "kospi"), ("101", "kosdaq")):
+            cur = conn.execute(
+                "SELECT dt, open, close FROM index_candles "
+                "WHERE index_code=? ORDER BY dt ASC",
+                (index_code,),
+            )
+            rows = cur.fetchall()
+            blocked = False
+            for dt, open_p, close in rows:
+                if not open_p or open_p <= 0 or not close or close <= 0:
+                    result.setdefault(dt, {})[market] = blocked
+                    continue
+                change = (close - open_p) / open_p
+                if not blocked:
+                    if change < block_threshold:
+                        blocked = True
+                else:
+                    if change >= resume_threshold:
+                        blocked = False
+                result.setdefault(dt, {})[market] = blocked
+    finally:
+        conn.close()
+    return result
+
+
 def build_market_strong_by_date(
     db_path: str,
     ma_length: int = 5,
@@ -114,6 +158,7 @@ class Backtester:
         ticker_market: str = "unknown",
         market_strong_by_date: dict[str, dict[str, bool]] | None = None,
         atr_db_path: str = "daytrader.db",
+        intraday_blocked_by_date: dict[str, dict[str, bool]] | None = None,
     ) -> None:
         self._db = db
         self._config = config
@@ -138,6 +183,9 @@ class Backtester:
         self._atr_db_path = atr_db_path
         # 당일 상한가 (_setup_strategy_day 에서 prev_close × limit_up_pct로 계산)
         self._current_limit_up: float | None = None
+        # 장중 필터: {date_str: {"kospi": blocked, "kosdaq": blocked}}
+        # build_intraday_blocked_by_date()로 생성. None이면 장중 필터 비적용.
+        self._intraday_blocked_by_date = intraday_blocked_by_date
 
     # ------------------------------------------------------------------
     # 데이터 로드
@@ -787,6 +835,18 @@ class Backtester:
                         size_factor = getattr(self._config, "market_regime_reduce_size", 0.5)
                     else:
                         skip_day = True
+
+            # 장중 필터: 일봉 close/open 기반 근사 (intraday_blocked_by_date 있을 때만)
+            if (
+                not skip_day
+                and self._intraday_blocked_by_date is not None
+                and getattr(self._config, "intraday_market_filter_enabled", False)
+                and self._ticker_market in ("kospi", "kosdaq")
+            ):
+                date_key = date.strftime("%Y%m%d")
+                intraday_map = self._intraday_blocked_by_date.get(date_key, {})
+                if intraday_map.get(self._ticker_market, False):
+                    skip_day = True
 
             # Phase 2 Day 10: 블랙리스트 — 최근 lookback일 내 손실 ≥ threshold면 당일 skip
             if not skip_day and blacklist_enabled:

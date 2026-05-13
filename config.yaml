@@ -48,6 +48,12 @@ trading:
   market_filter_enabled: true       # true면 약세 시장 종목 매수 차단
   market_ma_length: 5               # MA 기간 (일)
 
+  # 장중 시장 필터 — 당일 지수 시가 대비 등락률 기반 (MA5와 독립 레이어)
+  intraday_market_filter_enabled: true
+  intraday_check_interval_min: 10       # 10분마다 체크
+  intraday_block_threshold: -0.01       # 당일 -1% 이하 → 신규 매수 차단
+  intraday_resume_threshold: -0.005     # -0.5% 이상 회복 → 매수 재개
+
   # VI(변동성완화장치) 휴리스틱 — 시장가 → 최유리지정가 자동 전환용
   # vi_static_pct: 전일종가 대비 |change_pct| ≥ 9.5% → STATIC_VI 추정 (보수적)
   # vi_assumed_duration_sec: 단일가 매매 2분 + 랜덤종료 30초

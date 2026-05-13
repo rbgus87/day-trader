@@ -43,6 +43,15 @@ class MarketFilter:
         # 마지막 성공 갱신의 (current, ma) — 로그/디버깅용. 키움 cur_prc는 100배 스케일.
         self._index_metrics: dict[str, tuple[float, float]] = {}
 
+        # ── 장중 필터 상태 ──────────────────────────────────────────────
+        self._kospi_intraday_blocked: bool = False
+        self._kosdaq_intraday_blocked: bool = False
+        # 해제 시각 — 쿨다운(최소 cooldown_minutes 후 재차단 가능) 계산용
+        self._kospi_last_unblock: datetime | None = None
+        self._kosdaq_last_unblock: datetime | None = None
+        # 마지막 갱신의 index_code → change_pct (로그/디버깅용)
+        self._intraday_change: dict[str, float] = {}
+
     @property
     def kospi_strong(self) -> bool:
         return self._kospi_strong
@@ -195,3 +204,110 @@ class MarketFilter:
             return self._kosdaq_strong
         # unknown → 보수적으로 둘 중 하나라도 강세면 허용
         return self._kospi_strong or self._kosdaq_strong
+
+    # ── 장중 필터 (당일 시가 대비 등락률) ─────────────────────────────────
+
+    @property
+    def intraday_change(self) -> dict[str, float]:
+        """마지막 갱신의 index_code → change_pct (로그/UI용)."""
+        return dict(self._intraday_change)
+
+    def is_intraday_blocked(self, market: str) -> bool:
+        """시장별 장중 차단 여부.
+
+        Args:
+            market: "kospi" / "kosdaq" / 그 외
+
+        Returns:
+            차단 중이면 True. "unknown"은 둘 중 하나라도 차단이면 True.
+        """
+        if market == "kospi":
+            return self._kospi_intraday_blocked
+        if market == "kosdaq":
+            return self._kosdaq_intraday_blocked
+        return self._kospi_intraday_blocked or self._kosdaq_intraday_blocked
+
+    async def _fetch_intraday_change(self, index_code: str) -> float | None:
+        """당일 지수 시가 대비 현재가 등락률 계산.
+
+        시가 필드(open_prc / oprc / strt_prc)가 응답에 없으면 전일 종가를 대신 사용.
+        장 전(09:00 미만) 또는 당일 데이터 미포함 시 None 반환.
+        """
+        items = await self._fetch_items(index_code)
+        if len(items) < 2:
+            return None
+        today_str = datetime.now().strftime("%Y%m%d")
+        if items[0].get("dt") != today_str:
+            return None  # 장 전 또는 당일 데이터 미포함
+        try:
+            cur = float(items[0].get("cur_prc", 0) or 0)
+            if cur <= 0:
+                return None
+            # 시가 취득: 여러 후보 필드 순차 시도
+            open_p = 0.0
+            for fld in ("open_prc", "oprc", "strt_prc"):
+                v = items[0].get(fld)
+                if v is not None:
+                    try:
+                        open_p = float(v)
+                        if open_p > 0:
+                            break
+                    except (TypeError, ValueError):
+                        pass
+            if open_p <= 0:
+                # fallback: 전일 종가를 시가 대용으로 사용
+                prev_close = float(items[1].get("cur_prc", 0) or 0)
+                if prev_close <= 0:
+                    return None
+                open_p = prev_close
+            return (cur - open_p) / open_p
+        except (TypeError, ValueError):
+            return None
+
+    async def refresh_intraday(
+        self,
+        block_threshold: float = -0.01,
+        resume_threshold: float = -0.005,
+        cooldown_minutes: int = 20,
+    ) -> None:
+        """코스피/코스닥 당일 등락률 조회 → 장중 차단/해제 상태 갱신.
+
+        히스테리시스:
+          - 미차단 → 차단: change < block_threshold AND 쿨다운 기간 외
+          - 차단 → 해제: change >= resume_threshold → 해제 + 쿨다운 시작
+          - 해제 후 cooldown_minutes 이내는 재차단 불가
+        예외 / 데이터 없음 시 현재 상태를 유지한다.
+        """
+        for index_code, market_key in (("001", "kospi"), ("101", "kosdaq")):
+            try:
+                change = await self._fetch_intraday_change(index_code)
+                if change is None:
+                    logger.debug(f"[INTRADAY] {market_key} 등락률 조회 불가 → 현재 상태 유지")
+                    continue
+                self._intraday_change[index_code] = change
+
+                is_blocked: bool = getattr(self, f"_{market_key}_intraday_blocked")
+                last_unblock: datetime | None = getattr(self, f"_{market_key}_last_unblock")
+
+                if not is_blocked:
+                    in_cooldown = (
+                        last_unblock is not None
+                        and (datetime.now() - last_unblock).total_seconds()
+                        < cooldown_minutes * 60
+                    )
+                    if change < block_threshold and not in_cooldown:
+                        setattr(self, f"_{market_key}_intraday_blocked", True)
+                        logger.warning(
+                            f"[INTRADAY] {market_key} 장중 매수 차단: "
+                            f"등락률={change:.2%} < {block_threshold:.2%}"
+                        )
+                else:
+                    if change >= resume_threshold:
+                        setattr(self, f"_{market_key}_intraday_blocked", False)
+                        setattr(self, f"_{market_key}_last_unblock", datetime.now())
+                        logger.info(
+                            f"[INTRADAY] {market_key} 장중 매수 재개: "
+                            f"등락률={change:.2%} >= {resume_threshold:.2%}"
+                        )
+            except Exception as e:
+                logger.error(f"[INTRADAY] {market_key} 장중 필터 갱신 실패: {e}")

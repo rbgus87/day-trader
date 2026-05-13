@@ -131,6 +131,12 @@ class TradingConfig:
     market_filter_enabled: bool = True
     market_ma_length: int = 5
 
+    # 장중 시장 필터 — 당일 지수 시가 대비 등락률 기반 (MA5와 독립 레이어)
+    intraday_market_filter_enabled: bool = True
+    intraday_check_interval_min: int = 10
+    intraday_block_threshold: float = -0.01
+    intraday_resume_threshold: float = -0.005
+
     # VI(변동성완화장치) 휴리스틱
     # static_pct=0.095: 전일종가 대비 ±9.5% 이상이면 정적VI 추정
     # assumed_duration_sec=150: 단일가 매매 2분 + 랜덤종료 30초
@@ -360,6 +366,10 @@ class AppConfig:
             initial_capital=t.get("initial_capital", 1_000_000),
             market_filter_enabled=t.get("market_filter_enabled", True),
             market_ma_length=t.get("market_ma_length", 5),
+            intraday_market_filter_enabled=t.get("intraday_market_filter_enabled", True),
+            intraday_check_interval_min=t.get("intraday_check_interval_min", 10),
+            intraday_block_threshold=t.get("intraday_block_threshold", -0.01),
+            intraday_resume_threshold=t.get("intraday_resume_threshold", -0.005),
             vi_static_pct=t.get("vi_static_pct", 0.095),
             vi_assumed_duration_sec=t.get("vi_assumed_duration_sec", 150),
             vi_suspected_duration_sec=t.get("vi_suspected_duration_sec", 60),

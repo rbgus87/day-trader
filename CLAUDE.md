@@ -1,6 +1,6 @@
 # CLAUDE.md — day-trader
 
-> **최종 수정**: 2026-05-13 (호가 OBI 필터 구현 + 페이퍼 통합 점검 완료)
+> **최종 수정**: 2026-05-14 (JSONL 구조화 로깅 + 장중 시장 필터 구현)
 > 이 문서는 **백테스트에서 검증된 사실만** 기재한다.
 
 ---
@@ -89,6 +89,7 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 - **afternoon_entry 그리드** (2026-05-13): 8조합 전체 PF < baseline×0.95 → 비활성 확정. 최고 조합(end=14:00/bp=7%/vr=3.0): PF 4.544 / PnL +306K / aft# 46 / aft_PF 2.314 — PF 기준 0.03 미달. `afternoon_entry_enabled: false` 유지.
 - **변동성 기반 포지션 사이징 그리드** (2026-05-13): 12조합 전체 MDD 기준 미달. `volatility_sizing_enabled: false` 유지. `reports/volatility_sizing_grid.md`.
 - **ATR 비례 손절 + trail 그리드** (2026-05-13): Stage1 mult=2.0 → PF 4.791 / Stage2 trail_min=0.025/max=0.08 → PF 4.881 / Stage3 breakeven 현행 유지. `atr_stop_enabled: true`, `atr_trail_min_pct: 0.025`, `atr_trail_max_pct: 0.08` 확정. SL# 32→27. `reports/atr_stop_grid.md`.
+- **장중 시장 필터 검증** (2026-05-14): 일봉 close/open 근사 기준 기존 구간 PF 4.881 → **4.798** (7건 차단, −1.7%). 확장 구간(2026-04-11~05-12) PnL **-52,619 → -38,296** (2건 차단, 27% 개선). `intraday_market_filter_enabled: true`, `block_threshold: -0.01`, `resume_threshold: -0.005`, `check_interval: 10min`.
 - **이전 baseline**
   - 고정 -8% 손절 + trail_min=0.02/max=0.10 (2026-05-13): PF 4.817 / 229건 / +293,532 / SL# 32
   - momentum_fade(thr=-0.008, mp=0.03) + max_entry=5% (2026-05-13): PF 3.73 / 247건 / +278,979 / fc% 38.1%
@@ -221,6 +222,8 @@ pytest tests/ --cov=. --cov-report=term-missing
 - [x] ATR 비례 손절 + trail 범위 3단계 그리드 (2026-05-13) — Stage1 atr_stop(36조합): mult=2.0 → PF 4.791/SL#30. Stage2 trail범위(9조합): min=0.025/max=0.08 → PF 4.881/SL#27. Stage3 breakeven(9조합): 현행(3%/1%) 유지. baseline PF 4.817 → **4.881** (+1.3%), SL# 32→27(-15.6%). `reports/atr_stop_grid.md`.
 - [x] 호가(0D) 구독 + OBI 필터 구현 (2026-05-13) — `core/orderbook.py` (OrderbookSnapshot/OrderbookManager), kiwoom_ws.py 0D 파싱, engine_worker.py OBI/스프레드/매도벽 3단계 진입 게이트. 실시간 전용 — 백테스트 baseline PF 4.881 변동 없음. 0D 필드 코드 미확정(TODO 상수), `obi_filter_enabled: false` (0D 수신 확인 전). `docs/obi_activation_plan.md` 참조.
 - [x] 페이퍼 운용 전 통합 점검 (2026-05-13) — `scripts/pre_paper_check.py` (파라미터/DB/universe/REST/WS 6개 항목). `scripts/test_nxt_api.py` (NXT API 실측, 장외 시간 수동 실행). `docs/nxt_api_investigation.md` (NXT 조사, 코드 미구현).
+- [x] JSONL 구조화 로깅 (2026-05-14) — `utils/logging_config.py` (_JsonlSink daily rotation·30일 보관·thread-safe), `scripts/analyze_paper_log.py` (장후 분석). engine_worker.py logger.bind(event=...) 주요 경로 17종. `tests/test_logging_config.py` 10개.
+- [x] 장중 시장 필터 구현 (2026-05-14) — `core/market_filter.py` refresh_intraday() / is_intraday_blocked(), engine_worker.py APScheduler 10분 갱신 + signal_consumer 체크, backtester.py build_intraday_blocked_by_date() 일봉 근사. 기존 구간 PF 4.798 / 확장 구간 손실 27% 개선. `tests/test_intraday_market_filter.py` 13개.
 
 ---
 
