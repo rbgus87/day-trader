@@ -893,12 +893,22 @@ class EngineWorker(QThread):
                         is_paper = self._mode == "paper"
                         if is_paper:
                             # 페이퍼: 즉시 settle (현 동작)
+                            _entry_time_lue = pos.get("entry_time")
                             self._risk_manager.settle_sell(ticker, price, qty)
                             if pnl >= 0:
                                 self._rt_wins += 1
                             else:
                                 self._rt_losses += 1
-                            logger.info(
+                            logger.bind(
+                                event="exit",
+                                ticker=ticker,
+                                reason="limit_up_exit",
+                                price=int(price),
+                                qty=qty,
+                                pnl=int(pnl),
+                                pnl_pct=round(pnl_pct, 2),
+                                hold_minutes=round((datetime.now() - _entry_time_lue).total_seconds() / 60, 1) if _entry_time_lue else None,
+                            ).info(
                                 f"limit_up_exit 실행: {ticker} {qty}주 @ {price:,} "
                                 f"PnL={pnl:+,.0f}"
                             )
@@ -959,12 +969,22 @@ class EngineWorker(QThread):
                         continue  # 주문 자체 실패 (VI 등)
                     is_paper = self._mode == "paper"
                     if is_paper:
+                        _entry_time_sl = pos.get("entry_time")
                         self._risk_manager.settle_sell(ticker, price, qty)
                         if pnl >= 0:
                             self._rt_wins += 1
                         else:
                             self._rt_losses += 1
-                        logger.info(f"{reason_code} 실행: {ticker} {qty}주 @ {price:,} PnL={pnl:+,.0f}")
+                        logger.bind(
+                            event="exit",
+                            ticker=ticker,
+                            reason=reason_code,
+                            price=int(price),
+                            qty=qty,
+                            pnl=int(pnl),
+                            pnl_pct=round(pnl_pct, 2),
+                            hold_minutes=round((datetime.now() - _entry_time_sl).total_seconds() / 60, 1) if _entry_time_sl else None,
+                        ).info(f"{reason_code} 실행: {ticker} {qty}주 @ {price:,} PnL={pnl:+,.0f}")
                         strat_info = self._active_strategies.get(ticker)
                         if strat_info:
                             strat_info["strategy"].on_exit()
@@ -1005,12 +1025,22 @@ class EngineWorker(QThread):
                         continue
                     is_paper = self._mode == "paper"
                     if is_paper:
+                        _entry_time_mf = pos.get("entry_time")
                         self._risk_manager.settle_sell(ticker, price, qty)
                         if pnl >= 0:
                             self._rt_wins += 1
                         else:
                             self._rt_losses += 1
-                        logger.info(
+                        logger.bind(
+                            event="exit",
+                            ticker=ticker,
+                            reason="momentum_fade",
+                            price=int(price),
+                            qty=qty,
+                            pnl=int(pnl),
+                            pnl_pct=round(pnl_pct, 2),
+                            hold_minutes=round((datetime.now() - _entry_time_mf).total_seconds() / 60, 1) if _entry_time_mf else None,
+                        ).info(
                             f"momentum_fade 실행: {ticker} {qty}주 @ {price:,} "
                             f"PnL={pnl:+,.0f}"
                         )
@@ -1270,38 +1300,68 @@ class EngineWorker(QThread):
                         logger.debug(
                             f"[MARKET] 매수 차단 ({market} 약세): {signal.ticker}"
                         )
+                        logger.bind(
+                            event="signal_blocked",
+                            ticker=signal.ticker,
+                            reason="market_filter",
+                            detail=market,
+                        ).info(f"[MARKET] 매수 차단: {signal.ticker} ({market})")
                         continue
 
                 # 포지션 한도 재확인
                 open_pos = self._risk_manager.get_open_positions()
                 if len(open_pos) >= self._config.trading.max_positions:
-                    logger.info(f"포지션 한도 ({self._config.trading.max_positions}), 무시: {signal.ticker}")
+                    logger.bind(
+                        event="signal_blocked",
+                        ticker=signal.ticker,
+                        reason="max_positions",
+                        open_count=len(open_pos),
+                    ).info(f"포지션 한도 ({self._config.trading.max_positions}), 무시: {signal.ticker}")
                     continue
 
                 # VI 활성 종목 매수 차단 (spec §5.5.3) — single get_vi_state로 lazy expiry race 회피
                 from core.vi_handler import VIState
                 vi_state = self._vi_handler.get_vi_state(signal.ticker)
                 if vi_state != VIState.NORMAL:
-                    logger.info(f"[VI] {signal.ticker} 매수 차단 — state={vi_state.value}")
+                    logger.bind(
+                        event="signal_blocked",
+                        ticker=signal.ticker,
+                        reason="vi_active",
+                        detail=vi_state.value,
+                    ).info(f"[VI] {signal.ticker} 매수 차단 — state={vi_state.value}")
                     continue
 
                 # OBI 필터 (실시간 전용, 0D 미수신 시 None → 비적용)
                 if self._config.trading.obi_filter_enabled and self._orderbook_manager is not None:
                     obi = self._orderbook_manager.get_obi(signal.ticker)
                     if obi is not None and obi < self._config.trading.obi_min:
-                        logger.info(
+                        logger.bind(
+                            event="signal_blocked",
+                            ticker=signal.ticker,
+                            reason="obi_low",
+                            obi=round(obi, 3),
+                        ).info(
                             f"[OBI] 매수세 부족 차단: {signal.ticker} OBI={obi:.3f}"
                         )
                         continue
                     spread = self._orderbook_manager.get_spread(signal.ticker)
                     if spread is not None and spread > self._config.trading.spread_max_pct:
-                        logger.info(
+                        logger.bind(
+                            event="signal_blocked",
+                            ticker=signal.ticker,
+                            reason="spread_high",
+                            spread=round(spread, 4),
+                        ).info(
                             f"[OBI] 스프레드 과대 차단: {signal.ticker} spread={spread:.4f}"
                         )
                         continue
                     if self._config.trading.ask_wall_block_enabled:
                         if self._orderbook_manager.has_ask_wall(signal.ticker, signal.price):
-                            logger.info(f"[OBI] 매도벽 감지 차단: {signal.ticker}")
+                            logger.bind(
+                                event="signal_blocked",
+                                ticker=signal.ticker,
+                                reason="ask_wall",
+                            ).info(f"[OBI] 매도벽 감지 차단: {signal.ticker}")
                             continue
 
                 strategy = self._active_strategies[signal.ticker]["strategy"]
@@ -1389,6 +1449,19 @@ class EngineWorker(QThread):
                         )
                     except Exception as e:
                         logger.debug(f"[ATR-DBG] {signal.ticker} dump 실패: {e}")
+                    _prev_h = self._prev_high_map.get(signal.ticker, 0.0)
+                    logger.bind(
+                        event="entry",
+                        ticker=signal.ticker,
+                        price=int(signal.price),
+                        qty=result["qty"],
+                        strategy=signal.strategy or "momentum",
+                        prev_high=_prev_h,
+                        breakout_pct=round((signal.price / _prev_h - 1) * 100, 2) if _prev_h > 0 else 0.0,
+                        atr_pct=round(self._ticker_atr_pct.get(signal.ticker) or 0.0, 2),
+                    ).info(
+                        f"[J] entry: {signal.ticker} {result['qty']}주 @ {signal.price:,}"
+                    )
                     self.signals.trade_executed.emit({
                         "time": datetime.now().strftime("%H:%M:%S"),
                         "side": "buy",
@@ -1435,7 +1508,15 @@ class EngineWorker(QThread):
                 self._rt_wins += 1
             else:
                 self._rt_losses += 1
-            logger.info(
+            logger.bind(
+                event="exit",
+                ticker=ticker,
+                reason="ws_filled",
+                price=int(order.filled_price),
+                qty=order.filled_qty,
+                pnl=int(pnl),
+                pnl_pct=round(pnl_pct * 100, 2),
+            ).info(
                 f"[ORDER-TRACK] {order_no} FILLED → settle_sell {ticker} "
                 f"@ {order.filled_price:,.0f} PnL={pnl:+,.0f}"
             )
@@ -1930,10 +2011,24 @@ class EngineWorker(QThread):
                         continue
                     is_paper = self._mode == "paper"
                     if is_paper:
+                        _entry_time_fc = pos.get("entry_time")
                         self._risk_manager.settle_sell(ticker, float(close_price), qty)
                         strat_info = self._active_strategies.get(ticker)
                         if strat_info:
                             strat_info["strategy"].on_exit()
+                        logger.bind(
+                            event="exit",
+                            ticker=ticker,
+                            reason="forced_close",
+                            price=int(close_price),
+                            qty=qty,
+                            pnl=int(pnl),
+                            pnl_pct=round(pnl_pct, 2),
+                            hold_minutes=round((datetime.now() - _entry_time_fc).total_seconds() / 60, 1) if _entry_time_fc else None,
+                        ).info(
+                            f"forced_close 실행: {ticker} {qty}주 @ {close_price:,} "
+                            f"PnL={pnl:+,.0f}"
+                        )
                     else:
                         self._order_tracker.submit(
                             result["order_no"], ticker, "sell", qty,
@@ -1990,7 +2085,16 @@ class EngineWorker(QThread):
                 strategy=summary["strategy"],
                 max_drawdown=summary.get("max_drawdown", 0),
             )
-            logger.info("일일 보고서 발송 완료")
+            logger.bind(
+                event="daily_summary",
+                date=summary["date"],
+                total_trades=summary["total_trades"],
+                wins=summary["wins"],
+                losses=summary.get("losses", summary["total_trades"] - summary["wins"]),
+                total_pnl=int(summary["total_pnl"]),
+                win_rate=round(float(summary["win_rate"]), 4),
+                max_drawdown=round(float(summary.get("max_drawdown", 0)), 4),
+            ).info("일일 보고서 발송 완료")
         else:
             self._notifier.send_no_trade("당일 매매 기록 없음")
             logger.info("당일 매매 없음 -- 무거래 알림 발송")
@@ -2369,6 +2473,14 @@ class EngineWorker(QThread):
                     )
                 except Exception:
                     pass
+            logger.bind(
+                event="market_filter",
+                kospi_strong=self._market_filter.kospi_strong,
+                kosdaq_strong=self._market_filter.kosdaq_strong,
+            ).info(
+                f"[MARKET] 필터 갱신: KOSPI={'강세' if self._market_filter.kospi_strong else '약세'} "
+                f"KOSDAQ={'강세' if self._market_filter.kosdaq_strong else '약세'}"
+            )
         except Exception as e:
             logger.error(f"[SCHED] 시장 필터 재갱신 실패: {e}")
 

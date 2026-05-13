@@ -167,6 +167,13 @@ class MainWindow(QMainWindow):
         except Exception:
             pass
 
+        # JSONL 구조화 로깅 (이벤트별 장후 분석용)
+        try:
+            from utils.logging_config import setup_json_logging
+            setup_json_logging("logs")
+        except Exception:
+            pass
+
         def gui_sink(message):
             record = message.record
             level = record["level"].name
