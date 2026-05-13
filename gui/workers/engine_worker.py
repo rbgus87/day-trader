@@ -1018,6 +1018,52 @@ class EngineWorker(QThread):
                             f"(momentum_fade)"
                         )
                     continue
+                # 횡보 포지션 조기 청산
+                if self._risk_manager.check_stale_position(ticker, price, now=datetime.now()):
+                    qty = pos["remaining_qty"]
+                    entry = pos["entry_price"]
+                    pnl = (price - entry) * qty
+                    pnl_pct = ((price / entry) - 1) * 100 if entry > 0 else 0
+                    strategy_name = pos.get("strategy", "") or "unknown"
+                    prefer_best = self._vi_handler.should_use_best_limit(ticker)
+                    result = await self._order_manager.execute_sell_stop(
+                        ticker=ticker, qty=qty, price=int(price),
+                        strategy=strategy_name, pnl=pnl, pnl_pct=pnl_pct,
+                        exit_reason="stale_exit",
+                        prefer_best_limit=prefer_best,
+                        on_rejection=lambda tk, rt: self._vi_handler.flag_suspected(tk, f"주문 거부 (rt_cd={rt})"),
+                    )
+                    if result is None:
+                        continue
+                    is_paper = self._mode == "paper"
+                    if is_paper:
+                        self._risk_manager.settle_sell(ticker, price, qty)
+                        if pnl >= 0:
+                            self._rt_wins += 1
+                        else:
+                            self._rt_losses += 1
+                        logger.info(
+                            f"stale_exit 실행: {ticker} {qty}주 @ {price:,} "
+                            f"PnL={pnl:+,.0f}"
+                        )
+                        strat_info = self._active_strategies.get(ticker)
+                        if strat_info:
+                            strat_info["strategy"].on_exit()
+                        self.signals.trade_executed.emit({
+                            "time": datetime.now().strftime("%H:%M:%S"),
+                            "side": "sell", "ticker": ticker,
+                            "price": int(price), "qty": qty,
+                            "pnl": int(pnl), "reason": "stale_exit",
+                        })
+                    else:
+                        self._order_tracker.submit(
+                            result["order_no"], ticker, "sell", qty,
+                        )
+                        logger.info(
+                            f"[ORDER-TRACK] {result['order_no']} SUBMIT {ticker} sell {qty} "
+                            f"(stale_exit)"
+                        )
+                    continue
                 # TP1 체크 (현재 atr_tp_enabled:false로 비활성 — dead path)
                 # TODO(real_mode): TP1 재활성 시 OrderTracker 통합 필요.
                 # 현재는 paper/real 모두 즉시 mark_tp1_hit 호출 — real_mode에서 미체결 시
@@ -1232,9 +1278,23 @@ class EngineWorker(QThread):
                 capital = self._risk_manager.available_capital
                 if capital <= 0:
                     capital = self._config.trading.initial_capital
-                position_capital = capital / self._config.trading.max_positions
-                # ADR-013 페이퍼 시뮬(grid_maxpos_capital.py)과 동일한 전량 투자 사이징
-                max_qty = int(position_capital / signal.price)
+                if self._config.trading.volatility_sizing_enabled:
+                    atr_pct = self._ticker_atr_pct.get(signal.ticker)
+                    if atr_pct and atr_pct > 0:
+                        from backtest.backtester import calc_sizing_position_value
+                        atr_decimal = atr_pct / 100.0  # _ticker_atr_pct는 백분율(5.00)
+                        pos_val = calc_sizing_position_value(
+                            self._config.trading, atr_decimal, capital
+                        )
+                        max_qty = int(pos_val / signal.price)
+                    else:
+                        # ATR 미가용 → 균등 분배 fallback
+                        position_capital = capital / self._config.trading.max_positions
+                        max_qty = int(position_capital / signal.price)
+                else:
+                    position_capital = capital / self._config.trading.max_positions
+                    # ADR-013 페이퍼 시뮬(grid_maxpos_capital.py)과 동일한 전량 투자 사이징
+                    max_qty = int(position_capital / signal.price)
                 total_qty = int(max_qty * self._risk_manager.position_scale)
                 total_qty = max(total_qty, 1)
 

@@ -173,6 +173,27 @@ class TradingConfig:
     # 틱 레벨 돌파 감지: 돌파 시점 대비 진입 가격 상한 (초과 시 진입 차단)
     max_entry_above_breakout_pct: float = 0.10
 
+    # 횡보 포지션 조기 청산 — 보유 N분 후 수익률 < min_profit이면 청산
+    stale_position_exit_enabled: bool = False
+    stale_position_check_minutes: int = 30
+    stale_position_min_profit: float = 0.005
+
+    # 오후 강화 조건부 매수 (buy_time_end ~ afternoon_end 구간)
+    afternoon_entry_enabled: bool = False
+    afternoon_end: str = "14:00"
+    afternoon_min_breakout_pct: float = 0.05
+    afternoon_min_volume_ratio: float = 3.0
+    afternoon_min_adx: float = 25.0
+
+    # 변동성 기반 포지션 사이징
+    # risk_per_trade_pct: 계좌 대비 1거래 최대 리스크 (예: 0.01 = 1%)
+    # position_value = clamp(capital × risk / (atr_pct × multiplier), min_pct, max_pct) × capital
+    volatility_sizing_enabled: bool = False
+    risk_per_trade_pct: float = 0.01
+    sizing_atr_multiplier: float = 1.0
+    sizing_min_pct: float = 0.15
+    sizing_max_pct: float = 0.50
+
 
 @dataclass(frozen=True)
 class ScreenerConfig:
@@ -355,7 +376,20 @@ class AppConfig:
             volume_by_time_ratio=mom.get("volume_by_time_ratio", 1.5),
             breakout_volume_surge_enabled=mom.get("breakout_volume_surge_enabled", False),
             breakout_volume_surge_ratio=mom.get("breakout_volume_surge_ratio", 2.0),
-            max_entry_above_breakout_pct=mom.get("max_entry_above_breakout_pct", 0.05),
+            max_entry_above_breakout_pct=mom.get("max_entry_above_breakout_pct", 0.10),
+            stale_position_exit_enabled=mom.get("stale_position_exit_enabled", False),
+            stale_position_check_minutes=mom.get("stale_position_check_minutes", 30),
+            stale_position_min_profit=mom.get("stale_position_min_profit", 0.005),
+            afternoon_entry_enabled=mom.get("afternoon_entry_enabled", False),
+            afternoon_end=mom.get("afternoon_end", "14:00"),
+            afternoon_min_breakout_pct=mom.get("afternoon_min_breakout_pct", 0.05),
+            afternoon_min_volume_ratio=mom.get("afternoon_min_volume_ratio", 3.0),
+            afternoon_min_adx=mom.get("afternoon_min_adx", 25.0),
+            volatility_sizing_enabled=mom.get("volatility_sizing_enabled", False),
+            risk_per_trade_pct=mom.get("risk_per_trade_pct", 0.01),
+            sizing_atr_multiplier=mom.get("sizing_atr_multiplier", 1.0),
+            sizing_min_pct=mom.get("sizing_min_pct", 0.15),
+            sizing_max_pct=mom.get("sizing_max_pct", 0.50),
         )
 
         # screener 섹션

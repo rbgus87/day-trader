@@ -17,6 +17,50 @@ from data.db_manager import DbManager
 from strategy.base_strategy import BaseStrategy, Signal
 
 
+def compute_atr_pct_from_candles(candles: pd.DataFrame, length: int = 14) -> float | None:
+    """분봉 캔들에서 일봉 ATR% 계산 (마지막 유효 ATR 반환).
+
+    분봉을 일봉 OHLC로 압축한 뒤 ATR(length) / close 로 백분율 환산.
+    length+1일 미만이면 None 반환.
+    """
+    if candles.empty:
+        return None
+    df = candles.copy()
+    if "date" not in df.columns:
+        df["date"] = df["ts"].dt.date
+    daily = (
+        df.groupby("date")
+        .agg(high=("high", "max"), low=("low", "min"), close=("close", "last"))
+        .reset_index()
+    )
+    if len(daily) < length + 1:
+        return None
+    from core.indicators import calculate_atr, calculate_atr_pct
+    atr = calculate_atr(daily, length=length)
+    atr_pct_series = calculate_atr_pct(atr, daily["close"])
+    valid = atr_pct_series.dropna()
+    # calculate_atr_pct는 백분율(5.0 = 5%) → 소수로 변환 (0.05)
+    return float(valid.iloc[-1]) / 100.0 if not valid.empty else None
+
+
+def calc_sizing_position_value(
+    config: Any,
+    atr_pct: float,
+    capital: float,
+) -> float:
+    """변동성 기반 포지션 금액 계산.
+
+    Returns:
+        position_value: 해당 거래에 투입할 금액 (₩)
+    """
+    risk_amount = capital * config.risk_per_trade_pct
+    multiplier = config.sizing_atr_multiplier
+    pos_val = risk_amount / (atr_pct * multiplier)
+    min_val = capital * config.sizing_min_pct
+    max_val = capital * config.sizing_max_pct
+    return max(min_val, min(max_val, pos_val))
+
+
 def build_market_strong_by_date(
     db_path: str,
     ma_length: int = 5,
@@ -481,6 +525,56 @@ class Backtester:
                         )
                         position = None
                         strategy.on_exit()
+                    # 횡보 포지션 조기 청산
+                    elif getattr(self._config, "stale_position_exit_enabled", False):
+                        _check_min = getattr(self._config, "stale_position_check_minutes", 30)
+                        _min_profit = getattr(self._config, "stale_position_min_profit", 0.005)
+                        _entry_ts = position["entry_ts"]
+                        _now_ts = row["ts"]
+                        _entry_dt = (
+                            _entry_ts if isinstance(_entry_ts, datetime)
+                            else pd.to_datetime(_entry_ts).to_pydatetime()
+                        )
+                        _now_dt = (
+                            _now_ts if isinstance(_now_ts, datetime)
+                            else pd.to_datetime(_now_ts).to_pydatetime()
+                        )
+                        _hold_min = (_now_dt - _entry_dt).total_seconds() / 60
+                        _pnl_pct_cur = (close - position["entry_price"]) / position["entry_price"]
+                        if _hold_min >= _check_min and _pnl_pct_cur < _min_profit:
+                            exit_price_slipped, net_exit = apply_sell_costs(close, self._costs)
+                            pnl = (net_exit - position["net_entry"]) * remaining
+                            pnl_pct = (net_exit - position["net_entry"]) / position["net_entry"]
+                            trades.append({
+                                "entry_ts": position["entry_ts"],
+                                "exit_ts": row["ts"],
+                                "entry_price": position["entry_price"],
+                                "exit_price": exit_price_slipped,
+                                "pnl": pnl,
+                                "pnl_pct": pnl_pct,
+                                "exit_reason": "stale_exit",
+                            })
+                            logger.debug(
+                                f"[BT] stale_exit ts={row['ts']} hold={_hold_min:.0f}min "
+                                f"pnl={pnl:.1f} ({pnl_pct:.2%})"
+                            )
+                            position = None
+                            strategy.on_exit()
+                        elif idx == len(candles) - 1:
+                            exit_price_slipped, net_exit = apply_sell_costs(close, self._costs)
+                            pnl = (net_exit - position["net_entry"]) * remaining
+                            pnl_pct = (net_exit - position["net_entry"]) / position["net_entry"]
+                            trades.append({
+                                "entry_ts": position["entry_ts"],
+                                "exit_ts": row["ts"],
+                                "entry_price": position["entry_price"],
+                                "exit_price": exit_price_slipped,
+                                "pnl": pnl,
+                                "pnl_pct": pnl_pct,
+                                "exit_reason": "forced_close",
+                            })
+                            position = None
+                            strategy.on_exit()
                     # 마지막 캔들 강제 청산 (나머지)
                     elif idx == len(candles) - 1:
                         exit_price_slipped, net_exit = apply_sell_costs(close, self._costs)
@@ -658,6 +752,15 @@ class Backtester:
         all_trades: list[dict] = []
         prev_day_df: pd.DataFrame | None = None
 
+        # 변동성 기반 사이징 준비
+        _vol_sizing = getattr(self._config, "volatility_sizing_enabled", False)
+        _ticker_atr_pct: float | None = None
+        if _vol_sizing:
+            _ticker_atr_pct = compute_atr_pct_from_candles(all_candles)
+            if _ticker_atr_pct is None or _ticker_atr_pct <= 0:
+                _vol_sizing = False  # ATR 미가용 → fallback
+        _initial_capital = float(getattr(self._config, "initial_capital", 1_000_000))
+
         market_filter_enabled = getattr(self._config, "market_filter_enabled", False)
         blacklist_enabled = getattr(self._config, "blacklist_enabled", False)
         bl_lookback = getattr(self._config, "blacklist_lookback_days", 5)
@@ -733,6 +836,15 @@ class Backtester:
                 for t in day_trades:
                     t["pnl"] = t.get("pnl", 0.0) * size_factor
                     t["size_factor"] = size_factor
+            # 변동성 사이징: pnl_pct 기반으로 ₩ PnL 재산정
+            if _vol_sizing and _ticker_atr_pct:
+                pos_val = calc_sizing_position_value(
+                    self._config, _ticker_atr_pct, _initial_capital
+                )
+                for t in day_trades:
+                    t["pnl"] = t.get("pnl_pct", 0.0) * pos_val
+                    t["position_value"] = pos_val
+                    t["atr_pct"] = _ticker_atr_pct
             all_trades.extend(day_trades)
             # Phase 3 Day 11.5: 당일 PnL 집계 (연속 손실 휴식용)
             daily_pnl_by_date[date] = sum(t.get("pnl", 0.0) for t in day_trades)

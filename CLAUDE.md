@@ -78,14 +78,18 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 
 ## 백테스트 결과 (baseline, 2026-05-13)
 
-- **Profit Factor 3.73** (1주 가중, 41종목, 2025-04-01 ~ 2026-04-10, time_decay 트레일링 + momentum_fade + Pure trailing + 고정 -8% 손절 + 돌파폭 ≥ 3% + BE3 + 상한가 청산)
-- 연 거래 건수 247건 / 총 PnL +278,979 / 거래당 PnL +1,130
-- 청산 분포: forced_close 94 (38.1%) / breakeven_stop 54 (21.9%) / **momentum_fade 45 (18.2%)** / stop_loss 37 (15.0%) / limit_up_exit 9 (3.6%) / trailing_stop 8 (3.2%)
+- **Profit Factor 4.817** (1주 가중, 41종목, 2025-04-01 ~ 2026-04-10, time_decay 트레일링 + momentum_fade + Pure trailing + 고정 -8% 손절 + 돌파폭 ≥ 3% + BE3 + 상한가 청산 + max_entry_above_breakout_pct 10%)
+- 연 거래 건수 229건 / 총 PnL +293,532 / 거래당 PnL +1,282
+- 청산 분포: forced_close 90 (39.3%) / breakeven_stop 53 (23.1%) / **momentum_fade 41 (17.9%)** / stop_loss 32 (14.0%) / trailing_stop 8 (3.5%) / limit_up_exit 5 (2.2%)
 - `limit_up_exit` 세부: PnL +99,590 / 거래당 평균 +6.92%
 - **확장 기간 측정** (2025-04-01 ~ 2026-05-12, index_candles 수집 후): PF 2.451 / 262건 / +226,587 — 2026-04-11 ~ 05-12 구간(15건, 시장필터 3건 차단) PnL -52K, KOSPI +31.58% 상승장 환경
 - **거래량 필터 그리드 검증** (2026-05-13): volume_by_time / breakout_surge 모두 baseline PF 3.5 미달 → 비활성 확정. 전일 전체×2.0 거래량 필터가 핵심 엣지.
 - **max_entry_above_breakout_pct 그리드** (2026-05-13): [3%→PF 2.544 / 5%→3.162 / 7%→4.032 / **10%→PF 4.817 / PnL 293K**]. 10%만 기준(PF≥3.5, PnL≥250K) 통과. `max_entry_above_breakout_pct: 0.05 → 0.10` 갱신.
+- **stale_exit 그리드** (2026-05-13): 16조합 전체 PF < baseline×0.95 → 비활성 확정. 최고 PF 3.142(60min/0.01) — PnL +177K로 baseline +294K 대비 −40%. `stale_position_exit_enabled: false` 유지.
+- **afternoon_entry 그리드** (2026-05-13): 8조합 전체 PF < baseline×0.95 → 비활성 확정. 최고 조합(end=14:00/bp=7%/vr=3.0): PF 4.544 / PnL +306K / aft# 46 / aft_PF 2.314 — PF 기준 0.03 미달. `afternoon_entry_enabled: false` 유지.
+- **변동성 기반 포지션 사이징 그리드** (2026-05-13): 12조합(risk 0.5~2.0% × min_pct 10~20%) 전체 MDD 기준 미달 — baseline MDD 0.41% 대비 3.78%~7.87%, PF 1.938~2.001 (baseline 4.817의 42% 수준). 균등 분배 유지 확정. `volatility_sizing_enabled: false` 유지. `reports/volatility_sizing_grid.md`.
 - **이전 baseline**
+  - momentum_fade(thr=-0.008, mp=0.03) + max_entry=5% (2026-05-13): PF 3.73 / 247건 / +278,979 / fc% 38.1%
   - time_decay + momentum_fade(thr=-0.005, mp=0.01) (2026-05-12): PF 3.80 / 250건 / +225,523 / forced_close 27.6% / fade 104건
   - 거래세 0.20% / VI + Order Confirmation (2026-05-12 직전): PF 4.36 / 248건 / forced_close 134 (54%) / trailing_stop 4 (1.6%)
   - 거래세 0.15% 시: PF 4.56 / 248건 / +297,059 (세율 과소 반영 — ADR-009 폐기 수치)
@@ -208,6 +212,10 @@ pytest tests/ --cov=. --cov-report=term-missing
 - [x] 거래량 필터 그리드 + 스크리너 강화 (2026-05-13) — volume_by_time·breakout_surge 비활성 확정. 스크리너: prev_close≥prev_high×97% / 전일 상한가 제외 / 거래대금≥30억 / min_market_cap 1000억 / min_atr_pct 4%.
 - [x] 시장 필터 전략 3-Scenario 검증 (2026-05-13) — A)완전차단 PF 3.727 / B)비활성 PF 2.459 / C)50%축소 PF 2.937 (기존 구간 ~04-10 기준). A) 완전 차단 유지 확정. 약세 시장 거래(C: 88건) PF=0.494 — 사이즈 축소도 손실. `reports/market_filter_strategy.md` 참조.
 - [x] 틱 레벨 돌파 감지 + max_entry_above_breakout_pct 그리드 (2026-05-13) — BreakoutInfo 데이터클래스, _tick_consumer 즉시 진입 경로, 백테스트 breakout_price 반영. 그리드 10%→PF 4.817/PnL 293K 통과 → `max_entry_above_breakout_pct: 0.10` 확정.
+- [x] stale_exit + afternoon_entry 구현 (2026-05-13) — risk_manager.check_stale_position(), _check_buy_time_limit() 오후 창 지원. backtester/engine_worker 통합. config default: 비활성 (검증 후 활성화 예정).
+- [x] max_positions × capital 그리드 (2026-05-13) — equal-capital PF: max_pos=3 PF 1.989(최고) / max_pos=2 PF 1.818 / MDD 19%→13%→10%→8%. 현재 max_pos=3 최적 확정. `reports/positions_capital_grid.md`.
+- [x] stale_exit + afternoon_entry 파라미터 그리드 (2026-05-13) — stale_exit 16조합 전체 PF < baseline×0.95 비활성 확정. afternoon_entry 8조합 전체 비활성 확정 (최고 조합 PF 4.544, 기준 4.576 미달). baseline 갱신: PF 4.817 / 229건 / PnL +293,532. `reports/stale_exit_grid.md`, `reports/afternoon_entry_grid.md`.
+- [x] 변동성 기반 포지션 사이징 구현 + 그리드 (2026-05-13) — settings.py/config.yaml 5개 필드 추가, backtester.py ATR 계산+PnL 재산정, engine_worker.py 사이징 블록. 그리드 12조합 전체 MDD 기준(< baseline 0.41%) 미달 → `volatility_sizing_enabled: false` 유지. `reports/volatility_sizing_grid.md`.
 
 검증 명령어: `docs/verification_commands.md`
 후속 작업: [`docs/phase_followup_todo.md`](docs/phase_followup_todo.md)
