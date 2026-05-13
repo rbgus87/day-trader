@@ -253,6 +253,37 @@ class RiskManager:
             enabled=True,  # 위에서 이미 enabled 체크
         )
 
+    def check_stale_position(
+        self,
+        ticker: str,
+        current_price: float,
+        now: datetime | None = None,
+    ) -> bool:
+        """횡보 포지션 조기 청산 여부.
+
+        보유시간 >= stale_position_check_minutes AND 수익률 < stale_position_min_profit → True
+        """
+        if not getattr(self._config, "stale_position_exit_enabled", False):
+            return False
+        pos = self._positions.get(ticker)
+        if not pos:
+            return False
+        if now is None:
+            now = datetime.now()
+        entry_time = pos.get("entry_time")
+        if entry_time is None:
+            return False
+        hold_min = (now - entry_time).total_seconds() / 60
+        check_min = getattr(self._config, "stale_position_check_minutes", 30)
+        if hold_min < check_min:
+            return False
+        entry_price = pos.get("entry_price", 0)
+        if entry_price <= 0:
+            return False
+        pnl_pct = (current_price - entry_price) / entry_price
+        min_profit = getattr(self._config, "stale_position_min_profit", 0.005)
+        return pnl_pct < min_profit
+
     def check_tp1(self, ticker: str, current_price: float) -> bool:
         pos = self._positions.get(ticker)
         if not pos or pos.get("tp1_hit"):

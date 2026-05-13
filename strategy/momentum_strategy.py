@@ -48,6 +48,9 @@ class MomentumStrategy(BaseStrategy):
             "vwap_fail": 0,
             "signal_emit": 0,
             "entry_too_high": 0,
+            "afternoon_bp_fail": 0,
+            "afternoon_vol_fail": 0,
+            "afternoon_adx_fail": 0,
         }
 
     def reset_diag_counters(self) -> None:
@@ -78,8 +81,9 @@ class MomentumStrategy(BaseStrategy):
     def _check_buy_time_limit(self) -> bool:
         """Phase 3 Day 11.5: 매수 허용 시간 초과 여부. True면 차단.
 
-        `buy_time_end` (예: "11:30") 이후 신호를 차단. 백테스트는 주입된
-        `_backtest_time`, 실시간은 `datetime.now().time()` 기준.
+        afternoon_entry_enabled=True이면 buy_time_end~afternoon_end 구간은 허용
+        (강화 조건은 generate_signal 내에서 별도 적용).
+        afternoon_entry_enabled=False이면 buy_time_end 이후 전면 차단.
         """
         if not getattr(self._config, "buy_time_limit_enabled", False):
             return False
@@ -90,7 +94,34 @@ class MomentumStrategy(BaseStrategy):
             return False
         limit = _time(int(m.group(1)), int(m.group(2)))
         now = self._backtest_time if self._backtest_time else datetime.now().time()
-        return now >= limit
+        if now < limit:
+            return False  # 오전 → 허용
+        # now >= buy_time_end (12:00 이후)
+        if not getattr(self._config, "afternoon_entry_enabled", False):
+            return True  # 오후 비활성 → 차단
+        # 오후 진입 활성: afternoon_end 확인
+        m2 = re.match(r"(\d+):(\d+)", str(getattr(self._config, "afternoon_end", "14:00")))
+        if not m2:
+            return True
+        end_time = _time(int(m2.group(1)), int(m2.group(2)))
+        return now >= end_time  # afternoon_end 이후 차단
+
+    def _is_afternoon_window(self) -> bool:
+        """buy_time_end ~ afternoon_end 사이 여부 (오후 강화 조건 적용 구간)."""
+        if not getattr(self._config, "afternoon_entry_enabled", False):
+            return False
+        import re
+        from datetime import datetime, time as _time
+        m1 = re.match(r"(\d+):(\d+)", str(self._config.buy_time_end))
+        if not m1:
+            return False
+        start = _time(int(m1.group(1)), int(m1.group(2)))
+        m2 = re.match(r"(\d+):(\d+)", str(getattr(self._config, "afternoon_end", "14:00")))
+        if not m2:
+            return False
+        end = _time(int(m2.group(1)), int(m2.group(2)))
+        now = self._backtest_time if self._backtest_time else datetime.now().time()
+        return start <= now < end
 
     def generate_signal(
         self,
@@ -117,11 +148,20 @@ class MomentumStrategy(BaseStrategy):
             self.diag_counters["prev_day_missing"] += 1
             return None
 
+        # 오후 강화 조건 구간 여부 (12:00~afternoon_end)
+        _aft = self._is_afternoon_window()
+
         # 1) 가격 돌파 확인 (ADR-016: 최소 돌파폭 적용)
         min_bp = getattr(self._config, "min_breakout_pct", 0.0)
+        if _aft:
+            aft_bp = getattr(self._config, "afternoon_min_breakout_pct", 0.05)
+            if aft_bp > min_bp:
+                min_bp = aft_bp  # 오후 구간 임계값 상향
         breakout_pct = (current_price - self._prev_day_high) / self._prev_day_high
         if breakout_pct < min_bp:
             self.diag_counters["breakout_fail"] += 1
+            if _aft:
+                self.diag_counters["afternoon_bp_fail"] += 1
             logger.debug(
                 f"[BREAKOUT] 미달: {tick['ticker']} {breakout_pct:.2%} < {min_bp:.2%}"
             )
@@ -183,10 +223,17 @@ class MomentumStrategy(BaseStrategy):
             else:
                 required_volume = self._prev_day_volume * self._config.momentum_volume_ratio
         else:
-            required_volume = self._prev_day_volume * self._config.momentum_volume_ratio
+            _eff_vol_ratio = self._config.momentum_volume_ratio
+            if _aft:
+                _aft_vr = getattr(self._config, "afternoon_min_volume_ratio", 3.0)
+                if _aft_vr > _eff_vol_ratio:
+                    _eff_vol_ratio = _aft_vr
+            required_volume = self._prev_day_volume * _eff_vol_ratio
 
         if cum_volume < required_volume:
             self.diag_counters["volume_fail"] += 1
+            if _aft:
+                self.diag_counters["afternoon_vol_fail"] += 1
             logger.debug(
                 f"[VOLUME] 미달: {tick['ticker']} "
                 f"cum={cum_volume:,.0f} < req={required_volume:,.0f}"
@@ -205,8 +252,12 @@ class MomentumStrategy(BaseStrategy):
             return None
 
         # 4) ADX 추세 필터 (카운팅은 _check_adx 내부)
-        if self._config.adx_enabled and not self._check_adx(candles, tick["ticker"]):
-            return None
+        if self._config.adx_enabled:
+            _aft_adx = getattr(self._config, "afternoon_min_adx", 25.0) if _aft else None
+            if not self._check_adx(candles, tick["ticker"], min_adx=_aft_adx):
+                if _aft and _aft_adx is not None:
+                    self.diag_counters["afternoon_adx_fail"] += 1
+                return None
 
         # 5) RVol 거래량 급증 필터
         if self._config.rvol_enabled and not self._check_rvol(candles):
@@ -243,7 +294,7 @@ class MomentumStrategy(BaseStrategy):
             reason=f"전일 고점({self._prev_day_high:,.0f}) 돌파 + 거래량 {self._config.momentum_volume_ratio:.1f}배 확인",
         )
 
-    def _check_adx(self, candles: pd.DataFrame, ticker: str = "") -> bool:
+    def _check_adx(self, candles: pd.DataFrame, ticker: str = "", min_adx: float | None = None) -> bool:
         """ADX 추세 강도 필터. 캔들 부족 또는 계산 실패 시 False.
 
         진입 후보(BREAKOUT + 거래량 통과) 단계에서만 호출되므로 진단 로그를
@@ -274,15 +325,16 @@ class MomentumStrategy(BaseStrategy):
                 self.diag_counters["adx_fail"] += 1
                 logger.debug(f"[ADX] NaN: {ticker}")
                 return False
-            if current_adx < self._config.adx_min:
+            _adx_threshold = min_adx if min_adx is not None else self._config.adx_min
+            if current_adx < _adx_threshold:
                 self.diag_counters["adx_fail"] += 1
                 logger.debug(
-                    f"[ADX] 미달: {ticker} {current_adx:.1f} < {self._config.adx_min}"
+                    f"[ADX] 미달: {ticker} {current_adx:.1f} < {_adx_threshold}"
                 )
                 return False
             self.diag_counters["adx_pass"] += 1
             logger.debug(
-                f"[ADX] 통과: {ticker} {current_adx:.1f} >= {self._config.adx_min}"
+                f"[ADX] 통과: {ticker} {current_adx:.1f} >= {_adx_threshold}"
             )
             return True
         except Exception as e:
