@@ -1,6 +1,6 @@
 # CLAUDE.md — day-trader
 
-> **최종 수정**: 2026-05-12 (time_decay + momentum_fade — forced_close 감소)
+> **최종 수정**: 2026-05-13 (호가 OBI 필터 구현 + 페이퍼 통합 점검 완료)
 > 이 문서는 **백테스트에서 검증된 사실만** 기재한다.
 
 ---
@@ -219,9 +219,23 @@ pytest tests/ --cov=. --cov-report=term-missing
 - [x] stale_exit + afternoon_entry 파라미터 그리드 (2026-05-13) — stale_exit 16조합 전체 PF < baseline×0.95 비활성 확정. afternoon_entry 8조합 전체 비활성 확정 (최고 조합 PF 4.544, 기준 4.576 미달). baseline 갱신: PF 4.817 / 229건 / PnL +293,532. `reports/stale_exit_grid.md`, `reports/afternoon_entry_grid.md`.
 - [x] 변동성 기반 포지션 사이징 구현 + 그리드 (2026-05-13) — settings.py/config.yaml 5개 필드 추가, backtester.py ATR 계산+PnL 재산정, engine_worker.py 사이징 블록. 그리드 12조합 전체 MDD 기준(< baseline 0.41%) 미달 → `volatility_sizing_enabled: false` 유지. `reports/volatility_sizing_grid.md`.
 - [x] ATR 비례 손절 + trail 범위 3단계 그리드 (2026-05-13) — Stage1 atr_stop(36조합): mult=2.0 → PF 4.791/SL#30. Stage2 trail범위(9조합): min=0.025/max=0.08 → PF 4.881/SL#27. Stage3 breakeven(9조합): 현행(3%/1%) 유지. baseline PF 4.817 → **4.881** (+1.3%), SL# 32→27(-15.6%). `reports/atr_stop_grid.md`.
+- [x] 호가(0D) 구독 + OBI 필터 구현 (2026-05-13) — `core/orderbook.py` (OrderbookSnapshot/OrderbookManager), kiwoom_ws.py 0D 파싱, engine_worker.py OBI/스프레드/매도벽 3단계 진입 게이트. 실시간 전용 — 백테스트 baseline PF 4.881 변동 없음. 0D 필드 코드 미확정(TODO 상수), `obi_filter_enabled: false` (0D 수신 확인 전). `docs/obi_activation_plan.md` 참조.
+- [x] 페이퍼 운용 전 통합 점검 (2026-05-13) — `scripts/pre_paper_check.py` (파라미터/DB/universe/REST/WS 6개 항목). `scripts/test_nxt_api.py` (NXT API 실측, 장외 시간 수동 실행). `docs/nxt_api_investigation.md` (NXT 조사, 코드 미구현).
+
+---
+
+## 확인 필요 항목 (페이퍼 운용 중)
+
+| 항목 | 현황 | 조치 |
+|------|------|------|
+| 0D 필드 코드 | TODO 상수 (추정값) | 장 시간 raw 로그 수집 후 `core/orderbook.py` 수정 |
+| OBI 필터 실효성 | 비활성 (`obi_filter_enabled: false`) | Phase 1→2→3 순서로 활성화 (`docs/obi_activation_plan.md`) |
+| NXT API 지원 | 미확인 | NXT 시간에 `python scripts/test_nxt_api.py` 실행 |
+| 확장 기간 PF | 2026-04-11~05-12 구간 PF 1.08 (KOSPI +31.58% 상승장) | 페이퍼 실측으로 실시간 PF 추적 |
 
 검증 명령어: `docs/verification_commands.md`
 후속 작업: [`docs/phase_followup_todo.md`](docs/phase_followup_todo.md)
+OBI 활성화: [`docs/obi_activation_plan.md`](docs/obi_activation_plan.md)
 
 ## 일일 운영
 
