@@ -663,14 +663,18 @@ class Backtester:
         for date, day_candles in df.groupby("date"):
             day_df = day_candles.drop(columns=["date"]).reset_index(drop=True)
 
-            # 시장 필터: 약세 시장 종목은 해당 날짜 매매 건너뛰기
+            # 시장 필터: 약세 시장 종목은 해당 날짜 매매 건너뛰기 (또는 사이즈 축소)
             skip_day = False
+            size_factor = 1.0
             if market_filter_enabled and self._ticker_market in ("kospi", "kosdaq"):
                 date_key = date.strftime("%Y%m%d")
                 strong = self._market_strong_by_date.get(date_key)
                 # strong이 없으면(데이터 누락) 보수적으로 허용
                 if strong is not None and not strong.get(self._ticker_market, True):
-                    skip_day = True
+                    if getattr(self._config, "market_regime_reduce_enabled", False):
+                        size_factor = getattr(self._config, "market_regime_reduce_size", 0.5)
+                    else:
+                        skip_day = True
 
             # Phase 2 Day 10: 블랙리스트 — 최근 lookback일 내 손실 ≥ threshold면 당일 skip
             if not skip_day and blacklist_enabled:
@@ -716,6 +720,10 @@ class Backtester:
             self._setup_strategy_day(strategy, day_df, prev_day_df)
             result = self.run_backtest(day_df, strategy)
             day_trades = result.get("trades", [])
+            if size_factor != 1.0:
+                for t in day_trades:
+                    t["pnl"] = t.get("pnl", 0.0) * size_factor
+                    t["size_factor"] = size_factor
             all_trades.extend(day_trades)
             # Phase 3 Day 11.5: 당일 PnL 집계 (연속 손실 휴식용)
             daily_pnl_by_date[date] = sum(t.get("pnl", 0.0) for t in day_trades)

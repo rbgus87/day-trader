@@ -166,6 +166,10 @@ class TradingConfig:
     breakout_volume_surge_enabled: bool = False
     breakout_volume_surge_ratio: float = 2.0
 
+    # 시장 필터 약세 시 포지션 축소 (Scenario C) — true면 완전 차단 대신 사이즈 50%
+    market_regime_reduce_enabled: bool = False
+    market_regime_reduce_size: float = 0.5
+
 
 @dataclass(frozen=True)
 class ScreenerConfig:

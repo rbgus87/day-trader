@@ -23,7 +23,7 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 
 1. **거래량 비율 2.0** — PF 영향 1.89 (비활성 시 PF 1.38)
 2. **오전 매수 제한 12:00** — PF 영향 2.03 (비활성 시 PF 1.24)
-3. **시장 필터 MA5** — PF 영향 1.60 (비활성 시 PF 2.85, 2026-05-11 재측정 / 41종목 baseline)
+3. **시장 필터 MA5** — PF 영향 1.52 (비활성 시 PF 2.459, 2026-05-13 3-scenario 재측정 / 기존 구간 ~04-10 기준)
 
 ### 진입 조건
 
@@ -205,6 +205,7 @@ pytest tests/ --cov=. --cov-report=term-missing
 - [x] Time-Decayed Trailing + Momentum Fade Exit (2026-05-12) — forced_close 비율 27.6% (이전 54%), 신규 청산 경로 momentum_fade 104건 (41.6%). PF 3.80 (이전 4.36 대비 −12.8%, PnL +225,523 — 자리 점유 해소 vs 수익 감소 트레이드오프).
 - [x] Momentum Fade 파라미터 갱신 (2026-05-13) — threshold −0.005→−0.008, min_profit 0.01→0.03. PF 3.73 / forced_close 38.1% / PnL +278,979 / fade 45건(18.2%). 이전 대비 PnL +53K(+23%) 개선, fade 건수 −59건 감소.
 - [x] 거래량 필터 그리드 + 스크리너 강화 (2026-05-13) — volume_by_time·breakout_surge 비활성 확정. 스크리너: prev_close≥prev_high×97% / 전일 상한가 제외 / 거래대금≥30억 / min_market_cap 1000억 / min_atr_pct 4%.
+- [x] 시장 필터 전략 3-Scenario 검증 (2026-05-13) — A)완전차단 PF 3.727 / B)비활성 PF 2.459 / C)50%축소 PF 2.937 (기존 구간 ~04-10 기준). A) 완전 차단 유지 확정. 약세 시장 거래(C: 88건) PF=0.494 — 사이즈 축소도 손실. `reports/market_filter_strategy.md` 참조.
 
 검증 명령어: `docs/verification_commands.md`
 후속 작업: [`docs/phase_followup_todo.md`](docs/phase_followup_todo.md)
