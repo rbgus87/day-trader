@@ -30,17 +30,13 @@ from datetime import date
 from itertools import product
 from pathlib import Path
 
-import yaml
-
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from loguru import logger
 logger.remove()
 logger.add(sys.stderr, level="WARNING")
 
-from backtest.backtester import Backtester, build_market_strong_by_date
-from config.settings import AppConfig, BacktestConfig
-from data.db_manager import DbManager
+from backtest.backtester import Backtester
 from strategy.momentum_strategy import MomentumStrategy
 
 
@@ -150,49 +146,24 @@ def _compute_result(vbt_ratio, surge_ratio, all_trades: list) -> dict:
 # ────────────────────────────────────────────────────────────────────────
 
 async def load_candles_and_market(start: str, end: str):
-    app_config = AppConfig.from_yaml()
-    base_config = app_config.trading
-    bt_cfg_raw = yaml.safe_load(
-        open("config.yaml", encoding="utf-8")
-    ).get("backtest", {})
-    backtest_config = BacktestConfig(
-        commission=bt_cfg_raw.get("commission", 0.00015),
-        tax=bt_cfg_raw.get("tax", 0.0020),
-        slippage=bt_cfg_raw.get("slippage", 0.0003),
-    )
-
-    uni = yaml.safe_load(open("config/universe_backtest.yaml", encoding="utf-8"))
-    stocks = uni.get("stocks", [])
-    ticker_to_market = {s["ticker"]: s.get("market", "unknown") for s in stocks}
-
-    db = DbManager(app_config.db_path)
-    await db.init()
-    bt_loader = Backtester(db=db, config=base_config, backtest_config=backtest_config)
-
-    print(f"[LOAD] candles ({len(stocks)} stocks, {start}~{end})...", flush=True)
-    candles_cache: dict = {}
-    for i, s in enumerate(stocks, 1):
-        tk = s["ticker"]
-        candles = await bt_loader.load_candles(tk, start, f"{end} 23:59:59")
-        if not candles.empty:
-            candles_cache[tk] = candles
-        if i % 10 == 0:
-            print(f"  loaded {i}/{len(stocks)}", flush=True)
-    print(f"[LOAD] done {len(candles_cache)}/{len(stocks)}", flush=True)
-    await db.close()
-
-    market_map = build_market_strong_by_date(
-        app_config.db_path, ma_length=base_config.market_ma_length
-    )
-
-    # base_config에서 신규 필터 비활성 (그리드에서 override)
+    from config.settings import AppConfig
+    from utils.grid_runner import load_candle_cache
+    cache = await load_candle_cache(start, end)
+    # 신규 필터 비활성 (그리드에서 override)
     base_config_disabled = dataclasses.replace(
-        base_config,
+        cache.base_config,
         volume_by_time_enabled=False,
         breakout_volume_surge_enabled=False,
     )
-
-    return base_config_disabled, backtest_config, candles_cache, ticker_to_market, market_map, app_config.db_path
+    app_config = AppConfig.from_yaml()
+    return (
+        base_config_disabled,
+        cache.bt_config,
+        cache.candles,
+        cache.ticker_to_market,
+        cache.market_map,
+        app_config.db_path,
+    )
 
 
 # ────────────────────────────────────────────────────────────────────────

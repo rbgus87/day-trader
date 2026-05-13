@@ -1,35 +1,29 @@
-"""scripts/grid_breakout_entry.py
+"""scripts/grid_breakout_entry.py — max_entry_above_breakout_pct 그리드 측정.
 
-max_entry_above_breakout_pct 그리드 측정.
 값: [0.03, 0.05, 0.07, 0.10]
+두 기간(기존/확장) 동시 측정.
 
-실행:
+사용:
     python -u scripts/grid_breakout_entry.py
 """
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import sys
 from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import yaml
 from loguru import logger
-
 logger.remove()
 logger.add(sys.stderr, level="WARNING")
 
-from backtest.backtester import Backtester, build_market_strong_by_date
-from config.settings import AppConfig, BacktestConfig, TradingConfig
-from core.exit_logic import TimeDecayPhase
-from data.db_manager import DbManager
+from backtest.backtester import Backtester
 from strategy.momentum_strategy import MomentumStrategy
+from utils.grid_runner import GridCache, load_candle_cache
 
-# ---------------------------------------------------------------------------
-# 상수
-# ---------------------------------------------------------------------------
 OLD_START = "2025-04-01"
 OLD_END   = "2026-04-10"
 NEW_START = "2026-04-11"
@@ -38,43 +32,34 @@ NEW_END   = "2026-05-12"
 GRID_VALUES = [0.03, 0.05, 0.07, 0.10]
 
 
-def make_config(max_entry_pct: float, base: TradingConfig) -> TradingConfig:
-    import dataclasses
-    return dataclasses.replace(base, max_entry_above_breakout_pct=max_entry_pct)
-
-
 async def run_period(
-    config: TradingConfig,
-    candles_cache: dict,
-    ticker_to_market: dict,
-    market_map: dict,
-    backtest_config: BacktestConfig,
+    pct: float,
+    cache: GridCache,
     start_date: str,
     end_date: str,
 ) -> tuple[list[dict], int]:
-    """단일 기간 백테스트 실행. (거래 목록, entry_too_high 차단 합계) 반환."""
+    """단일 max_entry_pct × 단일 기간 → (trades, entry_too_high 차단수)."""
     import pandas as pd
 
-    all_trades: list[dict] = []
-    total_blocks = 0
+    cfg = dataclasses.replace(cache.base_config, max_entry_above_breakout_pct=pct)
     sd = date.fromisoformat(start_date)
     ed = date.fromisoformat(end_date)
 
-    for ticker, candles in candles_cache.items():
+    all_trades: list[dict] = []
+    total_blocks = 0
+
+    for ticker, candles in cache.candles.items():
         mask = (candles["ts"].dt.date >= sd) & (candles["ts"].dt.date <= ed)
         c = candles[mask].copy()
         if c.empty:
             continue
 
-        market = ticker_to_market.get(ticker, "unknown")
+        market = cache.ticker_to_market.get(ticker, "unknown")
         bt = Backtester(
-            db=None,
-            config=config,
-            backtest_config=backtest_config,
-            ticker_market=market,
-            market_strong_by_date=market_map,
+            db=None, config=cfg, backtest_config=cache.bt_config,
+            ticker_market=market, market_strong_by_date=cache.market_map,
         )
-        strategy = MomentumStrategy(config)
+        strategy = MomentumStrategy(cfg)
         result = await bt.run_multi_day_cached(ticker, c, strategy)
         for t in result.get("trades", []):
             t["ticker"] = ticker
@@ -85,89 +70,60 @@ async def run_period(
 
 
 def calc_stats(trades: list[dict]) -> dict:
+    import pandas as pd
     if not trades:
         return {"trades": 0, "pf": float("nan"), "pnl": 0, "fc_pct": 0.0}
-    import pandas as pd
     df = pd.DataFrame(trades)
-    pnl = df["pnl"].sum()
     gp = df[df["pnl"] > 0]["pnl"].sum()
     gl = abs(df[df["pnl"] < 0]["pnl"].sum())
     pf = gp / gl if gl > 0 else float("inf")
     fc = (df.get("exit_reason", pd.Series()) == "forced_close").sum() / max(len(df), 1)
-    return {"trades": len(df), "pf": round(pf, 3), "pnl": int(pnl), "fc_pct": round(fc * 100, 1)}
+    return {
+        "trades": len(df),
+        "pf": round(pf, 3),
+        "pnl": int(df["pnl"].sum()),
+        "fc_pct": round(fc * 100, 1),
+    }
 
 
 async def main() -> None:
-    app_config = AppConfig.from_yaml()
-    base_config = app_config.trading
+    # 캔들 로드 (전 기간, 1회)
+    cache = await load_candle_cache("2025-04-01", "2026-05-12")
 
-    bt_cfg_raw = yaml.safe_load(open("config.yaml", encoding="utf-8")).get("backtest", {})
-    backtest_config = BacktestConfig(
-        commission=bt_cfg_raw.get("commission", 0.00015),
-        tax=bt_cfg_raw.get("tax", 0.0020),
-        slippage=bt_cfg_raw.get("slippage", 0.0003),
-    )
-
-    uni = yaml.safe_load(open("config/universe_backtest.yaml", encoding="utf-8"))
-    stocks = uni.get("stocks", [])
-    ticker_to_market = {s["ticker"]: s.get("market", "unknown") for s in stocks}
-
-    print(f"종목 수: {len(stocks)}")
-
-    db = DbManager(app_config.db_path)
-    await db.init()
-    bt_loader = Backtester(db=db, config=base_config, backtest_config=backtest_config)
-
-    print(f"[LOAD] candles (2025-04-01 ~ 2026-05-12) ...")
-    candles_cache: dict = {}
-    for i, s in enumerate(stocks, 1):
-        tk = s["ticker"]
-        c = await bt_loader.load_candles(tk, "2025-04-01", "2026-05-12 23:59:59")
-        if not c.empty:
-            candles_cache[tk] = c
-        if i % 10 == 0:
-            print(f"  loaded {i}/{len(stocks)}", flush=True)
-    await db.close()
-
-    print(f"[LOAD] done {len(candles_cache)}/{len(stocks)}")
-
-    market_map = build_market_strong_by_date(app_config.db_path, ma_length=base_config.market_ma_length)
-
-    # ---------------------------------------------------------------------------
-    # 기존 구간
-    # ---------------------------------------------------------------------------
     print()
-    print("=== 기존 구간 (2025-04-01 ~ 2026-04-10) ===")
-    print(f"{'max_pct':>10} {'trades':>7} {'PF':>6} {'PnL':>10} {'too_high':>10} {'fc%':>6}")
-    print("-" * 60)
+    print("=== 기존 구간 (2025-04-01 ~ 2026-04-10) ===", flush=True)
+    print(f"{'max_pct':>10} {'trades':>7} {'PF':>6} {'PnL':>10} {'too_high':>10} {'fc%':>6}", flush=True)
+    print("-" * 60, flush=True)
 
     old_rows = []
     for pct in GRID_VALUES:
-        cfg = make_config(pct, base_config)
-        trades, blocks = await run_period(cfg, candles_cache, ticker_to_market, market_map, backtest_config, OLD_START, OLD_END)
+        trades, blocks = await run_period(pct, cache, OLD_START, OLD_END)
         s = calc_stats(trades)
         old_rows.append({**s, "max_entry_pct": pct, "blocks": blocks})
-        print(f"{pct:>10.0%} {s['trades']:>7} {s['pf']:>6.3f} {s['pnl']:>10,} {blocks:>10} {s['fc_pct']:>6.1f}%", flush=True)
+        print(
+            f"{pct:>10.0%} {s['trades']:>7} {s['pf']:>6.3f} "
+            f"{s['pnl']:>10,} {blocks:>10} {s['fc_pct']:>6.1f}%",
+            flush=True,
+        )
 
-    # ---------------------------------------------------------------------------
-    # 확장 구간
-    # ---------------------------------------------------------------------------
     print()
-    print("=== 확장 구간 (2026-04-11 ~ 2026-05-12) ===")
-    print(f"{'max_pct':>10} {'trades':>7} {'PF':>6} {'PnL':>10} {'too_high':>10} {'fc%':>6}")
-    print("-" * 60)
+    print("=== 확장 구간 (2026-04-11 ~ 2026-05-12) ===", flush=True)
+    print(f"{'max_pct':>10} {'trades':>7} {'PF':>6} {'PnL':>10} {'too_high':>10} {'fc%':>6}", flush=True)
+    print("-" * 60, flush=True)
 
     new_rows = []
     for pct in GRID_VALUES:
-        cfg = make_config(pct, base_config)
-        trades, blocks = await run_period(cfg, candles_cache, ticker_to_market, market_map, backtest_config, NEW_START, NEW_END)
+        trades, blocks = await run_period(pct, cache, NEW_START, NEW_END)
         s = calc_stats(trades)
         new_rows.append({**s, "max_entry_pct": pct, "blocks": blocks})
-        print(f"{pct:>10.0%} {s['trades']:>7} {s['pf']:>6.3f} {s['pnl']:>10,} {blocks:>10} {s['fc_pct']:>6.1f}%", flush=True)
+        print(
+            f"{pct:>10.0%} {s['trades']:>7} {s['pf']:>6.3f} "
+            f"{s['pnl']:>10,} {blocks:>10} {s['fc_pct']:>6.1f}%",
+            flush=True,
+        )
 
     _write_report(old_rows, new_rows)
-    print()
-    print("리포트: reports/grid_breakout_entry.md")
+    print("\n리포트: reports/grid_breakout_entry.md", flush=True)
 
 
 def _write_report(old: list[dict], new: list[dict]) -> None:
@@ -206,7 +162,6 @@ def _write_report(old: list[dict], new: list[dict]) -> None:
         "- 기존 구간 PF >= 3.5, PnL >= 250K 유지",
         "- entry_too_high 차단건수: 엄격할수록 PF 영향 확인",
     ]
-
     out = Path(__file__).parent.parent / "reports" / "grid_breakout_entry.md"
     out.parent.mkdir(exist_ok=True)
     out.write_text("\n".join(lines), encoding="utf-8")
