@@ -76,15 +76,14 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 
 ---
 
-## 백테스트 결과 (baseline, 2026-05-13 momentum_fade 파라미터 갱신)
+## 백테스트 결과 (baseline, 2026-05-13)
 
 - **Profit Factor 3.73** (1주 가중, 41종목, 2025-04-01 ~ 2026-04-10, time_decay 트레일링 + momentum_fade + Pure trailing + 고정 -8% 손절 + 돌파폭 ≥ 3% + BE3 + 상한가 청산)
-- 연 거래 건수 247건
-- 총 PnL +278,979
-- 거래당 PnL +1,130
+- 연 거래 건수 247건 / 총 PnL +278,979 / 거래당 PnL +1,130
 - 청산 분포: forced_close 94 (38.1%) / breakeven_stop 54 (21.9%) / **momentum_fade 45 (18.2%)** / stop_loss 37 (15.0%) / limit_up_exit 9 (3.6%) / trailing_stop 8 (3.2%)
 - `limit_up_exit` 세부: PnL +99,590 / 거래당 평균 +6.92%
 - **확장 기간 측정** (2025-04-01 ~ 2026-05-12, index_candles 수집 후): PF 2.451 / 262건 / +226,587 — 2026-04-11 ~ 05-12 구간(15건, 시장필터 3건 차단) PnL -52K, KOSPI +31.58% 상승장 환경
+- **거래량 필터 그리드 검증** (2026-05-13): volume_by_time / breakout_surge 모두 baseline PF 3.5 미달 → 비활성 확정. 전일 전체×2.0 거래량 필터가 핵심 엣지.
 - **이전 baseline**
   - time_decay + momentum_fade(thr=-0.005, mp=0.01) (2026-05-12): PF 3.80 / 250건 / +225,523 / forced_close 27.6% / fade 104건
   - 거래세 0.20% / VI + Order Confirmation (2026-05-12 직전): PF 4.36 / 248건 / forced_close 134 (54%) / trailing_stop 4 (1.6%)
@@ -205,6 +204,7 @@ pytest tests/ --cov=. --cov-report=term-missing
 - [x] Order Confirmation Pipeline (2026-05-12) — real_mode WS '00' 체결통보까지 settle_sell 보류. OrderTracker 재진입 가드. paper_mode/backtester 영향 없음. 백테스트 baseline PF 4.36 변동 없음.
 - [x] Time-Decayed Trailing + Momentum Fade Exit (2026-05-12) — forced_close 비율 27.6% (이전 54%), 신규 청산 경로 momentum_fade 104건 (41.6%). PF 3.80 (이전 4.36 대비 −12.8%, PnL +225,523 — 자리 점유 해소 vs 수익 감소 트레이드오프).
 - [x] Momentum Fade 파라미터 갱신 (2026-05-13) — threshold −0.005→−0.008, min_profit 0.01→0.03. PF 3.73 / forced_close 38.1% / PnL +278,979 / fade 45건(18.2%). 이전 대비 PnL +53K(+23%) 개선, fade 건수 −59건 감소.
+- [x] 거래량 필터 그리드 + 스크리너 강화 (2026-05-13) — volume_by_time·breakout_surge 비활성 확정. 스크리너: prev_close≥prev_high×97% / 전일 상한가 제외 / 거래대금≥30억 / min_market_cap 1000억 / min_atr_pct 4%.
 
 검증 명령어: `docs/verification_commands.md`
 후속 작업: [`docs/phase_followup_todo.md`](docs/phase_followup_todo.md)
