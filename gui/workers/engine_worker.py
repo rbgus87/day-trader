@@ -2182,8 +2182,47 @@ class EngineWorker(QThread):
         except Exception as e:
             logger.error(f"[SCHED] 시장 필터 재갱신 실패: {e}")
 
+    async def _refresh_index_candles(self) -> None:
+        """KOSPI(001)/KOSDAQ(101) 지수 일봉을 index_candles에 갱신 (INSERT OR REPLACE).
+
+        08:05 _safe_refresh_ohlcv에서 호출 — 시장 필터 MA5 계산이 최신 데이터를 쓰도록 보장.
+        """
+        import sqlite3 as _sqlite3
+        db_path = self._config.db_path
+        for code in ("001", "101"):
+            try:
+                data = await self._rest_client.get_index_daily(code)
+                items = data.get("inds_dt_pole_qry") or []
+                if not items:
+                    logger.warning(f"[INDEX] {code} 응답 없음")
+                    continue
+                conn = _sqlite3.connect(db_path)
+                try:
+                    for c in items:
+                        conn.execute(
+                            "INSERT OR REPLACE INTO index_candles "
+                            "(index_code, dt, open, high, low, close, volume) "
+                            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                            (
+                                code,
+                                c["dt"],
+                                float(c["open_pric"]) / 100,
+                                float(c["high_pric"]) / 100,
+                                float(c["low_pric"]) / 100,
+                                float(c["cur_prc"]) / 100,
+                                int(c["trde_qty"]),
+                            ),
+                        )
+                    conn.commit()
+                finally:
+                    conn.close()
+                logger.info(f"[INDEX] {code} 갱신 완료: {len(items)}건")
+            except Exception as exc:
+                logger.error(f"[INDEX] {code} 갱신 실패: {exc}")
+
     async def _safe_refresh_ohlcv(self):
         try:
+            await self._refresh_index_candles()
             await self._refresh_prev_day_ohlcv()
             # ADR-008: 성공 알림
             if self._notifier and self._config.notifications.ohlcv_refresh:
