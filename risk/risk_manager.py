@@ -7,6 +7,7 @@ from loguru import logger
 
 from config.settings import TradingConfig
 from core.exit_logic import compute_momentum_fade, get_time_decay_multiplier
+from core.position import Position, PositionStatus, ExitPhase
 from data.db_manager import DbManager
 from notification.telegram_bot import TelegramNotifier
 
@@ -23,7 +24,7 @@ class RiskManager:
         self._config = trading_config
         self._db = db
         self._notifier = notifier
-        self._positions: dict[str, dict] = {}
+        self._positions: dict[str, Position] = {}
         self._daily_pnl: float = 0.0
         self._daily_capital: float = 0.0
         self._halted: bool = False
@@ -36,21 +37,21 @@ class RiskManager:
         status: str = "pending",
     ) -> None:
         now = datetime.now()
-        self._positions[ticker] = {
-            "entry_price": entry_price,
-            "stop_loss": stop_loss,
-            "qty": qty,
-            "remaining_qty": qty,
-            "tp1_price": tp1_price,
-            "trailing_pct": trailing_pct or self._config.trailing_stop_pct,
-            "highest_price": entry_price,
-            "tp1_hit": False,
-            "entry_time": now,
-            "strategy": strategy,
-            "limit_up_price": limit_up_price,
-            "limit_up_exit_failed": False,
-            "status": status,  # 신규: "pending" | "confirmed"
-        }
+        initial_status = PositionStatus.CONFIRMED if status == "confirmed" else PositionStatus.PENDING
+        self._positions[ticker] = Position(
+            ticker=ticker,
+            entry_price=entry_price,
+            qty=qty,
+            remaining_qty=qty,
+            stop_loss=stop_loss,
+            strategy=strategy,
+            entry_time=now,
+            status=initial_status,
+            exit_phase=ExitPhase.NONE,
+            tp1_price=tp1_price,
+            trailing_pct=trailing_pct or self._config.trailing_stop_pct,
+            limit_up_price=limit_up_price,
+        )
         # 자본 차감
         cost = entry_price * qty
         self._daily_capital -= cost
@@ -74,26 +75,26 @@ class RiskManager:
             logger.warning(f"positions INSERT 실패 ({ticker}): {e}")
 
     def mark_confirmed(self, ticker: str) -> None:
-        """주문 체결 확인 후 status를 'confirmed'로 갱신. 알 수 없는 ticker는 무시."""
+        """주문 체결 확인 후 status를 CONFIRMED로 갱신. 알 수 없는 ticker는 무시."""
         pos = self._positions.get(ticker)
-        if pos is not None:
-            pos["status"] = "confirmed"
+        if pos is not None and pos.status == PositionStatus.PENDING:
+            pos.confirm()
 
     def remove_position(self, ticker: str) -> None:
         self._positions.pop(ticker, None)
 
-    def get_position(self, ticker: str) -> dict | None:
+    def get_position(self, ticker: str) -> Position | None:
         return self._positions.get(ticker)
 
-    def get_open_positions(self) -> dict[str, dict]:
-        """보유 중인 포지션 목록 반환 (읽기 전용 복사본)."""
-        return {k: {**v} for k, v in self._positions.items() if v.get("remaining_qty", 0) > 0}
+    def get_open_positions(self) -> dict[str, Position]:
+        """보유 중인 포지션 목록 반환."""
+        return {k: v for k, v in self._positions.items() if v.is_active and v.remaining_qty > 0}
 
     def check_stop_loss(self, ticker: str, current_price: float) -> bool:
         pos = self._positions.get(ticker)
         if not pos:
             return False
-        return current_price <= pos["stop_loss"]
+        return current_price <= pos.stop_loss
 
     def check_limit_up(self, ticker: str, current_price: float) -> bool:
         """상한가 도달 여부. limit_up_price 없거나 기능 비활성이면 False."""
@@ -102,11 +103,11 @@ class RiskManager:
         pos = self._positions.get(ticker)
         if not pos:
             return False
-        lu = pos.get("limit_up_price")
+        lu = pos.limit_up_price
         if not lu or lu <= 0:
             return False
-        # 이미 매도 실패 후 stop 상향된 상태면 재시도 방지
-        if pos.get("limit_up_exit_failed"):
+        # LIMIT_UP_FAILED 상태면 재시도 방지
+        if pos.exit_phase == ExitPhase.LIMIT_UP_FAILED:
             return False
         return current_price >= lu
 
@@ -119,14 +120,13 @@ class RiskManager:
         pos = self._positions.get(ticker)
         if not pos:
             return None
-        lu = pos.get("limit_up_price")
+        lu = pos.limit_up_price
         if not lu or lu <= 0:
             return None
         floor_pct = getattr(self._config, "limit_up_stop_floor_pct", 0.99)
         new_stop = lu * floor_pct
-        pos["stop_loss"] = max(pos["stop_loss"], new_stop)
-        pos["limit_up_exit_failed"] = True
-        return pos["stop_loss"]
+        pos.mark_limit_up_failed(new_stop)  # → ExitPhase.LIMIT_UP_FAILED + stop 상향
+        return pos.stop_loss
 
     def update_trailing_stop(
         self,
@@ -139,10 +139,10 @@ class RiskManager:
         if not pos:
             return
         # ADR-010: atr_tp_enabled=false → Pure trailing (tp1_hit 없이도 trailing 활성)
-        if not pos.get("tp1_hit") and getattr(self._config, "atr_tp_enabled", True):
+        if not pos.tp1_hit and getattr(self._config, "atr_tp_enabled", True):
             return
-        if current_price > pos["highest_price"]:
-            pos["highest_price"] = current_price
+        if current_price > pos.highest_price:
+            pos.highest_price = current_price
 
             # time_decay multiplier (1.0 if disabled or empty phases)
             decay = get_time_decay_multiplier(
@@ -183,12 +183,12 @@ class RiskManager:
                 # 클램프 없으면 trailing_stop_pct 기본값 0.5%가 인트라바 변동성에
                 # 즉발 청산되는 버그 발생 (2026-05-07).
                 max_pct = getattr(self._config, "atr_trail_max_pct", 0.10)
-                trail_pct = max(effective_min_pct, min(max_pct, pos["trailing_pct"]))
+                trail_pct = max(effective_min_pct, min(max_pct, pos.trailing_pct))
                 new_stop = current_price * (1 - trail_pct)
 
             # 트레일링은 위로만 (기존 stop_loss 아래로 내려가지 않음)
-            prev_stop = pos["stop_loss"]
-            pos["stop_loss"] = max(prev_stop, new_stop)
+            prev_stop = pos.stop_loss
+            pos.stop_loss = max(prev_stop, new_stop)
 
             # 진단 로그 — peak 갱신 시점만 (스팸 방지). ATR/폴백 어느 분기를 탔는지,
             # atr_pct 실제 값, new_stop 후보 vs 실제 적용된 stop을 명시.
@@ -196,23 +196,22 @@ class RiskManager:
             logger.info(
                 f"[TRAIL] {ticker} peak={current_price:,.0f} atr_pct={atr_str} "
                 f"branch={branch} new_stop={new_stop:,.0f} "
-                f"stop={pos['stop_loss']:,.0f}"
+                f"stop={pos.stop_loss:,.0f}"
             )
 
         # ADR-017: Breakeven Stop (BE3) — peak_return ≥ trigger 도달 시
         # stop을 entry × (1 + offset)로 상향. 기존 trailing과 max 비교로 공존.
-        if getattr(self._config, "breakeven_enabled", False) and not pos.get("breakeven_active", False):
-            entry = pos["entry_price"]
-            peak = pos["highest_price"]
+        if getattr(self._config, "breakeven_enabled", False) and pos.exit_phase != ExitPhase.BREAKEVEN:
+            entry = pos.entry_price
+            peak = pos.highest_price
             trigger = getattr(self._config, "breakeven_trigger_pct", 0.03)
             if entry > 0 and (peak - entry) / entry >= trigger:
                 offset = getattr(self._config, "breakeven_offset_pct", 0.01)
                 be_stop = entry * (1.0 + offset)
-                pos["stop_loss"] = max(pos["stop_loss"], be_stop)
-                pos["breakeven_active"] = True
+                pos.activate_breakeven(be_stop)
                 logger.info(
                     f"[BE3] 발동: {ticker} entry={entry:,.0f} peak={peak:,.0f} "
-                    f"stop→{pos['stop_loss']:,.0f} (+{(peak - entry) / entry * 100:.2f}%)"
+                    f"stop→{pos.stop_loss:,.0f} (+{(peak - entry) / entry * 100:.2f}%)"
                 )
 
     def check_momentum_fade(
@@ -234,14 +233,12 @@ class RiskManager:
             return False
         if now is None:
             now = datetime.now()
-        entry_time = pos.get("entry_time")
-        if entry_time is None:
-            return False
+        entry_time = pos.entry_time
         if candle_history is None:
             return False
         closes = [c.get("close", 0) for c in candle_history]
         return compute_momentum_fade(
-            entry_price=pos.get("entry_price", 0),
+            entry_price=pos.entry_price,
             current_price=current_price,
             entry_time=entry_time,
             candle_closes=closes,
@@ -270,14 +267,12 @@ class RiskManager:
             return False
         if now is None:
             now = datetime.now()
-        entry_time = pos.get("entry_time")
-        if entry_time is None:
-            return False
+        entry_time = pos.entry_time
         hold_min = (now - entry_time).total_seconds() / 60
         check_min = getattr(self._config, "stale_position_check_minutes", 30)
         if hold_min < check_min:
             return False
-        entry_price = pos.get("entry_price", 0)
+        entry_price = pos.entry_price
         if entry_price <= 0:
             return False
         pnl_pct = (current_price - entry_price) / entry_price
@@ -286,9 +281,9 @@ class RiskManager:
 
     def check_tp1(self, ticker: str, current_price: float) -> bool:
         pos = self._positions.get(ticker)
-        if not pos or pos.get("tp1_hit"):
+        if not pos or pos.tp1_hit:
             return False
-        if pos["tp1_price"] and current_price >= pos["tp1_price"]:
+        if pos.tp1_price and current_price >= pos.tp1_price:
             return True
         return False
 
@@ -297,13 +292,13 @@ class RiskManager:
         pos = self._positions.get(ticker)
         if not pos:
             return 0.0
-        entry_price = pos["entry_price"]
+        entry_price = pos.entry_price
         proceeds = sell_price * sell_qty
         pnl = (sell_price - entry_price) * sell_qty
         self._daily_capital += proceeds
         self._daily_pnl += pnl
-        pos["remaining_qty"] -= sell_qty
-        remaining = pos["remaining_qty"]
+        pos.remaining_qty -= sell_qty
+        remaining = pos.remaining_qty
         fully_closed = remaining <= 0
         if fully_closed:
             self._positions.pop(ticker, None)
@@ -331,19 +326,19 @@ class RiskManager:
     def mark_tp1_hit(self, ticker: str, sold_qty: int, sell_price: float = 0) -> None:
         pos = self._positions.get(ticker)
         if pos:
-            pos["tp1_hit"] = True
-            pos["remaining_qty"] -= sold_qty
-            pos["stop_loss"] = pos["entry_price"]
+            pos.tp1_hit = True
+            pos.remaining_qty -= sold_qty
+            pos.stop_loss = pos.entry_price
             if sell_price > 0:
                 self._daily_capital += sell_price * sold_qty
-                self._daily_pnl += (sell_price - pos["entry_price"]) * sold_qty
+                self._daily_pnl += (sell_price - pos.entry_price) * sold_qty
             # DB 갱신 (ADR-007: 분할매도 후 remaining_qty + 본전 이동 반영)
             try:
                 conn = sqlite3.connect(self._db.db_path)
                 conn.execute(
                     "UPDATE positions SET remaining_qty=?, stop_loss=? "
                     "WHERE ticker=? AND status='open'",
-                    (pos["remaining_qty"], pos["entry_price"], ticker),
+                    (pos.remaining_qty, pos.entry_price, ticker),
                 )
                 conn.commit()
                 conn.close()
@@ -495,19 +490,19 @@ class RiskManager:
                     entry_time = datetime.fromisoformat(row["opened_at"])
             except Exception:
                 pass
-            self._positions[ticker] = {
-                "entry_price": row["entry_price"],
-                "stop_loss": row["stop_loss"],
-                "qty": row["qty"],
-                "remaining_qty": row["remaining_qty"],
-                "tp1_price": row["tp1_price"],
-                "trailing_pct": row["trailing_pct"] or self._config.trailing_stop_pct,
-                "highest_price": row["entry_price"],
-                "tp1_hit": row["remaining_qty"] < row["qty"],
-                "entry_time": entry_time,
-                "strategy": row["strategy"] or "",
-                "status": "confirmed",   # 복구된 포지션은 이미 체결됨
-            }
+            self._positions[ticker] = Position(
+                ticker=ticker,
+                entry_price=row["entry_price"],
+                qty=row["qty"],
+                remaining_qty=row["remaining_qty"],
+                stop_loss=row["stop_loss"],
+                strategy=row["strategy"] or "",
+                entry_time=entry_time,
+                status=PositionStatus.CONFIRMED,  # 복구된 포지션은 이미 체결됨
+                tp1_price=row["tp1_price"],
+                trailing_pct=row["trailing_pct"] or self._config.trailing_stop_pct,
+                tp1_hit=row["remaining_qty"] < row["qty"],
+            )
         if rows:
             logger.warning(f"DB에서 오픈 포지션 {len(rows)}건 복원: {list(self._positions.keys())}")
         return len(rows)
