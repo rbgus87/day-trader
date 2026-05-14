@@ -169,6 +169,7 @@ class EngineWorker(QThread):
         self._order_tracker = None  # _run_engine에서 인스턴스화
         self._orderbook_manager = None  # OBI 필터용 호가 스냅샷 관리자
         self._signal_scorer = None  # 시그널 품질 스코어러 (config 로드 후 초기화)
+        self._shadow_tracker = None  # 시장 필터 차단 시그널 섀도우 트래커
         self._timeout_counters: dict[str, int] = {}    # ticker → 연속 TIMEOUT 카운터
         self._limit_up_exit_pending: set[str] = set()  # limit_up_exit submit된 ticker
 
@@ -329,6 +330,10 @@ class EngineWorker(QThread):
             w_close_position=self._config.trading.score_weight_close_position,
             w_atr_normalized=self._config.trading.score_weight_atr_normalized,
         )
+
+        from core.shadow_tracker import ShadowTracker
+        _sl_pct = getattr(self._config.trading, "stop_loss_pct", 0.08)
+        self._shadow_tracker = ShadowTracker(stop_loss_pct=abs(_sl_pct))
 
         # 2. Infrastructure
         self._db = DbManager(self._config.db_path)
@@ -921,6 +926,8 @@ class EngineWorker(QThread):
                 ticker = tick["ticker"]
                 price = tick["price"]
                 self._latest_prices[ticker] = price
+                if self._shadow_tracker is not None:
+                    self._shadow_tracker.update_prices(ticker, price)
                 # VI 휴리스틱 업데이트 (prev_close 캐시 미스 시 조용히 스킵)
                 _prev = self._prev_close.get(ticker)
                 if _prev:
@@ -1368,9 +1375,14 @@ class EngineWorker(QThread):
                         logger.bind(
                             event="signal_blocked",
                             ticker=signal.ticker,
+                            price=int(signal.price),
                             reason="market_filter",
                             detail=market,
                         ).info(f"[MARKET] 매수 차단: {signal.ticker} ({market})")
+                        if self._shadow_tracker is not None:
+                            self._shadow_tracker.on_blocked(
+                                signal.ticker, signal.price, datetime.now(), "market_filter",
+                            )
                         continue
 
                 # 장중 시장 필터 (당일 지수 등락률 기반 — MA5와 독립 레이어)
@@ -1383,9 +1395,14 @@ class EngineWorker(QThread):
                         logger.bind(
                             event="signal_blocked",
                             ticker=signal.ticker,
+                            price=int(signal.price),
                             reason="intraday_market",
                             detail=_intraday_market,
                         ).info(f"[INTRADAY] 장중 차단: {signal.ticker} ({_intraday_market})")
+                        if self._shadow_tracker is not None:
+                            self._shadow_tracker.on_blocked(
+                                signal.ticker, signal.price, datetime.now(), "intraday_market_filter",
+                            )
                         continue
 
                 # 포지션 한도 재확인
@@ -1394,6 +1411,7 @@ class EngineWorker(QThread):
                     logger.bind(
                         event="signal_blocked",
                         ticker=signal.ticker,
+                        price=int(signal.price),
                         reason="max_positions",
                         open_count=len(open_pos),
                     ).info(f"포지션 한도 ({self._config.trading.max_positions}), 무시: {signal.ticker}")
@@ -1406,6 +1424,7 @@ class EngineWorker(QThread):
                     logger.bind(
                         event="signal_blocked",
                         ticker=signal.ticker,
+                        price=int(signal.price),
                         reason="vi_active",
                         detail=vi_state.value,
                     ).info(f"[VI] {signal.ticker} 매수 차단 — state={vi_state.value}")
@@ -1418,6 +1437,7 @@ class EngineWorker(QThread):
                         logger.bind(
                             event="signal_blocked",
                             ticker=signal.ticker,
+                            price=int(signal.price),
                             reason="obi_low",
                             obi=round(obi, 3),
                         ).info(
@@ -1429,6 +1449,7 @@ class EngineWorker(QThread):
                         logger.bind(
                             event="signal_blocked",
                             ticker=signal.ticker,
+                            price=int(signal.price),
                             reason="spread_high",
                             spread=round(spread, 4),
                         ).info(
@@ -1440,6 +1461,7 @@ class EngineWorker(QThread):
                             logger.bind(
                                 event="signal_blocked",
                                 ticker=signal.ticker,
+                                price=int(signal.price),
                                 reason="ask_wall",
                             ).info(f"[OBI] 매도벽 감지 차단: {signal.ticker}")
                             continue
@@ -1462,6 +1484,7 @@ class EngineWorker(QThread):
                         logger.bind(
                             event="signal_blocked",
                             ticker=signal.ticker,
+                            price=int(signal.price),
                             reason="score_low",
                             score=score.total,
                             min_score=min_score,
@@ -1957,64 +1980,79 @@ class EngineWorker(QThread):
 
         # 전일 거래대금 = 전일 종가 × 전일 거래량. ATR%도 같은 응답에서 캐시.
         from core.indicators import calculate_atr, calculate_atr_pct
+        import asyncio as _asyncio
         import pandas as pd
 
         base_dt = datetime.now().strftime("%Y%m%d")
-        enriched: list[dict] = []
-        for stock in cs_results:
+        semaphore = _asyncio.Semaphore(5)  # rate limit 5 req/s
+        total_cs = len(cs_results)
+        completed = 0
+
+        async def enrich_one(stock: dict) -> dict | None:
+            nonlocal completed
             ticker = stock.get("code", "").strip()
             if not ticker:
-                continue
-            try:
-                daily = await self._rest_client.get_daily_ohlcv(ticker, base_dt=base_dt)
-                items = (
-                    daily.get("stk_dt_pole_chart_qry")
-                    or daily.get("output2")
-                    or daily.get("output")
-                    or []
-                )
-                if len(items) < 2:
-                    continue
-                # _refresh_prev_day_ohlcv가 직후 같은 일봉을 다시 조회하지 않도록 캐시
-                self._daily_ohlcv_cache[ticker] = items
-                prev = items[1]
-                prev_close = abs(float(prev.get("cur_prc", prev.get("stck_clpr", 0))))
-                prev_volume = abs(int(
-                    prev.get("trde_qty",
-                    prev.get("acml_vol",
-                    prev.get("acml_vlmn", 0)))
-                ))
-                amount = prev_close * prev_volume
+                completed += 1
+                return None
+            async with semaphore:
+                try:
+                    daily = await self._rest_client.get_daily_ohlcv(ticker, base_dt=base_dt)
+                    items = (
+                        daily.get("stk_dt_pole_chart_qry")
+                        or daily.get("output2")
+                        or daily.get("output")
+                        or []
+                    )
+                    if len(items) < 2:
+                        return None
+                    # _refresh_prev_day_ohlcv가 직후 같은 일봉을 다시 조회하지 않도록 캐시
+                    self._daily_ohlcv_cache[ticker] = items
+                    prev = items[1]
+                    prev_close = abs(float(prev.get("cur_prc", prev.get("stck_clpr", 0))))
+                    prev_volume = abs(int(
+                        prev.get("trde_qty",
+                        prev.get("acml_vol",
+                        prev.get("acml_vlmn", 0)))
+                    ))
+                    amount = prev_close * prev_volume
 
-                if len(items) >= 15:
-                    try:
-                        rows = []
-                        for it in items[:30]:
-                            h = abs(float(it.get("high_pric", it.get("stck_hgpr", 0)) or 0))
-                            l = abs(float(it.get("low_pric", it.get("stck_lwpr", 0)) or 0))
-                            c = abs(float(it.get("cur_prc", it.get("stck_clpr", 0)) or 0))
-                            if h > 0 and l > 0 and c > 0:
-                                rows.append((h, l, c))
-                        if len(rows) >= 15:
-                            rows.reverse()
-                            df = pd.DataFrame(rows, columns=["high", "low", "close"])
-                            atr = calculate_atr(df, length=14)
-                            atr_pct_series = calculate_atr_pct(atr, df["close"])
-                            latest = atr_pct_series.dropna()
-                            if len(latest) > 0:
-                                self._ticker_atr_pct[ticker] = float(latest.iloc[-1])
-                    except Exception as e:
-                        logger.debug(f"[COND] {ticker} ATR 계산 실패: {e}")
+                    if len(items) >= 15:
+                        try:
+                            rows = []
+                            for it in items[:30]:
+                                h = abs(float(it.get("high_pric", it.get("stck_hgpr", 0)) or 0))
+                                l = abs(float(it.get("low_pric", it.get("stck_lwpr", 0)) or 0))
+                                c = abs(float(it.get("cur_prc", it.get("stck_clpr", 0)) or 0))
+                                if h > 0 and l > 0 and c > 0:
+                                    rows.append((h, l, c))
+                            if len(rows) >= 15:
+                                rows.reverse()
+                                df = pd.DataFrame(rows, columns=["high", "low", "close"])
+                                atr = calculate_atr(df, length=14)
+                                atr_pct_series = calculate_atr_pct(atr, df["close"])
+                                latest = atr_pct_series.dropna()
+                                if len(latest) > 0:
+                                    self._ticker_atr_pct[ticker] = float(latest.iloc[-1])
+                        except Exception as e:
+                            logger.debug(f"[COND] {ticker} ATR 계산 실패: {e}")
 
-                if amount > 0:
-                    enriched.append({
-                        "ticker": ticker,
-                        "name": stock.get("name", ticker),
-                        "_amount": amount,
-                    })
-            except Exception as e:
-                logger.debug(f"[COND] {ticker} 일봉 조회 실패: {e}")
-            # rate_limiter(5 cps)가 이미 흐름을 제어하므로 별도 sleep 불필요
+                    if amount > 0:
+                        return {
+                            "ticker": ticker,
+                            "name": stock.get("name", ticker),
+                            "_amount": amount,
+                        }
+                    return None
+                except Exception as e:
+                    logger.debug(f"[COND] {ticker} 일봉 조회 실패: {e}")
+                    return None
+                finally:
+                    completed += 1
+                    if completed % 50 == 0 or completed == total_cs:
+                        logger.info(f"[COND] enrichment 진행: {completed}/{total_cs}")
+
+        gather_results = await _asyncio.gather(*[enrich_one(s) for s in cs_results])
+        enriched = [r for r in gather_results if r is not None]
 
         enriched.sort(key=lambda x: x["_amount"], reverse=True)
         top = enriched[: cs_cfg.max_watch_stocks]
@@ -2160,6 +2198,8 @@ class EngineWorker(QThread):
             self._active_strategy = None
             self._active_strategies = {}
             self._candle_history.clear()
+            if self._shadow_tracker is not None:
+                self._shadow_tracker.close_all()
         finally:
             self._force_close_in_progress = False
 
@@ -2205,6 +2245,24 @@ class EngineWorker(QThread):
         else:
             self._notifier.send_no_trade("당일 매매 기록 없음")
             logger.info("당일 매매 없음 -- 무거래 알림 발송")
+
+        # 섀도우 트래커 요약 (시장 필터 차단 시그널 "만약 진입했다면")
+        if self._shadow_tracker is not None:
+            shadow = self._shadow_tracker.get_summary()
+            logger.bind(
+                event="shadow_summary",
+                total=shadow["total"],
+                profit_count=shadow["profit_count"],
+                loss_count=shadow["loss_count"],
+                avg_profit_pct=round(shadow["avg_profit_pct"] * 100, 2),
+                avg_loss_pct=round(shadow["avg_loss_pct"] * 100, 2),
+                positions=shadow["positions"],
+            ).info("섀도우 트래킹 요약")
+            if self._notifier and shadow["total"] > 0:
+                try:
+                    self._notifier.send(self._shadow_tracker.format_report())
+                except Exception as _e:
+                    logger.warning(f"섀도우 트래커 알림 실패: {_e}")
 
     # ── Universe/strategies/OHLCV helpers (startup + daily_reset 공용) ──
 
@@ -2493,6 +2551,8 @@ class EngineWorker(QThread):
         self._candle_history.clear()
         self._breakout_detected.clear()
         self._tick_signaled.clear()
+        if self._shadow_tracker is not None:
+            self._shadow_tracker.reset()
 
         stocks = self._load_universe()
         if not self._active_strategies:
