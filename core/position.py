@@ -39,6 +39,11 @@ class Position:
     limit_up_price: float | None = None
     tp1_hit: bool = False
 
+    def __post_init__(self) -> None:
+        """초기화 후 처리: highest_price 방어적 초기화."""
+        if self.highest_price == 0.0:
+            self.highest_price = self.entry_price
+
     def confirm(self) -> None:
         """PENDING → CONFIRMED 전이."""
         assert self.status == PositionStatus.PENDING, (
@@ -47,7 +52,9 @@ class Position:
         self.status = PositionStatus.CONFIRMED
 
     def mark_exit_pending(self) -> None:
-        """CONFIRMED → EXIT_PENDING 전이."""
+        """CONFIRMED → EXIT_PENDING 전이. 중복 호출은 무시."""
+        if self.status == PositionStatus.EXIT_PENDING:
+            return  # 중복 청산 시그널 무시
         assert self.status == PositionStatus.CONFIRMED, (
             f"mark_exit_pending() requires CONFIRMED, got {self.status}"
         )
