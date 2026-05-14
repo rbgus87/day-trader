@@ -45,22 +45,24 @@ class TestBuyPipeline:
             ticker="000001", entry_price=10000, qty=10, stop_loss=9200,
             status="pending",
         )
-        assert rm.get_position("000001")["status"] == "pending"
+        from core.position import PositionStatus
+        assert rm.get_position("000001").status == PositionStatus.PENDING
         # 2) on_fill → FILLED
         order = t.on_fill("ORD1", filled_qty=10, filled_price=10000)
         assert order.status == OrderStatus.FILLED
         # 3) _handle_fill 시뮬: mark_confirmed
         rm.mark_confirmed("000001")
-        assert rm.get_position("000001")["status"] == "confirmed"
+        assert rm.get_position("000001").status == PositionStatus.CONFIRMED
 
     def test_paper_mode_buy_immediate_confirmed(self, tmp_path):
         """paper_mode: tracker 미사용, register_position(status=confirmed) 즉시."""
+        from core.position import PositionStatus
         rm = _risk_manager(tmp_path)
         rm.register_position(
             ticker="000001", entry_price=10000, qty=10, stop_loss=9200,
             status="confirmed",
         )
-        assert rm.get_position("000001")["status"] == "confirmed"
+        assert rm.get_position("000001").status == PositionStatus.CONFIRMED
 
 
 class TestSellPipeline:
@@ -74,10 +76,10 @@ class TestSellPipeline:
             status="confirmed",
         )
         pos_before = rm.get_position("000001")
-        assert pos_before["remaining_qty"] == 10
+        assert pos_before.remaining_qty == 10
         # 매도 submit (engine_worker는 settle_sell 미호출)
         t.submit("ORD2", "000001", "sell", 10)
-        assert rm.get_position("000001")["remaining_qty"] == 10
+        assert rm.get_position("000001").remaining_qty == 10
         # on_fill 시점 → _handle_fill에서 settle_sell 호출
         order = t.on_fill("ORD2", filled_qty=10, filled_price=11000)
         assert order.status == OrderStatus.FILLED

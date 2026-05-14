@@ -50,7 +50,7 @@ def test_open_positions_returns_only_active(rm):
     rm.register_position("A", entry_price=10000, qty=10, stop_loss=9800)
     rm.register_position("B", entry_price=20000, qty=5, stop_loss=19600)
     # A를 완전 청산
-    rm._positions["A"]["remaining_qty"] = 0
+    rm._positions["A"].remaining_qty = 0
     open_pos = rm.get_open_positions()
     assert len(open_pos) == 1
     assert "B" in open_pos

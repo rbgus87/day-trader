@@ -60,7 +60,7 @@ class TestTimeDecayInTrailing:
             now=datetime(2026, 5, 12, 11, 0),
         )
         pos = rm.get_position("000001")
-        assert pos["stop_loss"] == pytest.approx(9870, abs=1.0)
+        assert pos.stop_loss == pytest.approx(9870, abs=1.0)
 
     def test_late_afternoon_narrows_trail(self, tmp_path):
         """14:45 (decay=0.3) — ATR 6%.
@@ -90,7 +90,7 @@ class TestTimeDecayInTrailing:
             now=datetime(2026, 5, 12, 14, 45),
         )
         pos = rm.get_position("000001")
-        assert pos["stop_loss"] == pytest.approx(10311, abs=1.0)
+        assert pos.stop_loss == pytest.approx(10311, abs=1.0)
 
     def test_hard_floor_kicks_in(self, tmp_path):
         """ATR=2%, decay=0.3 → raw_trail = 0.006 → hard floor 1.0% 적용.
@@ -118,7 +118,7 @@ class TestTimeDecayInTrailing:
             now=datetime(2026, 5, 12, 14, 45),
         )
         pos = rm.get_position("000001")
-        assert pos["stop_loss"] == pytest.approx(10395, abs=1.0)
+        assert pos.stop_loss == pytest.approx(10395, abs=1.0)
 
     def test_disabled_preserves_legacy_behavior(self, tmp_path):
         """time_decay_trailing_enabled=False → 14:45에도 multiplier=1.0 동작."""
@@ -141,7 +141,7 @@ class TestTimeDecayInTrailing:
             now=datetime(2026, 5, 12, 14, 45),
         )
         pos = rm.get_position("000001")
-        assert pos["stop_loss"] == pytest.approx(9870, abs=1.0)
+        assert pos.stop_loss == pytest.approx(9870, abs=1.0)
 
     def test_now_none_uses_wall_clock(self, tmp_path):
         """now=None → datetime.now() 사용 (예외 없이 호출 가능)."""
@@ -160,4 +160,4 @@ class TestTimeDecayInTrailing:
         )
         # now 미전달 — 예외 없이 호출 가능해야 함
         rm.update_trailing_stop("000001", current_price=10500, atr_pct=0.06)
-        assert rm.get_position("000001")["stop_loss"] >= 9200
+        assert rm.get_position("000001").stop_loss >= 9200

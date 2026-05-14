@@ -43,7 +43,7 @@ class TestCheckMomentumFade:
             ticker="000001", entry_price=1000, qty=10, stop_loss=920,
             status="confirmed",
         )
-        rm._positions["000001"]["entry_time"] = datetime(2026, 5, 12, 10, 0)
+        rm._positions["000001"].entry_time = datetime(2026, 5, 12, 10, 0)
         hist = _candles([1000.0] + [1001.0] * 9 + [992.0])
         result = rm.check_momentum_fade(
             "000001", current_price=1020,
@@ -59,7 +59,7 @@ class TestCheckMomentumFade:
             ticker="000001", entry_price=1000, qty=10, stop_loss=920,
             status="confirmed",
         )
-        rm._positions["000001"]["entry_time"] = datetime(2026, 5, 12, 10, 0)
+        rm._positions["000001"].entry_time = datetime(2026, 5, 12, 10, 0)
         hist = _candles([1000.0] + [1001.0] * 9 + [992.0])
         result = rm.check_momentum_fade(
             "000001", current_price=1020, candle_history=hist,
@@ -74,7 +74,7 @@ class TestCheckMomentumFade:
             ticker="000001", entry_price=1000, qty=10, stop_loss=920,
             status="confirmed",
         )
-        rm._positions["000001"]["entry_time"] = datetime(2026, 5, 12, 10, 0)
+        rm._positions["000001"].entry_time = datetime(2026, 5, 12, 10, 0)
         hist = _candles([1000.0] + [1001.0] * 9 + [992.0])
         result = rm.check_momentum_fade(
             "000001", current_price=990, candle_history=hist,
@@ -89,7 +89,7 @@ class TestCheckMomentumFade:
             ticker="000001", entry_price=1000, qty=10, stop_loss=920,
             status="confirmed",
         )
-        rm._positions["000001"]["entry_time"] = datetime(2026, 5, 12, 10, 0)
+        rm._positions["000001"].entry_time = datetime(2026, 5, 12, 10, 0)
         hist = _candles([1000.0] + [1001.0] * 9 + [992.0])
         result = rm.check_momentum_fade(
             "000001", current_price=1020, candle_history=hist,
@@ -114,7 +114,7 @@ class TestCheckMomentumFade:
             ticker="000001", entry_price=1000, qty=10, stop_loss=920,
             status="confirmed",
         )
-        rm._positions["000001"]["entry_time"] = datetime(2026, 5, 12, 10, 0)
+        rm._positions["000001"].entry_time = datetime(2026, 5, 12, 10, 0)
         hist = _candles([1000.0, 1005.0, 1010.0, 1008.0, 992.0])
         result = rm.check_momentum_fade(
             "000001", current_price=1020, candle_history=hist,

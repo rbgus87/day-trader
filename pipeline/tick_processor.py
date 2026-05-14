@@ -12,6 +12,7 @@ from typing import Callable
 
 from loguru import logger
 
+from core.position import ExitPhase
 from pipeline.trading_state import BreakoutInfo, TradingState
 
 
@@ -189,15 +190,15 @@ class TickProcessor:
                     logger.warning(f"[VI] {ticker} update_from_tick 예외: {_e}")
 
             pos = self._risk_manager.get_position(ticker)
-            if pos is None or pos["remaining_qty"] <= 0:
+            if pos is None or pos.remaining_qty <= 0:
                 await self._on_tick_no_position(ticker, price, tick, signal_queue)
                 return
 
             if self._order_tracker is not None:
                 _pending = self._order_tracker.get_pending(ticker)
                 if _pending is not None:
-                    if pos.get("highest_price", 0) < price:
-                        pos["highest_price"] = price
+                    if pos.highest_price < price:
+                        pos.highest_price = price
                     logger.debug(
                         f"[ORDER-TRACK] {ticker} pending {_pending.side} — exit 스킵"
                     )
@@ -211,10 +212,10 @@ class TickProcessor:
             # 손절 체크
             if self._risk_manager.check_stop_loss(ticker, price):
                 pure_trail = not getattr(self._config.trading, "atr_tp_enabled", True)
-                is_trailing = pos.get("tp1_hit") or pure_trail
-                if pos.get("breakeven_active") and pos["stop_loss"] >= pos["entry_price"]:
+                is_trailing = pos.tp1_hit or pure_trail
+                if pos.exit_phase == ExitPhase.BREAKEVEN and pos.stop_loss >= pos.entry_price:
                     reason_code = "breakeven_stop"
-                elif is_trailing and price > pos["entry_price"] * 0.975:
+                elif is_trailing and price > pos.entry_price * 0.975:
                     reason_code = "trailing_stop"
                 else:
                     reason_code = "stop_loss"
@@ -236,13 +237,13 @@ class TickProcessor:
 
             # TP1 체크 (현재 atr_tp_enabled:false — dead path)
             if self._risk_manager.check_tp1(ticker, price):
-                sell_qty = int(pos["remaining_qty"] * self._config.trading.tp1_sell_ratio)
-                entry = pos["entry_price"]
+                sell_qty = int(pos.remaining_qty * self._config.trading.tp1_sell_ratio)
+                entry = pos.entry_price
                 pnl = (price - entry) * sell_qty
                 pnl_pct = ((price / entry) - 1) * 100 if entry > 0 else 0
-                strategy_name = pos.get("strategy", "") or "unknown"
+                strategy_name = pos.strategy or "unknown"
                 await self._order_manager.execute_sell_tp1(
-                    ticker=ticker, price=int(price), remaining_qty=pos["remaining_qty"],
+                    ticker=ticker, price=int(price), remaining_qty=pos.remaining_qty,
                     strategy=strategy_name, pnl=pnl, pnl_pct=pnl_pct, exit_reason="tp1_hit",
                 )
                 self._risk_manager.mark_tp1_hit(ticker, sell_qty, sell_price=price)
@@ -264,13 +265,13 @@ class TickProcessor:
         except Exception as e:
             logger.error(f"tick_consumer 오류: {e}")
 
-    async def _handle_exit(self, ticker: str, pos: dict, price: float, reason_code: str) -> None:
+    async def _handle_exit(self, ticker: str, pos, price: float, reason_code: str) -> None:
         """공통 청산 처리: execute_sell → paper settle 또는 real submit."""
-        qty = pos["remaining_qty"]
-        entry = pos["entry_price"]
+        qty = pos.remaining_qty
+        entry = pos.entry_price
         pnl = (price - entry) * qty
         pnl_pct = ((price / entry) - 1) * 100 if entry > 0 else 0
-        strategy_name = pos.get("strategy", "") or "unknown"
+        strategy_name = pos.strategy or "unknown"
         prefer_best = self._vi_handler.should_use_best_limit(ticker)
 
         if reason_code == "limit_up_exit":
@@ -299,7 +300,7 @@ class TickProcessor:
             return
 
         if self._paper_mode:
-            _entry_time = pos.get("entry_time")
+            _entry_time = pos.entry_time
             self._risk_manager.settle_sell(ticker, price, qty)
             if pnl >= 0:
                 self._state.rt_wins += 1

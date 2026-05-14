@@ -261,7 +261,7 @@ class OrderExecutor:
             logger.info(f"[ORDER-TRACK] {order_no} FILLED → mark_confirmed {ticker}")
         elif order.side == "sell":
             pos = self._risk_manager.get_position(ticker)
-            entry = pos.get("entry_price", 0) if pos else 0
+            entry = pos.entry_price if pos else 0
             pnl = (order.filled_price - entry) * order.filled_qty if entry > 0 else 0
             pnl_pct = ((order.filled_price / entry) - 1) if entry > 0 else 0
             self._risk_manager.settle_sell(ticker, order.filled_price, order.filled_qty)

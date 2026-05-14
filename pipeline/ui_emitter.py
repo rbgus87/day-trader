@@ -10,6 +10,7 @@ from datetime import datetime
 
 from loguru import logger
 
+from core.position import ExitPhase
 from pipeline.trading_state import TradingState
 
 
@@ -90,20 +91,20 @@ class UIEmitter:
                 self._last_pos_tickers = current_tickers
             positions = []
             for ticker, pos in open_pos.items():
-                entry = pos["entry_price"]
+                entry = pos.entry_price
                 current = self._state.latest_prices.get(ticker, entry)
                 pnl_pct = ((current - entry) / entry * 100) if entry > 0 else 0
                 name = self._state.active_strategies.get(ticker, {}).get("name", "")
                 positions.append({
-                    "ticker": ticker, "name": name, "strategy": pos.get("strategy", ""),
+                    "ticker": ticker, "name": name, "strategy": pos.strategy,
                     "entry_price": entry, "current_price": current, "pnl_pct": pnl_pct,
-                    "qty": pos["qty"], "remaining_qty": pos["remaining_qty"],
-                    "stop_loss": pos["stop_loss"], "tp1_price": pos.get("tp1_price"),
-                    "tp1_hit": pos.get("tp1_hit", False),
-                    "breakeven_active": pos.get("breakeven_active", False),
-                    "highest_price": pos.get("highest_price", entry),
-                    "entry_time": pos.get("entry_time"),
-                    "status": "TP1 hit" if pos.get("tp1_hit") else "보유 중",
+                    "qty": pos.qty, "remaining_qty": pos.remaining_qty,
+                    "stop_loss": pos.stop_loss, "tp1_price": pos.tp1_price,
+                    "tp1_hit": pos.tp1_hit,
+                    "breakeven_active": pos.exit_phase == ExitPhase.BREAKEVEN,
+                    "highest_price": pos.highest_price,
+                    "entry_time": pos.entry_time,
+                    "status": "TP1 hit" if pos.tp1_hit else "보유 중",
                 })
             self._signals.positions_updated.emit(positions)
         except Exception as e:

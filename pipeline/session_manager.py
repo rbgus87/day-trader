@@ -65,15 +65,15 @@ class SessionManager:
         try:
             logger.warning("15:10 강제 청산 시작")
             for ticker, pos in list(self._risk_manager.get_open_positions().items()):
-                if pos.get("remaining_qty", 0) > 0:
+                if pos.remaining_qty > 0:
                     close_price = int(
-                        self._state.latest_prices.get(ticker, pos.get("entry_price", 0))
+                        self._state.latest_prices.get(ticker, pos.entry_price)
                     )
-                    qty = pos["remaining_qty"]
-                    entry = pos.get("entry_price", 0)
+                    qty = pos.remaining_qty
+                    entry = pos.entry_price
                     pnl = (close_price - entry) * qty if entry > 0 else 0
                     pnl_pct = ((close_price / entry) - 1) * 100 if entry > 0 else 0
-                    strategy_name = pos.get("strategy", "") or "unknown"
+                    strategy_name = pos.strategy or "unknown"
                     prefer_best = self._vi_handler.should_use_best_limit(ticker) if hasattr(self, "_vi_handler") else False
                     result = await self._order_manager.execute_sell_force_close(
                         ticker=ticker, qty=qty, price=close_price,
@@ -89,7 +89,7 @@ class SessionManager:
                         logger.error(f"[ORDER-TRACK] force_close 주문 실패: {ticker}")
                         continue
                     if self._paper_mode:
-                        _entry_time_fc = pos.get("entry_time")
+                        _entry_time_fc = pos.entry_time
                         self._risk_manager.settle_sell(ticker, float(close_price), qty)
                         strat_info = self._state.active_strategies.get(ticker)
                         if strat_info:
@@ -552,14 +552,14 @@ class SessionManager:
         if not pos:
             logger.warning(f"[MANUAL-CLOSE] {ticker} 포지션 없음")
             return
-        qty = pos.get("remaining_qty") or pos.get("qty") or 0
+        qty = pos.remaining_qty or pos.qty or 0
         if qty <= 0:
             return
-        close_price = int(self._state.latest_prices.get(ticker, pos.get("entry_price", 0)))
-        entry = pos.get("entry_price", 0)
+        close_price = int(self._state.latest_prices.get(ticker, pos.entry_price))
+        entry = pos.entry_price
         pnl = (close_price - entry) * qty if entry > 0 else 0
         pnl_pct = ((close_price / entry) - 1) * 100 if entry > 0 else 0
-        strategy_name = pos.get("strategy", "") or "unknown"
+        strategy_name = pos.strategy or "unknown"
         vi = getattr(self, "_vi_handler", None)
         prefer_best = vi.should_use_best_limit(ticker) if vi else False
         result = await self._order_manager.execute_sell_force_close(
