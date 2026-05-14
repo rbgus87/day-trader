@@ -11,8 +11,8 @@ from datetime import date, datetime, time
 MARKET_OPEN = time(9, 0)
 MARKET_CLOSE = time(15, 30)
 
-# WebSocket 시세 수신 가능 시간대 (동시호가 ~ 시간외 포함)
-WS_DATA_START = time(8, 50)
+# WebSocket 시세 수신 가능 시간대 (08:30~ 엔진 기동 시간 포함)
+WS_DATA_START = time(8, 30)
 WS_DATA_END = time(15, 40)
 
 # 2025년 한국 공휴일

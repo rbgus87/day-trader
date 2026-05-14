@@ -622,8 +622,6 @@ class SessionManager:
         core_stocks = screener_scheduler.load_universe()
         progress_fn("유니버스 로드", 10)
 
-        ws_connect_task = asyncio.create_task(self._ws_client.connect())
-
         final_stocks = core_stocks
         source = "core"
         if self._config.condition_search.enabled:
@@ -640,8 +638,9 @@ class SessionManager:
         progress_fn(f"종목 확정 {len(final_stocks)}종목", 40)
         screener_scheduler.register_active_strategies(final_stocks)
 
+        # 조건검색 WS 종료 후 메인 WS 연결 (동시 연결 시 서버 강제 끊김 방지)
         try:
-            await ws_connect_task
+            await self._ws_client.connect()
         except Exception as e:
             logger.error(f"WS 연결 실패: {e}")
 

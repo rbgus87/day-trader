@@ -145,7 +145,10 @@ class KiwoomWebSocketClient:
             "data": [{"item": tickers, "type": [real_type]}],
         })
         if self._ws:
-            await self._ws.send(msg)
+            try:
+                await self._ws.send(msg)
+            except Exception as e:
+                logger.warning(f"[WS] 구독 전송 실패 — 재연결 시 자동 복원됨: {e}")
         existing = set(self._subscriptions.get(real_type, []))
         existing.update(tickers)
         self._subscriptions[real_type] = list(existing)
