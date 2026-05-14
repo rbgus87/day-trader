@@ -29,6 +29,8 @@ class WSReplayer:
             재생 속도 배율. 1.0=원속, 2.0=2배속, 0=지연 없이 즉시 재생.
         """
         self._path = Path(jsonl_path)
+        if speed < 0:
+            raise ValueError(f"speed는 0 이상이어야 합니다: {speed}")
         self._speed = speed
         self._message_count_cache: int | None = None
 
@@ -47,6 +49,9 @@ class WSReplayer:
         int
             재생된 메시지 수.
         """
+        if not self._path.exists():
+            raise FileNotFoundError(f"JSONL 파일을 찾을 수 없습니다: {self._path}")
+
         replayed = 0
         prev_ts: datetime | None = None
 
@@ -72,36 +77,34 @@ class WSReplayer:
                     if interval > 0:
                         await asyncio.sleep(interval / self._speed)
 
-                queue.put_nowait(raw)
+                await queue.put(raw)
                 prev_ts = ts
                 replayed += 1
 
         logger.info(f"WSReplayer: 재생 완료 — {self._path.name} ({replayed}건)")
+        self._message_count_cache = replayed
         return replayed
 
     @property
     def message_count(self) -> int:
-        """JSONL 파일의 총 메시지 수 (파싱 가능한 줄 수). 첫 호출 시에만 계산."""
-        if self._message_count_cache is not None:
-            return self._message_count_cache
-
-        count = 0
-        with self._path.open(encoding="utf-8") as f:
-            for lineno, line in enumerate(f, start=1):
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                    # ts와 raw가 모두 있어야 유효한 레코드
-                    _ = datetime.fromisoformat(obj["ts"])
-                    _ = obj["raw"]
-                    count += 1
-                except (json.JSONDecodeError, KeyError, ValueError):
-                    logger.warning(f"WSReplayer.message_count: 줄 {lineno} 파싱 실패, 제외")
-
-        self._message_count_cache = count
-        return count
+        """캐싱된 메시지 수. replay() 호출 전에는 파일을 읽어 계산."""
+        if self._message_count_cache is None:
+            if not self._path.exists():
+                return 0
+            count = 0
+            with self._path.open("r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        data = json.loads(line)
+                        if "ts" in data and "raw" in data:
+                            count += 1
+                    except Exception:
+                        pass
+            self._message_count_cache = count
+        return self._message_count_cache
 
     @staticmethod
     def list_sessions(record_dir: str = "logs/ws_replay") -> list[str]:
