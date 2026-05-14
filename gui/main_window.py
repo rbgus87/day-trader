@@ -91,6 +91,10 @@ class MainWindow(QMainWindow):
         self._lbl_status_left = QLabel("Mode: PAPER | Engine: 정지됨")
         self._lbl_status_time = QLabel("")
         self.status_bar.addWidget(self._lbl_status_left, 1)
+        self._lbl_rec_status = QLabel("")
+        self._lbl_rec_status.setStyleSheet("color: #f38ba8; font-weight: bold;")
+        self._lbl_rec_status.setVisible(False)
+        self.status_bar.addPermanentWidget(self._lbl_rec_status)
         self.status_bar.addPermanentWidget(self._lbl_status_time)
 
         # 사이드바 시그널 연결
@@ -104,6 +108,7 @@ class MainWindow(QMainWindow):
         self.sidebar.mode_changed.connect(self._on_mode_changed)
         self.sidebar.strategy_changed.connect(self._on_strategy_changed)
         self.sidebar.test_alert_clicked.connect(self._on_test_alert)
+        self.sidebar.ws_record_toggled.connect(self._on_ws_record_toggled)
 
         # 탭 시그널 연결
         self.screener_tab.run_screening_clicked.connect(self._on_screening)
@@ -226,6 +231,7 @@ class MainWindow(QMainWindow):
         s.market_status_updated.connect(self._on_market_status)
         s.trade_executed.connect(self._on_trade_executed)
         s.startup_progress.connect(self._on_startup_progress)
+        s.ws_record_status.connect(self._on_ws_record_status)
         self.dashboard_view.manual_close_requested.connect(self._on_manual_close)
 
     def _on_market_status(self, kospi_strong: bool, kosdaq_strong: bool):
@@ -348,6 +354,18 @@ class MainWindow(QMainWindow):
                 from PyQt6.QtCore import QTimer
                 QTimer.singleShot(0, lambda err=err: QMessageBox.critical(self, "알림 테스트 실패", err))
         Thread(target=_send, daemon=True).start()
+
+    def _on_ws_record_toggled(self, enabled: bool) -> None:
+        if self._worker:
+            self._worker.signals.request_ws_record.emit(enabled)
+
+    def _on_ws_record_status(self, recording: bool, count: int) -> None:
+        if recording:
+            self._lbl_rec_status.setText(f"● REC {count:,}건")
+            self._lbl_rec_status.setVisible(True)
+        else:
+            self._lbl_rec_status.setVisible(False)
+        self.sidebar.update_record_status(recording, count)
 
     def _on_settings_saved(self):
         config_path = Path("config.yaml")

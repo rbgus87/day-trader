@@ -40,6 +40,8 @@ class EngineWorker(QThread):
         self.signals.request_reconnect.connect(self._on_request_reconnect)
         self.signals.request_daily_reset.connect(self._on_request_daily_reset)
         self.signals.request_strategy_change.connect(self._on_request_strategy_change)
+        self.signals.request_ws_record.connect(self._on_request_ws_record)
+        self._recorder = None
         self.setTerminationEnabled(True)
 
     def run(self):
@@ -58,6 +60,12 @@ class EngineWorker(QThread):
             self._running = False
             try: self._scheduler.shutdown(wait=False) if (self._scheduler and self._scheduler.running) else None
             except Exception: pass
+            try:
+                if self._recorder and self._recorder.is_recording:
+                    self._recorder.stop()
+                    self._recorder = None
+            except Exception:
+                pass
             try:
                 if self._session_manager is not None:
                     self._session_manager.cleanup_sync(self._loop)
@@ -178,6 +186,18 @@ class EngineWorker(QThread):
             orderbook_manager=self._orderbook_manager,
         )
         self._ws_client.set_subscription_provider(lambda: list(self._state.active_strategies.keys()))
+
+        # WS 녹화 (설정에서 활성화된 경우 자동 시작)
+        if getattr(self._config.kiwoom, "ws_record_enabled", False):
+            from core.ws_recorder import WSRecorder
+            self._recorder = WSRecorder(
+                getattr(self._config.kiwoom, "ws_record_dir", "logs/ws_replay")
+            )
+            self._recorder.start()
+            self._ws_client.set_recorder(self._recorder)
+            logger.info(f"[REC] WS 녹화 시작: {self._recorder.current_file}")
+            self.signals.ws_record_status.emit(True, 0)
+
         self._candle_builder = CandleBuilder(candle_queue=self._candle_queue, timeframes=["1m"])
         self._risk_manager = RiskManager(trading_config=self._config.trading, db=self._db, notifier=self._notifier)
         self._risk_manager.set_daily_capital(self._config.trading.initial_capital)
@@ -470,6 +490,36 @@ class EngineWorker(QThread):
                 logger.info("WS 재연결 완료")
             except Exception as e:
                 logger.error(f"WS 재연결 실패: {e}")
+
+    def _on_request_ws_record(self, enabled: bool) -> None:
+        """UI에서 WS 녹화 토글 요청."""
+        if not self._loop:
+            return
+        asyncio.run_coroutine_threadsafe(
+            self._toggle_ws_record(enabled), self._loop
+        )
+
+    async def _toggle_ws_record(self, enabled: bool) -> None:
+        from core.ws_recorder import WSRecorder
+        if enabled:
+            if self._recorder and self._recorder.is_recording:
+                return
+            self._recorder = WSRecorder(
+                getattr(self._config.kiwoom, "ws_record_dir", "logs/ws_replay")
+                if self._config else "logs/ws_replay"
+            )
+            self._recorder.start()
+            self._ws_client.set_recorder(self._recorder)
+            logger.info(f"[REC] WS 녹화 시작: {self._recorder.current_file}")
+            self.signals.ws_record_status.emit(True, 0)
+        else:
+            if self._recorder and self._recorder.is_recording:
+                count = self._recorder.message_count
+                self._recorder.stop()
+                self._ws_client.set_recorder(None)
+                logger.info(f"[REC] WS 녹화 중지: {count}건 저장")
+            self._recorder = None
+            self.signals.ws_record_status.emit(False, 0)
 
     def _on_request_strategy_change(self, strategy_name: str):
         if self._loop and self._loop.is_running():

@@ -49,6 +49,7 @@ class Sidebar(QFrame):
     mode_changed = pyqtSignal(str)  # "paper" or "live"
     strategy_changed = pyqtSignal(str)  # 전략명 ("" = auto)
     test_alert_clicked = pyqtSignal()
+    ws_record_toggled = pyqtSignal(bool)  # True=녹화 시작, False=중지
 
     # ── 색상 상수 ────────────────────────────────────────────────────────────
     _COLOR_MAUVE = "#cba6f7"
@@ -234,6 +235,16 @@ class Sidebar(QFrame):
 
         parent_layout.addLayout(grid)
 
+        # WS 녹화 토글 버튼 (독립)
+        self._record_btn = QPushButton("WS 녹화")
+        self._record_btn.setObjectName("manualBtn")
+        self._record_btn.setToolTip("WS 메시지 녹화 시작/중지")
+        self._record_btn.setCheckable(True)
+        self._record_btn.setEnabled(False)
+        self._record_btn.setFixedHeight(28)
+        self._record_btn.clicked.connect(self._on_record_toggled)
+        parent_layout.addWidget(self._record_btn)
+
     def _build_connection_status(self, parent_layout: QVBoxLayout) -> None:
         """REST / WS 연결 상태 섹션."""
         # REST 행
@@ -342,6 +353,10 @@ class Sidebar(QFrame):
         value = "" if text == "Auto" else text.lower()
         self.strategy_changed.emit(value)
 
+    def _on_record_toggled(self, checked: bool) -> None:
+        self._record_btn.setText("◼ 녹화중" if checked else "WS 녹화")
+        self.ws_record_toggled.emit(checked)
+
     def _on_paper_clicked(self) -> None:
         self._mode = "paper"
         self._apply_mode_btn_styles()
@@ -374,6 +389,8 @@ class Sidebar(QFrame):
 
         for btn in self._manual_btns:
             btn.setEnabled(running)
+
+        self._record_btn.setEnabled(running)
 
         self._paper_btn.setEnabled(not running)
         self._live_btn.setEnabled(not running)
@@ -427,6 +444,11 @@ class Sidebar(QFrame):
             if self._strategy_combo.itemText(i).lower() == force.lower():
                 self._strategy_combo.setCurrentIndex(i)
                 return
+
+    def update_record_status(self, recording: bool, count: int) -> None:
+        """엔진에서 오는 녹화 상태를 버튼에 반영."""
+        self._record_btn.setChecked(recording)
+        self._record_btn.setText(f"◼ 녹화중 {count:,}건" if recording else "WS 녹화")
 
     def update_connection(self, rest_ok: bool, ws_ok: bool) -> None:
         """연결 상태를 UI에 반영.

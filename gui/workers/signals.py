@@ -27,6 +27,10 @@ class EngineSignals(QObject):
         request_report: 일일 리포트 발송.
         request_reconnect: WS 재연결.
         request_daily_reset: 일일 리셋.
+        request_ws_record: WS 녹화 토글.
+
+    Worker → UI (상태 전달 추가):
+        ws_record_status: WS 녹화 상태 (bool, int).
     """
 
     # Worker → UI
@@ -55,3 +59,9 @@ class EngineSignals(QObject):
     request_daily_reset = pyqtSignal()
     request_strategy_change = pyqtSignal(str)  # 전략명 ("" = auto)
     request_manual_close = pyqtSignal(str)  # ticker — 개별 포지션 수동 청산
+
+    # WS 녹화 제어 (UI → Worker)
+    request_ws_record = pyqtSignal(bool)  # True=녹화 시작, False=녹화 중지
+
+    # WS 녹화 상태 (Worker → UI)
+    ws_record_status = pyqtSignal(bool, int)  # (is_recording, message_count)
