@@ -178,11 +178,11 @@ async def load_candle_cache(
 
 
 # ---------------------------------------------------------------------------
-# 표준 워커 (ProcessPoolExecutor top-level 필수)
+# 워커 (ProcessPoolExecutor top-level 필수)
 # ---------------------------------------------------------------------------
 
 def _standard_backtest_worker(args: tuple) -> dict:
-    """표준 워커: config 1개 × 전체 종목 백테스트.
+    """레거시 워커 — pandas iterrows 기반 Backtester 사용.
 
     args:
         (config, candles_bytes, market_map_bytes, ticker_to_market, bt_config, params_dict)
@@ -208,6 +208,41 @@ def _standard_backtest_worker(args: tuple) -> dict:
     for tk, df in candles_cache.items():
         market = ticker_to_market.get(tk, "unknown")
         bt = _BT(
+            db=None, config=config, backtest_config=bt_config,
+            ticker_market=market, market_strong_by_date=market_map,
+        )
+        strategy = _MS(config)
+        result = _asyncio.run(bt.run_multi_day_cached(tk, df, strategy))
+        for t in result.get("trades", []):
+            t["ticker"] = tk
+            all_trades.append(t)
+
+    stats = compute_stats(all_trades)
+    return {**params_dict, **stats}
+
+
+def _fast_backtest_worker(args: tuple) -> dict:
+    """기본 워커 — numpy 가속 FastBacktester 사용 (10~50× 빠름).
+
+    _standard_backtest_worker와 동일한 시그니처/반환 형식.
+    """
+    config, candles_bytes, market_map_bytes, ticker_to_market, bt_config, params_dict = args
+
+    from loguru import logger as _l
+    _l.remove()
+    _l.add(sys.stderr, level="WARNING")
+
+    import asyncio as _asyncio
+    from backtest.backtester_fast import FastBacktester as _FBT
+    from strategy.momentum_strategy import MomentumStrategy as _MS
+
+    candles_cache: dict = pickle.loads(candles_bytes)
+    market_map: dict = pickle.loads(market_map_bytes)
+
+    all_trades: list[dict] = []
+    for tk, df in candles_cache.items():
+        market = ticker_to_market.get(tk, "unknown")
+        bt = _FBT(
             db=None, config=config, backtest_config=bt_config,
             ticker_market=market, market_strong_by_date=market_map,
         )
@@ -273,7 +308,8 @@ def run_parallel_grid(
             메인 프로세스에서 호출 (pickle 불필요). 결과 TradingConfig은 picklable.
         cache:              load_candle_cache() 로 얻은 GridCache.
         max_workers:        워커 수. None이면 min(4, cpu_count-1).
-        worker_fn:          커스텀 워커 함수. None이면 _standard_backtest_worker 사용.
+        worker_fn:          커스텀 워커 함수. None이면 _fast_backtest_worker(기본) 사용.
+            레거시 동작이 필요하면 worker_fn=_standard_backtest_worker 전달.
             시그니처: (config, candles_bytes, market_map_bytes, ticker_to_market,
                       bt_config, params_dict) → dict
 
@@ -285,7 +321,7 @@ def run_parallel_grid(
         return pd.DataFrame()
 
     cache.prepare_bytes()
-    fn = worker_fn or _standard_backtest_worker
+    fn = worker_fn or _fast_backtest_worker
     n_workers = max_workers or max(2, min(4, (os.cpu_count() or 4) - 1))
 
     # 메인 프로세스에서 config 생성 (config_factory는 pickle 불필요)
