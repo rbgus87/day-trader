@@ -113,6 +113,7 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 - **변동성 기반 포지션 사이징 그리드** (2026-05-13): 12조합 전체 MDD 기준 미달. `volatility_sizing_enabled: false` 유지. `reports/volatility_sizing_grid.md`.
 - **ATR 비례 손절 + trail 그리드** (2026-05-13): Stage1 mult=2.0 → PF 4.791 / Stage2 trail_min=0.025/max=0.08 → PF 4.881 / Stage3 breakeven 현행 유지. `atr_stop_enabled: true`, `atr_trail_min_pct: 0.025`, `atr_trail_max_pct: 0.08` 확정. SL# 32→27. `reports/atr_stop_grid.md`.
 - **장중 시장 필터 검증** (2026-05-14): 일봉 close/open 근사 기준 기존 구간 PF 4.881 → **4.798** (7건 차단, −1.7%). 확장 구간(2026-04-11~05-12) PnL **-52,619 → -38,296** (2건 차단, 27% 개선). `intraday_market_filter_enabled: true`, `block_threshold: -0.01`, `resume_threshold: -0.005`, `check_interval: 10min`.
+- **갭업 기준가 조정 + 시그널 스코어링 그리드** (2026-05-14): Stage1 갭업 5조합 — GAP-5%만 PF 4.653 통과하나 PnL +271K로 baseline +295K 대비 −24K. Stage2 스코어링 6조합 — SC-60 PF 5.338 최고이나 PnL +268K로 −28K 감소, NEW 구간(-57K)은 baseline(-52K) 대비 악화. **두 기능 모두 비활성 확정.** `gap_breakout_adjust_enabled: false`, `signal_scoring_enabled: false`. `reports/gap_score_grid.md`.
 - **이전 baseline** (장중 필터 미포함)
   - 장중 필터 제외 (2026-05-14): PF 4.881 / 228건 / +295,690 / SL# 27
   - 고정 -8% 손절 + trail_min=0.02/max=0.10 (2026-05-13): PF 4.817 / 229건 / +293,532 / SL# 32
@@ -248,6 +249,7 @@ pytest tests/ --cov=. --cov-report=term-missing
 - [x] 페이퍼 운용 전 통합 점검 (2026-05-13) — `scripts/pre_paper_check.py` (파라미터/DB/universe/REST/WS 6개 항목). `scripts/test_nxt_api.py` (NXT API 실측, 장외 시간 수동 실행). `docs/nxt_api_investigation.md` (NXT 조사, 코드 미구현).
 - [x] JSONL 구조화 로깅 (2026-05-14) — `utils/logging_config.py` (_JsonlSink daily rotation·30일 보관·thread-safe), `scripts/analyze_paper_log.py` (장후 분석). engine_worker.py logger.bind(event=...) 주요 경로 17종. `tests/test_logging_config.py` 10개.
 - [x] 장중 시장 필터 구현 (2026-05-14) — `core/market_filter.py` refresh_intraday() / is_intraday_blocked(), engine_worker.py APScheduler 10분 갱신 + signal_consumer 체크, backtester.py build_intraday_blocked_by_date() 일봉 근사. 기존 구간 PF 4.798 / 확장 구간 손실 27% 개선. `tests/test_intraday_market_filter.py` 13개.
+- [x] 시그널 스코어링 + 갭업 기준가 조정 구현 + 그리드 (2026-05-14) — `core/signal_scorer.py` 5요소 100점 스코어러, Signal.context 전달, engine_worker/backtester 통합. `tests/test_signal_scorer.py` 17개. 그리드 결과: 갭업 조정 비활성 확정(GAP-5% PF 4.653 / PnL −24K 열세), 스코어링 비활성 확정(SC-60 PF 5.338 / PnL −28K, NEW 구간 비개선). `reports/gap_score_grid.md`.
 
 ---
 

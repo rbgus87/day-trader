@@ -20,6 +20,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import pandas as pd
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from loguru import logger
@@ -34,11 +36,9 @@ NEW_START = "2026-04-11"
 NEW_END   = "2026-05-12"
 
 # Stage 1: 갭업 기준가 조정
-GAP_ENABLED_VALS    = [False, True]
 GAP_THRESHOLD_VALS  = [0.02, 0.03, 0.05]
 
 # Stage 2: 시그널 스코어링 최소 점수
-SCORE_ENABLED_VALS  = [True]
 SCORE_MIN_VALS      = [40.0, 50.0, 60.0, 70.0]
 
 PF_THRESHOLD        = 4.5
@@ -88,27 +88,20 @@ def _gap_score_worker(args: tuple) -> dict:
 # ---------------------------------------------------------------------------
 
 def _build_stage1_combos() -> list[dict]:
-    combos = [{"tag": "BASE", "gap_breakout_adjust_enabled": False}]
-    for enabled in GAP_ENABLED_VALS:
-        if not enabled:
-            combos.append({
-                "tag": "GAP-OFF",
-                "gap_breakout_adjust_enabled": False,
-                "gap_threshold_pct": 0.0,
-            })
-        else:
-            for thr in GAP_THRESHOLD_VALS:
-                combos.append({
-                    "tag": f"GAP-{thr:.0%}",
-                    "gap_breakout_adjust_enabled": True,
-                    "gap_threshold_pct": thr,
-                })
+    combos = [{"tag": "BASE", "gap_breakout_adjust_enabled": False, "gap_threshold_pct": 0.0}]
+    combos.append({"tag": "GAP-OFF", "gap_breakout_adjust_enabled": False, "gap_threshold_pct": 0.0})
+    for thr in GAP_THRESHOLD_VALS:
+        combos.append({
+            "tag": f"GAP-{thr:.0%}",
+            "gap_breakout_adjust_enabled": True,
+            "gap_threshold_pct": thr,
+        })
     return combos
 
 
 def _build_stage2_combos() -> list[dict]:
-    combos = [{"tag": "BASE", "signal_scoring_enabled": False}]
-    combos.append({"tag": "SCORE-OFF", "signal_scoring_enabled": False})
+    combos = [{"tag": "BASE", "signal_scoring_enabled": False, "signal_min_score": 0.0}]
+    combos.append({"tag": "SCORE-OFF", "signal_scoring_enabled": False, "signal_min_score": 0.0})
     for mn in SCORE_MIN_VALS:
         combos.append({
             "tag": f"SC-{mn:.0f}",
@@ -145,41 +138,42 @@ def _make_s2_factory(best_s1_config):
 
 
 # ---------------------------------------------------------------------------
-# 결과 출력
+# 결과 출력 (DataFrame 행 기반)
 # ---------------------------------------------------------------------------
 
-def _print_table(rows: list[dict], title: str) -> None:
+def _print_table(df: pd.DataFrame, title: str) -> None:
     print(f"\n{title}")
     hdr = f"{'tag':>10} {'gap':>5} {'thr':>6} | {'trades':>7} {'PF':>6} {'PnL':>11} {'win%':>6}"
     sep = "=" * len(hdr)
     print(sep)
     print(hdr)
     print("-" * len(hdr))
-    for r in rows:
-        tag = r.get("tag", "")
+    for _, r in df.iterrows():
+        tag = str(r.get("tag", ""))
         gap = "Y" if r.get("gap_breakout_adjust_enabled") else "N"
-        thr = f"{r['gap_threshold_pct']:.0%}" if "gap_threshold_pct" in r and r.get("gap_breakout_adjust_enabled") else "-"
-        if "signal_min_score" in r:
+        thr_val = r.get("gap_threshold_pct")
+        thr = f"{thr_val:.0%}" if r.get("gap_breakout_adjust_enabled") and thr_val else "-"
+        if "signal_min_score" in r.index:
             gap = "Y" if r.get("signal_scoring_enabled") else "N"
-            thr = f"{r['signal_min_score']:.0f}" if r.get("signal_scoring_enabled") else "-"
-        pf_mark = "*" if r.get("pf", 0) >= PF_THRESHOLD else ""
+            sc_val = r.get("signal_min_score", 0)
+            thr = f"{sc_val:.0f}" if r.get("signal_scoring_enabled") else "-"
+        pf = r.get("pf", 0)
+        pf_mark = "*" if pf >= PF_THRESHOLD else ""
         print(
             f"{tag:>10} {gap:>5} {thr:>6} | "
-            f"{r['trades']:>7} {r['pf']:>5.3f}{pf_mark} "
-            f"{r['pnl']:>+11,} {r['win_rate']:>6.1%}"
+            f"{int(r.get('trades', 0)):>7} {pf:>5.3f}{pf_mark} "
+            f"{int(r.get('pnl', 0)):>+11,} {r.get('win_rate', 0):>6.1%}"
         )
     print(sep)
 
 
-def _select_best(rows: list[dict], pf_thr: float) -> dict | None:
+def _select_best(df: pd.DataFrame, pf_thr: float) -> pd.Series | None:
     """PF >= thr 조합 중 PnL 최대. BASE/SCORE-OFF/GAP-OFF 제외."""
-    candidates = [
-        r for r in rows
-        if r.get("tag") not in ("BASE", "GAP-OFF", "SCORE-OFF") and r["pf"] >= pf_thr
-    ]
-    if not candidates:
+    mask = ~df["tag"].isin(["BASE", "GAP-OFF", "SCORE-OFF"]) & (df["pf"] >= pf_thr)
+    candidates = df[mask]
+    if candidates.empty:
         return None
-    return max(candidates, key=lambda x: x["pnl"])
+    return candidates.loc[candidates["pnl"].idxmax()]
 
 
 # ---------------------------------------------------------------------------
@@ -187,21 +181,18 @@ def _select_best(rows: list[dict], pf_thr: float) -> dict | None:
 # ---------------------------------------------------------------------------
 
 def _write_report(
-    s1_old: list[dict], s1_new: list[dict],
-    s2_old: list[dict], s2_new: list[dict],
-    best_s1: dict | None, best_s2: dict | None,
+    s1_old: pd.DataFrame, s1_new: pd.DataFrame,
+    s2_old: pd.DataFrame, s2_new: pd.DataFrame,
+    best_s1: pd.Series | None, best_s2: pd.Series | None,
 ) -> None:
     out = Path("reports/gap_score_grid.md")
     out.parent.mkdir(exist_ok=True)
 
-    def _md_table(rows: list[dict]) -> list[str]:
-        cols = ["tag", "gap_breakout_adjust_enabled", "gap_threshold_pct",
-                "signal_scoring_enabled", "signal_min_score",
-                "trades", "pf", "pnl", "win_rate"]
-        header = "| " + " | ".join(c for c in cols) + " |"
+    def _md_rows(df: pd.DataFrame, cols: list[str]) -> list[str]:
+        header = "| " + " | ".join(cols) + " |"
         sep    = "| " + " | ".join("---" for _ in cols) + " |"
         lines  = [header, sep]
-        for r in rows:
+        for _, r in df.iterrows():
             vals = []
             for c in cols:
                 v = r.get(c, "-")
@@ -214,41 +205,45 @@ def _write_report(
             lines.append("| " + " | ".join(vals) + " |")
         return lines
 
+    s1_cols = ["tag", "gap_breakout_adjust_enabled", "gap_threshold_pct", "trades", "pf", "pnl", "win_rate"]
+    s2_cols = ["tag", "signal_scoring_enabled", "signal_min_score", "trades", "pf", "pnl", "win_rate"]
+
     lines = [
         "# 갭업 기준가 조정 + 시그널 스코어링 그리드",
         f"> 생성: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
         f"> OLD 구간: {OLD_START} ~ {OLD_END}  NEW 구간: {NEW_START} ~ {NEW_END}",
         f"> PF 선정 기준: {PF_THRESHOLD}",
         "",
-        f"## Stage 1 — 갭업 기준가 조정 (OLD, {len(s1_old)}조합)",
-        "",
-    ] + _md_table(s1_old) + [""]
+    ]
 
-    if s1_new:
-        lines += [f"## Stage 1 — 갭업 기준가 조정 (NEW, {len(s1_new)}조합)", ""]
-        lines += _md_table(s1_new) + [""]
-
-    if s2_old:
-        lines += [f"## Stage 2 — 시그널 스코어링 (OLD, {len(s2_old)}조합)", ""]
-        lines += _md_table(s2_old) + [""]
-
-    if s2_new:
-        lines += [f"## Stage 2 — 시그널 스코어링 (NEW, {len(s2_new)}조합)", ""]
-        lines += _md_table(s2_new) + [""]
+    if not s1_old.empty:
+        lines += [f"## Stage 1 -갭업 기준가 조정 (OLD, {len(s1_old)}조합)", ""]
+        lines += _md_rows(s1_old, s1_cols) + [""]
+    if not s1_new.empty:
+        lines += [f"## Stage 1 -갭업 기준가 조정 (NEW, {len(s1_new)}조합)", ""]
+        lines += _md_rows(s1_new, s1_cols) + [""]
+    if not s2_old.empty:
+        lines += [f"## Stage 2 -시그널 스코어링 (OLD, {len(s2_old)}조합)", ""]
+        lines += _md_rows(s2_old, s2_cols) + [""]
+    if not s2_new.empty:
+        lines += [f"## Stage 2 -시그널 스코어링 (NEW, {len(s2_new)}조합)", ""]
+        lines += _md_rows(s2_new, s2_cols) + [""]
 
     lines += ["## 최종 선정", ""]
-    if best_s2 and best_s2["pf"] >= PF_THRESHOLD:
+    if best_s2 is not None and best_s2["pf"] >= PF_THRESHOLD:
         lines += [
-            f"- Stage 2 최적: {best_s2.get('tag','-')} PF={best_s2['pf']:.3f} PnL={best_s2['pnl']:+,}",
-            f"  - signal_scoring_enabled={best_s2.get('signal_scoring_enabled')} min_score={best_s2.get('signal_min_score','-')}",
+            f"- Stage 2 최적: {best_s2.get('tag','-')} PF={best_s2['pf']:.3f} PnL={int(best_s2['pnl']):+,}",
+            f"  - signal_scoring_enabled={best_s2.get('signal_scoring_enabled')} "
+            f"min_score={best_s2.get('signal_min_score','-')}",
         ]
-    elif best_s1 and best_s1["pf"] >= PF_THRESHOLD:
+    elif best_s1 is not None and best_s1["pf"] >= PF_THRESHOLD:
         lines += [
-            f"- Stage 1 최적: {best_s1.get('tag','-')} PF={best_s1['pf']:.3f} PnL={best_s1['pnl']:+,}",
-            f"  - gap_breakout_adjust_enabled={best_s1.get('gap_breakout_adjust_enabled')} gap_threshold={best_s1.get('gap_threshold_pct','-')}",
+            f"- Stage 1 최적: {best_s1.get('tag','-')} PF={best_s1['pf']:.3f} PnL={int(best_s1['pnl']):+,}",
+            f"  - gap_breakout_adjust_enabled={best_s1.get('gap_breakout_adjust_enabled')} "
+            f"gap_threshold={best_s1.get('gap_threshold_pct','-')}",
         ]
     else:
-        lines += ["선정 기준 미달 — 현재 파라미터 유지 (두 기능 비활성)"]
+        lines += ["선정 기준 미달 -현재 파라미터 유지 (두 기능 비활성)"]
 
     out.write_text("\n".join(lines), encoding="utf-8")
     print(f"\n[SAVED] {out}", flush=True)
@@ -286,37 +281,31 @@ async def run_verify(cache: GridCache) -> None:
 
 
 # ---------------------------------------------------------------------------
-# run_stage
+# run_stage (sync)
 # ---------------------------------------------------------------------------
 
-async def run_stage(
+def run_stage(
     cache: GridCache,
     combos: list[dict],
     config_factory,
     title: str,
-) -> tuple[list[dict], list[dict]]:
-    """OLD + NEW 두 구간을 순서대로 실행한다."""
-    # OLD 구간
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """OLD + NEW 두 구간을 순서대로 실행하고 DataFrame 반환."""
     old_cache = cache.filter_dates(OLD_START, OLD_END)
     print(f"\n[{title}] OLD 구간 ({len(combos)}조합, {len(old_cache.candles)}종목)...", flush=True)
-    old_rows = await run_parallel_grid(
-        combos, old_cache, config_factory, _gap_score_worker,
-    )
-    _print_table(old_rows, f"{title} (OLD)")
+    old_df = run_parallel_grid(combos, config_factory, old_cache, worker_fn=_gap_score_worker)
+    _print_table(old_df, f"{title} (OLD)")
 
-    # NEW 구간
     new_cache = cache.filter_dates(NEW_START, NEW_END)
     if new_cache.candles:
         print(f"\n[{title}] NEW 구간 ({len(combos)}조합, {len(new_cache.candles)}종목)...", flush=True)
-        new_rows = await run_parallel_grid(
-            combos, new_cache, config_factory, _gap_score_worker,
-        )
-        _print_table(new_rows, f"{title} (NEW)")
+        new_df = run_parallel_grid(combos, config_factory, new_cache, worker_fn=_gap_score_worker)
+        _print_table(new_df, f"{title} (NEW)")
     else:
-        new_rows = []
-        print(f"[{title}] NEW 구간 캔들 없음 — 생략", flush=True)
+        new_df = pd.DataFrame()
+        print(f"[{title}] NEW 구간 캔들 없음 -생략", flush=True)
 
-    return old_rows, new_rows
+    return old_df, new_df
 
 
 # ---------------------------------------------------------------------------
@@ -331,64 +320,58 @@ async def main() -> None:
     args = parser.parse_args()
 
     print("캔들 캐시 로드 중...", flush=True)
-    cache = await load_candle_cache()
+    cache = await load_candle_cache(OLD_START, NEW_END)
     print(f"  {len(cache.candles)}종목 로드 완료", flush=True)
 
     if args.verify:
         await run_verify(cache)
         return
 
-    s1_old: list[dict] = []
-    s1_new: list[dict] = []
-    s2_old: list[dict] = []
-    s2_new: list[dict] = []
-    best_s1: dict | None = None
-    best_s2: dict | None = None
+    s1_old = s1_new = s2_old = s2_new = pd.DataFrame()
+    best_s1: pd.Series | None = None
+    best_s2: pd.Series | None = None
 
     if args.stage in (0, 1):
-        s1_old, s1_new = await run_stage(
-            cache, _build_stage1_combos(), _s1_factory, "Stage 1 갭업 조정",
-        )
+        s1_old, s1_new = run_stage(cache, _build_stage1_combos(), _s1_factory, "Stage 1 갭업 조정")
         best_s1 = _select_best(s1_old, PF_THRESHOLD)
-        if best_s1:
+        if best_s1 is not None:
             print(
-                f"\n[Stage 1 최적] {best_s1.get('tag')} — "
+                f"\n[Stage 1 최적] {best_s1.get('tag')} -"
                 f"gap={best_s1.get('gap_breakout_adjust_enabled')} "
                 f"thr={best_s1.get('gap_threshold_pct','N/A')} "
-                f"PF={best_s1['pf']:.3f} PnL={best_s1['pnl']:+,}",
+                f"PF={best_s1['pf']:.3f} PnL={int(best_s1['pnl']):+,}",
                 flush=True,
             )
         else:
-            print("\n[Stage 1] PF 선정 기준 미달 — baseline(gap=off) 유지", flush=True)
-            # baseline row를 best_s1으로 사용
-            base_rows = [r for r in s1_old if r.get("tag") == "BASE"]
-            best_s1 = base_rows[0] if base_rows else None
+            print("\n[Stage 1] PF 선정 기준 미달 -baseline(gap=off) 유지", flush=True)
+            base_rows = s1_old[s1_old["tag"] == "BASE"]
+            best_s1 = base_rows.iloc[0] if not base_rows.empty else None
 
     if args.stage in (0, 2):
         # Stage 1 최적 config 구성
-        if best_s1 and best_s1.get("tag") != "BASE":
+        if best_s1 is not None and best_s1.get("tag") != "BASE":
             best_s1_cfg = dataclasses.replace(
                 cache.base_config,
-                gap_breakout_adjust_enabled=best_s1.get("gap_breakout_adjust_enabled", False),
-                gap_threshold_pct=best_s1.get("gap_threshold_pct", 0.03),
+                gap_breakout_adjust_enabled=bool(best_s1.get("gap_breakout_adjust_enabled", False)),
+                gap_threshold_pct=float(best_s1.get("gap_threshold_pct", 0.03)),
             )
         else:
             best_s1_cfg = cache.base_config
 
-        s2_old, s2_new = await run_stage(
+        s2_old, s2_new = run_stage(
             cache, _build_stage2_combos(), _make_s2_factory(best_s1_cfg), "Stage 2 스코어링",
         )
         best_s2 = _select_best(s2_old, PF_THRESHOLD)
-        if best_s2:
+        if best_s2 is not None:
             print(
-                f"\n[Stage 2 최적] {best_s2.get('tag')} — "
+                f"\n[Stage 2 최적] {best_s2.get('tag')} -"
                 f"score_enabled={best_s2.get('signal_scoring_enabled')} "
                 f"min_score={best_s2.get('signal_min_score','N/A')} "
-                f"PF={best_s2['pf']:.3f} PnL={best_s2['pnl']:+,}",
+                f"PF={best_s2['pf']:.3f} PnL={int(best_s2['pnl']):+,}",
                 flush=True,
             )
         else:
-            print("\n[Stage 2] PF 선정 기준 미달 — 스코어링 비활성 유지", flush=True)
+            print("\n[Stage 2] PF 선정 기준 미달 -스코어링 비활성 유지", flush=True)
 
     _write_report(s1_old, s1_new, s2_old, s2_new, best_s1, best_s2)
 
