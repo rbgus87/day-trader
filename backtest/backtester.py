@@ -186,6 +186,18 @@ class Backtester:
         # 장중 필터: {date_str: {"kospi": blocked, "kosdaq": blocked}}
         # build_intraday_blocked_by_date()로 생성. None이면 장중 필터 비적용.
         self._intraday_blocked_by_date = intraday_blocked_by_date
+        # 시그널 스코어링 (signal_scoring_enabled=True 시 활성)
+        self._scorer = None
+        if getattr(config, "signal_scoring_enabled", False):
+            from core.signal_scorer import SignalScorer
+            self._scorer = SignalScorer(
+                w_volume_ratio=getattr(config, "score_weight_volume_ratio", 25.0),
+                w_adx_strength=getattr(config, "score_weight_adx_strength", 25.0),
+                w_breakout_pct=getattr(config, "score_weight_breakout_pct", 20.0),
+                w_close_position=getattr(config, "score_weight_close_position", 15.0),
+                w_atr_normalized=getattr(config, "score_weight_atr_normalized", 15.0),
+            )
+        self._signal_min_score = getattr(config, "signal_min_score", 60.0)
 
     # ------------------------------------------------------------------
     # 데이터 로드
@@ -281,12 +293,30 @@ class Backtester:
                 # 당일 최초 돌파 시점 가격 추적 (고점 진입 방지용 breakout_price)
                 if breakout_price_day is None:
                     _pday_high = getattr(strategy, "_prev_day_high", 0.0)
+                    _pday_close = getattr(strategy, "_prev_day_close", 0.0)
                     _min_bp = getattr(self._config, "min_breakout_pct", 0.0)
-                    if _pday_high > 0 and float(row.get("high", 0)) >= _pday_high * (1 + _min_bp):
-                        breakout_price_day = _pday_high * (1 + _min_bp)
+                    _breakout_ref = _pday_high
+                    # 갭업 기준가 조정: 당일 시가가 gap_threshold 이상 갭업이면 시가를 기준으로
+                    if (
+                        getattr(self._config, "gap_breakout_adjust_enabled", False)
+                        and _pday_close > 0
+                        and not candles_so_far.empty
+                    ):
+                        _today_open = float(candles_so_far.iloc[0].get("open", 0))
+                        _gap_thr = getattr(self._config, "gap_threshold_pct", 0.03)
+                        if _today_open > 0:
+                            _gap_pct = (_today_open - _pday_close) / _pday_close
+                            if _gap_pct >= _gap_thr:
+                                _breakout_ref = _today_open
+                    if _breakout_ref > 0 and float(row.get("high", 0)) >= _breakout_ref * (1 + _min_bp):
+                        breakout_price_day = _breakout_ref * (1 + _min_bp)
                 signal: Signal | None = strategy.generate_signal(
                     candles_so_far, tick, breakout_price=breakout_price_day
                 )
+                if signal is not None and signal.side == "buy" and self._scorer is not None:
+                    score = self._scorer.score(signal.context)
+                    if score.total < self._signal_min_score:
+                        signal = None
                 if signal is not None and signal.side == "buy":
                     strategy.on_entry()
                     entry_price_raw = float(row["close"])
@@ -928,11 +958,12 @@ class Backtester:
         # Phase 2 Day 6: ATR 조회용 ticker 주입 (run_multi_day_cached가 알고 있음)
         if hasattr(strategy, "set_ticker") and hasattr(self, "_current_ticker"):
             strategy.set_ticker(self._current_ticker)
-        # Momentum: 전일 고가/거래량 설정
+        # Momentum: 전일 고가/거래량/종가 설정
         if hasattr(strategy, "set_prev_day_data") and prev_day_df is not None:
             prev_high = float(prev_day_df["high"].max())
             prev_volume = int(prev_day_df["volume"].sum())
-            strategy.set_prev_day_data(prev_high, prev_volume)
+            prev_close = float(prev_day_df.iloc[-1]["close"])
+            strategy.set_prev_day_data(prev_high, prev_volume, prev_close)
 
         # 시간대별 거래량 비율용 전일 분봉 주입
         if hasattr(strategy, "set_prev_day_candles") and prev_day_df is not None:

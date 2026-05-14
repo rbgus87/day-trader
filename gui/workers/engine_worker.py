@@ -168,6 +168,7 @@ class EngineWorker(QThread):
 
         self._order_tracker = None  # _run_engine에서 인스턴스화
         self._orderbook_manager = None  # OBI 필터용 호가 스냅샷 관리자
+        self._signal_scorer = None  # 시그널 품질 스코어러 (config 로드 후 초기화)
         self._timeout_counters: dict[str, int] = {}    # ticker → 연속 TIMEOUT 카운터
         self._limit_up_exit_pending: set[str] = set()  # limit_up_exit submit된 ticker
 
@@ -318,6 +319,15 @@ class EngineWorker(QThread):
         from core.order_tracker import OrderTracker
         self._order_tracker = OrderTracker(
             timeout_seconds=self._config.trading.order_confirmation_timeout_sec,
+        )
+
+        from core.signal_scorer import SignalScorer
+        self._signal_scorer = SignalScorer(
+            w_volume_ratio=self._config.trading.score_weight_volume_ratio,
+            w_adx_strength=self._config.trading.score_weight_adx_strength,
+            w_breakout_pct=self._config.trading.score_weight_breakout_pct,
+            w_close_position=self._config.trading.score_weight_close_position,
+            w_atr_normalized=self._config.trading.score_weight_atr_normalized,
         )
 
         # 2. Infrastructure
@@ -1434,6 +1444,33 @@ class EngineWorker(QThread):
                             ).info(f"[OBI] 매도벽 감지 차단: {signal.ticker}")
                             continue
 
+                # 시그널 스코어링 (진입 최소 조건 통과 후 품질 필터)
+                if (
+                    getattr(self._config.trading, "signal_scoring_enabled", False)
+                    and self._signal_scorer is not None
+                    and signal.context
+                ):
+                    score = self._signal_scorer.score(signal.context)
+                    min_score = getattr(self._config.trading, "signal_min_score", 60.0)
+                    logger.bind(
+                        event="signal_scored",
+                        ticker=signal.ticker,
+                        score=score.total,
+                        components=score.components,
+                    ).debug(f"[SCORE] {signal.ticker} {score.total:.1f}점")
+                    if score.total < min_score:
+                        logger.bind(
+                            event="signal_blocked",
+                            ticker=signal.ticker,
+                            reason="score_low",
+                            score=score.total,
+                            min_score=min_score,
+                        ).info(
+                            f"[SCORE] 품질 미달 차단: {signal.ticker} "
+                            f"{score.total:.1f}점 < {min_score:.0f}점"
+                        )
+                        continue
+
                 strategy = self._active_strategies[signal.ticker]["strategy"]
                 sl = strategy.get_stop_loss(signal.price)
                 tp1 = strategy.get_take_profit(signal.price)
@@ -2201,13 +2238,14 @@ class EngineWorker(QThread):
         # 전일 데이터(_prev_day_high/_prev_day_volume)를 새 인스턴스에 복사.
         # 미보존 시 added=∅ 경로에서 _refresh_prev_day_ohlcv가 호출되지 않아
         # _prev_day_high=0 → generate_signal early return 누적.
-        prev_data: dict[str, tuple[float, int]] = {}
+        prev_data: dict[str, tuple[float, int, float]] = {}
         for ticker, info in (self._active_strategies or {}).items():
             old = info.get("strategy") if isinstance(info, dict) else None
             high = getattr(old, "_prev_day_high", 0.0)
             vol = getattr(old, "_prev_day_volume", 0)
+            close = getattr(old, "_prev_day_close", 0.0)
             if high > 0:
-                prev_data[ticker] = (float(high), int(vol))
+                prev_data[ticker] = (float(high), int(vol), float(close))
 
         self._active_strategies = {}
         for s in stocks:
@@ -2220,8 +2258,8 @@ class EngineWorker(QThread):
             if hasattr(strat, "set_ticker"):
                 strat.set_ticker(ticker)
             if ticker in prev_data and hasattr(strat, "set_prev_day_data"):
-                ph, pv = prev_data[ticker]
-                strat.set_prev_day_data(ph, pv)
+                ph, pv, pc = prev_data[ticker]
+                strat.set_prev_day_data(ph, pv, pc)
             self._active_strategies[ticker] = {
                 "strategy": strat,
                 "name": s.get("name", ticker),
@@ -2290,7 +2328,7 @@ class EngineWorker(QThread):
                     if prev_high > 0 and ticker in self._active_strategies:
                         strat = self._active_strategies[ticker]["strategy"]
                         if hasattr(strat, "set_prev_day_data"):
-                            strat.set_prev_day_data(prev_high, prev_vol)
+                            strat.set_prev_day_data(prev_high, prev_vol, prev_close)
                             _init += 1
                         self._prev_high_map[ticker] = prev_high
                     if prev_close > 0:

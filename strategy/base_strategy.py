@@ -1,7 +1,7 @@
 """strategy/base_strategy.py — 전략 ABC (복수 매매 지원)."""
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, time
 
 import pandas as pd
@@ -16,6 +16,7 @@ class Signal:
     strategy: str
     reason: str
     qty: int | None = None
+    context: dict = field(default_factory=dict)  # 스코어링 컨텍스트 (generate_signal 이 채움)
 
 
 class BaseStrategy(ABC):

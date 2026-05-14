@@ -207,6 +207,19 @@ class TradingConfig:
     spread_max_pct: float = 0.005      # 스프레드 0.5% 이하에서만 진입
     ask_wall_block_enabled: bool = False  # 현재가 근처 매도벽 감지 시 진입 차단
 
+    # 시그널 스코어링 — 최소 조건 통과 후 품질 필터 (100점 만점)
+    signal_scoring_enabled: bool = False
+    signal_min_score: float = 60.0
+    score_weight_volume_ratio: float = 25.0
+    score_weight_adx_strength: float = 25.0
+    score_weight_breakout_pct: float = 20.0
+    score_weight_close_position: float = 15.0
+    score_weight_atr_normalized: float = 15.0
+
+    # 갭업 기준가 조정 — NXT 소진 종목 자연 필터링
+    gap_breakout_adjust_enabled: bool = False
+    gap_threshold_pct: float = 0.03    # 갭업 3% 이상 시 시가를 돌파 기준가로
+
 
 @dataclass(frozen=True)
 class ScreenerConfig:

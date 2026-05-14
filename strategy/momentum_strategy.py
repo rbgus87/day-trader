@@ -19,10 +19,12 @@ class MomentumStrategy(BaseStrategy):
         self._config = config
         self._prev_day_high: float = 0.0
         self._prev_day_volume: int = 0
+        self._prev_day_close: float = 0.0   # 갭업 기준가 계산용
         self._prev_day_candles: "pd.DataFrame | None" = None  # 시간대별 거래량 비율용
         # Phase 2 Day 6: ATR 손절 컨텍스트
         self._ticker: str = ""
         self._last_signal_date: str = ""  # YYYY-MM-DD
+        self._last_adx: float = 0.0        # 스코어링용 마지막 ADX 값
         # 5분 요약 로그용 단계별 평가 카운터. engine_worker가 주기적으로
         # 합산해 [SIGNAL-SUMMARY]를 출력하고 reset_diag_counters()로 리셋.
         self.diag_counters: dict[str, int] = self._make_diag_counters()
@@ -58,10 +60,11 @@ class MomentumStrategy(BaseStrategy):
         for k in self.diag_counters:
             self.diag_counters[k] = 0
 
-    def set_prev_day_data(self, high: float, volume: int) -> None:
-        """전일 고가·거래량 기준값 저장."""
+    def set_prev_day_data(self, high: float, volume: int, close: float = 0.0) -> None:
+        """전일 고가·거래량·종가 기준값 저장."""
         self._prev_day_high = high
         self._prev_day_volume = volume
+        self._prev_day_close = close
 
     def set_prev_day_candles(self, candles: "pd.DataFrame | None") -> None:
         """전일 분봉 데이터 주입 — 시간대별 거래량 비율 계산용.
@@ -157,7 +160,23 @@ class MomentumStrategy(BaseStrategy):
             aft_bp = getattr(self._config, "afternoon_min_breakout_pct", 0.05)
             if aft_bp > min_bp:
                 min_bp = aft_bp  # 오후 구간 임계값 상향
-        breakout_pct = (current_price - self._prev_day_high) / self._prev_day_high
+
+        # 갭업 기준가 조정: 당일 시가가 전일 종가 대비 N% 이상 갭업이면 시가를 기준가로
+        breakout_ref = self._prev_day_high
+        if (
+            getattr(self._config, "gap_breakout_adjust_enabled", False)
+            and self._prev_day_close > 0
+            and candles is not None
+            and not candles.empty
+        ):
+            today_open = float(candles.iloc[0].get("open", 0) if hasattr(candles.iloc[0], "get") else candles.iloc[0]["open"])
+            gap_threshold = getattr(self._config, "gap_threshold_pct", 0.03)
+            if today_open > 0:
+                gap_pct = (today_open - self._prev_day_close) / self._prev_day_close
+                if gap_pct >= gap_threshold:
+                    breakout_ref = today_open
+
+        breakout_pct = (current_price - breakout_ref) / breakout_ref
         if breakout_pct < min_bp:
             self.diag_counters["breakout_fail"] += 1
             if _aft:
@@ -242,7 +261,7 @@ class MomentumStrategy(BaseStrategy):
 
         # 3) 마지막 캔들 종가 돌파 재확정 (ADR-016: 최소 돌파폭 적용)
         last_close = candles.iloc[-1]["close"]
-        last_breakout_pct = (last_close - self._prev_day_high) / self._prev_day_high
+        last_breakout_pct = (last_close - breakout_ref) / breakout_ref
         if last_breakout_pct < min_bp:
             self.diag_counters["breakout_last_fail"] += 1
             logger.debug(
@@ -281,9 +300,28 @@ class MomentumStrategy(BaseStrategy):
             pass  # 폴백은 get_stop_loss에서 처리
 
         self.diag_counters["signal_emit"] += 1
+
+        # 스코어링 컨텍스트 구성
+        signal_context: dict = {
+            "breakout_pct": breakout_pct,
+            "adx": self._last_adx,
+        }
+        if self._prev_day_volume > 0:
+            signal_context["volume_ratio"] = cum_volume / self._prev_day_volume
+        if self._prev_day_high > 0 and self._prev_day_close > 0:
+            signal_context["close_to_high"] = self._prev_day_close / self._prev_day_high
+        # ATR 추정: 최근 14봉 평균 TR / 평균 종가 (candle-based, DB 조회 없음)
+        if len(candles) >= 5:
+            _recent = candles.tail(min(14, len(candles)))
+            _avg_tr = (_recent["high"] - _recent["low"]).mean()
+            _mid = _recent["close"].mean()
+            if _mid > 0:
+                signal_context["atr_pct"] = _avg_tr / _mid
+
+        ref_label = "시가" if breakout_ref != self._prev_day_high else "전일고가"
         logger.info(
             f"모멘텀 매수 신호: {tick['ticker']} price={current_price} "
-            f"prev_high={self._prev_day_high} cum_vol={cum_volume:,.0f}"
+            f"ref={breakout_ref}({ref_label}) cum_vol={cum_volume:,.0f}"
         )
 
         return Signal(
@@ -291,7 +329,8 @@ class MomentumStrategy(BaseStrategy):
             side="buy",
             price=current_price,
             strategy="momentum",
-            reason=f"전일 고점({self._prev_day_high:,.0f}) 돌파 + 거래량 {self._config.momentum_volume_ratio:.1f}배 확인",
+            reason=f"전일 고점({breakout_ref:,.0f}) 돌파 + 거래량 {self._config.momentum_volume_ratio:.1f}배 확인",
+            context=signal_context,
         )
 
     def _check_adx(self, candles: pd.DataFrame, ticker: str = "", min_adx: float | None = None) -> bool:
@@ -333,6 +372,7 @@ class MomentumStrategy(BaseStrategy):
                 )
                 return False
             self.diag_counters["adx_pass"] += 1
+            self._last_adx = float(current_adx)
             logger.debug(
                 f"[ADX] 통과: {ticker} {current_adx:.1f} >= {_adx_threshold}"
             )
