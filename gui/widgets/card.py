@@ -13,8 +13,8 @@ class Card(QFrame):
         title      : 13px bold + 하단 구분선
     """
 
-    BG_COLOR = "#313244"
-    BORDER_COLOR = "#45475a"
+    BG_COLOR = "#2a2a3d"
+    BORDER_COLOR = "#313244"
     BORDER_RADIUS = 8
     PADDING = (10, 8, 10, 8)
 

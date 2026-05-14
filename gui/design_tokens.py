@@ -3,10 +3,11 @@ from __future__ import annotations
 
 
 class Colors:
-    background = "#1e1e2e"        # base
-    surface = "#313244"           # surface0 — 카드, 패널
-    surface_elevated = "#45475a"  # surface1 — 호버, 선택
-    surface_border = "#585b70"    # surface2 — 구분선
+    background = "#1e1e2e"        # base — 메인 윈도우 배경 (가장 어두움)
+    surface = "#2a2a3d"           # 패널/카드 배경 (base보다 밝음)
+    surface_hover = "#2f2f45"     # 테이블 짝수행 / 호버
+    surface_elevated = "#45475a"  # surface1 — 선택
+    surface_border = "#313244"    # 패널 테두리
     mantle = "#181825"            # 헤더/사이드바 배경
     crust = "#11111b"             # 가장 어두운 배경
 

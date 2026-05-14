@@ -79,7 +79,7 @@ class EquityChart(QWidget):
         self._pw = pg.PlotWidget(
             axisItems={"bottom": axis_bottom, "left": axis_left}
         )
-        self._pw.setBackground("#181825")  # mantle — 카드(#313244)보다 어둡게
+        self._pw.setBackground("#2a2a3d")  # surface — 패널과 동일
         self._pw.setStyleSheet(
             "QWidget { border: 1px solid #45475a; border-radius: 4px; }"
         )
