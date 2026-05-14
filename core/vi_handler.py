@@ -37,7 +37,7 @@ class VIHandler:
 
     def __init__(
         self,
-        static_pct: float = 0.095,
+        static_pct: float = 0.098,
         assumed_duration_sec: int = 150,
         suspected_duration_sec: int = 60,
     ):
@@ -74,12 +74,29 @@ class VIHandler:
             if existing is not None and existing.state == VIState.SUSPECTED:
                 # SUSPECTED는 주문 거부 기반 확정 신호 → 휴리스틱으로 강등 금지
                 return
-            expires = datetime.now() + self._assumed_duration
-            self._entries[ticker] = _Entry(VIState.STATIC_VI, expires)
-            logger.info(
-                f"[VI] {ticker} STATIC 추정 — change={change_pct * 100:+.2f}%, "
-                f"expires_at={expires:%H:%M:%S}"
+            now = datetime.now()
+            # 이미 STATIC_VI 활성 중이면 만료 시각만 갱신, 로그 생략
+            already_static = (
+                existing is not None
+                and now < existing.expires_at
+                and existing.state == VIState.STATIC_VI
             )
+            expires = now + self._assumed_duration
+            self._entries[ticker] = _Entry(VIState.STATIC_VI, expires)
+            if not already_static:
+                logger.info(
+                    f"[VI] {ticker} STATIC 추정 — change={change_pct * 100:+.2f}%, "
+                    f"expires_at={expires:%H:%M:%S}"
+                )
+
+    def log_summary(self) -> None:
+        """5분 주기 스케줄러에서 호출 — VI 활성 종목 수 요약 로그."""
+        now = datetime.now()
+        active = [e for e in self._entries.values() if now < e.expires_at]
+        static_cnt = sum(1 for e in active if e.state == VIState.STATIC_VI)
+        suspected_cnt = sum(1 for e in active if e.state == VIState.SUSPECTED)
+        if static_cnt + suspected_cnt > 0:
+            logger.info(f"[VI] 현재 {static_cnt}종목 STATIC_추정, {suspected_cnt}종목 SUSPECTED")
 
     def update_from_ws_0a(self, ticker: str, payload: dict) -> None:
         """TODO: 키움 WS '0A'(기세) 메시지의 VI 발동 필드 확정 후 구현.

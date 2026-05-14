@@ -499,6 +499,11 @@ class EngineWorker(QThread):
                 minutes=self._config.trading.intraday_check_interval_min,
                 id="intraday_filter_refresh", replace_existing=True,
             )
+        # VI 요약 로그 — 5분 간격
+        self._scheduler.add_job(
+            lambda: self._vi_handler.log_summary() if self._vi_handler else None,
+            "interval", minutes=5, id="vi_summary",
+        )
         self._scheduler.start()
         logger.debug(f"BackgroundScheduler 시작됨, running={self._scheduler.running}")
 
