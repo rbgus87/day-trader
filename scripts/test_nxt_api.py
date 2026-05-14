@@ -57,9 +57,9 @@ def _ts() -> str:
 
 
 def _section(title: str) -> None:
-    print(f"\n{_CYAN}{'─' * 55}{_RESET}")
+    print(f"\n{_CYAN}{'-' * 55}{_RESET}")
     print(f"{_CYAN} {title}{_RESET}")
-    print(f"{_CYAN}{'─' * 55}{_RESET}")
+    print(f"{_CYAN}{'-' * 55}{_RESET}")
 
 
 def _ok(msg: str) -> None:
@@ -92,9 +92,9 @@ def _get_session_label() -> str:
     return f"장외({now.strftime('%H:%M')})"
 
 
-# ──────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------
 # Test 1: REST TR ID 후보 탐색
-# ──────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------
 
 async def test_rest_tr_candidates(rest_client) -> dict:
     """알려진 TR ID 후보를 모두 호출하여 응답 여부를 기록."""
@@ -156,9 +156,9 @@ async def test_rest_tr_candidates(rest_client) -> dict:
     return results
 
 
-# ──────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------
 # Test 2: ka10001 정규장 가격 vs 현재 호출 가격 비교
-# ──────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------
 
 async def test_ka10001_price_context(rest_client) -> dict:
     """ka10001 응답에서 정규장 종가 / 현재가 필드를 기록.
@@ -202,9 +202,9 @@ async def test_ka10001_price_context(rest_client) -> dict:
         return {"status": "error", "error": str(e)}
 
 
-# ──────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------
 # Test 3: WS 0B 수신 확인 (NXT 시간대)
-# ──────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------
 
 async def test_ws_ob_reception() -> dict:
     """WS 0B 구독 후 _WS_LISTEN_SEC 초 동안 체결 메시지 수신 여부 확인."""
@@ -314,9 +314,9 @@ async def test_ws_ob_reception() -> dict:
         return {"status": "error", "error": str(e)}
 
 
-# ──────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------
 # Test 4: 장외 시간 접속 여부 (is_ws_active_hours 범위 확인)
-# ──────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------
 
 def test_ws_active_hours_check() -> dict:
     """현재 시각이 is_ws_active_hours() 범위 안인지 확인."""
@@ -342,16 +342,16 @@ def test_ws_active_hours_check() -> dict:
         return {"status": "error"}
 
 
-# ──────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------
 # Main
-# ──────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------
 
 async def main() -> None:
-    print(f"\n{_CYAN}{'═' * 55}{_RESET}")
+    print(f"\n{_CYAN}{'=' * 55}{_RESET}")
     print(f"{_CYAN} day-trader NXT API 실측 스크립트{_RESET}")
     print(f"{_CYAN} 실행 시각: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}{_RESET}")
     print(f"{_CYAN} 세션: {_get_session_label()}{_RESET}")
-    print(f"{_CYAN}{'═' * 55}{_RESET}")
+    print(f"{_CYAN}{'=' * 55}{_RESET}")
 
     session_label = _get_session_label()
     if "정규장" in session_label:
@@ -396,10 +396,10 @@ async def main() -> None:
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
 
-    print(f"\n{_CYAN}{'═' * 55}{_RESET}")
+    print(f"\n{_CYAN}{'=' * 55}{_RESET}")
     print(f"{_GREEN} 결과 저장: {out_path}{_RESET}")
     print(f"{_GRAY} docs/nxt_api_investigation.md에 실측 결과를 반영하세요.{_RESET}")
-    print(f"{_CYAN}{'═' * 55}{_RESET}\n")
+    print(f"{_CYAN}{'=' * 55}{_RESET}\n")
 
 
 if __name__ == "__main__":
