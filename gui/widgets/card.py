@@ -1,35 +1,42 @@
-"""Card — 둥근 모서리 컨테이너 베이스 위젯.
-
-KPI 카드, 차트 카드, 테이블 카드 등 대시보드 전반의 카드 스타일을
-한 곳에서 관리. 추상화 범위는 "배경 + 라운딩 + 패딩 + 선택적 타이틀"까지.
-"""
+"""Card — 둥근 모서리 컨테이너 베이스 위젯."""
 
 from PyQt6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
 
 
 class Card(QFrame):
-    """Catppuccin Mocha surface0 배경의 둥근 컨테이너.
+    """대시보드 패널 공통 카드 컨테이너.
 
-    기존 KPI 카드 스타일을 그대로 재사용.
-        background-color: #313244
-        border-radius:    6px
-        padding:          10, 8, 10, 8 (layout contentsMargins)
-
-    Args:
-        title: 있으면 카드 상단에 12px bold 라벨. None 이면 라벨 없음.
+    디자인:
+        background : #313244  (surface0)
+        border     : 1px solid #45475a  (surface1)
+        radius     : 8px
+        title      : 13px bold + 하단 구분선
     """
 
-    # 스타일 상수 (외부에서 재사용 가능)
     BG_COLOR = "#313244"
-    BORDER_RADIUS = 6
-    PADDING = (10, 8, 10, 8)  # left, top, right, bottom
-    TITLE_STYLE = "font-size: 12px; font-weight: bold; color: #cdd6f4;"
+    BORDER_COLOR = "#45475a"
+    BORDER_RADIUS = 8
+    PADDING = (10, 8, 10, 8)
+
+    TITLE_STYLE = (
+        "font-size: 13px; font-weight: bold; color: #cdd6f4; "
+        "background: transparent; border: none;"
+    )
 
     def __init__(self, title: str | None = None, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        # objectName 기반 셀렉터로 자식 QFrame에 스타일 누수 방지
+        self.setObjectName("card")
         self.setStyleSheet(
-            f"QFrame {{ background-color: {self.BG_COLOR}; "
-            f"border-radius: {self.BORDER_RADIUS}px; }}"
+            f"QFrame#card {{"
+            f"  background-color: {self.BG_COLOR};"
+            f"  border-radius: {self.BORDER_RADIUS}px;"
+            f"  border: 1px solid {self.BORDER_COLOR};"
+            f"}}"
+            # 카드 내부 QFrame (구분선, 테이블 프레임 등) 은 border 없음
+            f"QFrame#card QFrame {{"
+            f"  border: none; border-radius: 0;"
+            f"}}"
         )
 
         self._vbox = QVBoxLayout(self)
@@ -41,20 +48,26 @@ class Card(QFrame):
             self.title_label = QLabel(title)
             self.title_label.setStyleSheet(self.TITLE_STYLE)
             self._vbox.addWidget(self.title_label)
+            # 타이틀 하단 구분선
+            sep = QFrame()
+            sep.setObjectName("card_title_sep")
+            sep.setFrameShape(QFrame.Shape.HLine)
+            sep.setFixedHeight(1)
+            sep.setStyleSheet(
+                "QFrame#card_title_sep { background: #45475a; border: none; }"
+            )
+            self._vbox.addWidget(sep)
+            self._vbox.setSpacing(6)
 
     def addWidget(self, widget: QWidget, stretch: int = 0) -> None:
-        """카드 콘텐츠 영역에 위젯 추가."""
         self._vbox.addWidget(widget, stretch)
 
     def addLayout(self, layout) -> None:
-        """카드 콘텐츠 영역에 레이아웃 추가."""
         self._vbox.addLayout(layout)
 
     def setTitle(self, text: str) -> None:
-        """타이틀 라벨 텍스트 갱신 (타이틀 없이 생성된 카드는 no-op)."""
         if self.title_label is not None:
             self.title_label.setText(text)
 
     def content_layout(self) -> QVBoxLayout:
-        """내부 QVBoxLayout 노출 (spacing/margin 조정용)."""
         return self._vbox
