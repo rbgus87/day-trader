@@ -1,4 +1,4 @@
-"""메인 윈도우 — 좌측 사이드바 + 우측 5탭 레이아웃."""
+"""메인 윈도우 — 상단 헤더 + 좌측 네비 + 메인 콘텐츠 레이아웃 (Phase 1 재설계)."""
 
 import ctypes
 import re
@@ -8,15 +8,16 @@ from pathlib import Path
 import yaml
 from PyQt6.QtCore import QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
-    QApplication, QHBoxLayout, QLabel, QMainWindow, QMessageBox,
-    QStatusBar, QTabWidget, QVBoxLayout, QWidget,
+    QApplication, QLabel, QMainWindow, QMessageBox,
+    QStackedWidget, QStatusBar, QHBoxLayout, QVBoxLayout, QWidget,
 )
 from loguru import logger
 
 from gui.themes import dark_theme
 from gui.tray_icon import TrayIcon
-from gui.widgets.sidebar import Sidebar
-from gui.widgets.dashboard_tab import DashboardTab
+from gui.views.nav_panel import NavPanel
+from gui.views.header_bar import HeaderBar
+from gui.views.dashboard_view import DashboardView
 from gui.widgets.screener_tab import ScreenerTab
 from gui.widgets.backtest_tab import BacktestTab
 from gui.widgets.strategy_tab import StrategyTab
@@ -25,15 +26,15 @@ from gui.workers.engine_worker import EngineWorker
 
 
 class MainWindow(QMainWindow):
-    """DayTrader 메인 윈도우."""
+    """DayTrader 메인 윈도우 (Phase 1 재설계: 헤더 + 좌측 네비 + 콘텐츠 스택)."""
 
-    _log_signal = pyqtSignal(str, str)  # text, level
+    _log_signal = pyqtSignal(str, str)
 
     def __init__(self):
         super().__init__()
         self.setWindowTitle("DayTrader")
         self.setMinimumSize(1100, 720)
-        self.resize(1280, 800)
+        self.resize(1366, 860)
 
         self._worker: EngineWorker | None = None
         self._stop_btn_pressed = False
@@ -51,62 +52,65 @@ class MainWindow(QMainWindow):
     def _init_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
-        root = QHBoxLayout(central)
+        root = QVBoxLayout(central)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # Left sidebar
-        self.sidebar = Sidebar()
-        root.addWidget(self.sidebar)
+        # 상단 헤더 바
+        self.header_bar = HeaderBar()
+        root.addWidget(self.header_bar)
 
-        # Right content area
-        right = QVBoxLayout()
-        right.setContentsMargins(0, 0, 0, 0)
-        right.setSpacing(0)
+        # 바디: 좌측 네비 + 우측 콘텐츠
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
 
-        # Tab widget
-        self.tabs = QTabWidget()
-        self.dashboard_tab = DashboardTab()
+        # 좌측 네비게이션 패널
+        self.nav_panel = NavPanel()
+        body.addWidget(self.nav_panel)
+
+        # 우측 콘텐츠 스택
+        self.content_stack = QStackedWidget()
+        self.dashboard_view = DashboardView()
         self.screener_tab = ScreenerTab()
         self.backtest_tab = BacktestTab()
         self.strategy_tab = StrategyTab()
         self.log_tab = LogTab()
 
-        self.tabs.addTab(self.dashboard_tab, "대시보드")
-        self.tabs.addTab(self.screener_tab, "스크리너")
-        self.tabs.addTab(self.backtest_tab, "백테스트")
-        self.tabs.addTab(self.strategy_tab, "전략 설정")
-        self.tabs.addTab(self.log_tab, "로그")
+        self.content_stack.addWidget(self.dashboard_view)   # index 0
+        self.content_stack.addWidget(self.screener_tab)     # index 1
+        self.content_stack.addWidget(self.backtest_tab)     # index 2
+        self.content_stack.addWidget(self.strategy_tab)     # index 3
+        self.content_stack.addWidget(self.log_tab)          # index 4
+        body.addWidget(self.content_stack, stretch=1)
+        root.addLayout(body, stretch=1)
 
-        right.addWidget(self.tabs)
-        root.addLayout(right, stretch=1)
-
-        # Status bar
+        # 하단 상태바 (Mode/Engine/감시/포지션)
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
-        self._lbl_status_left = QLabel("Mode: PAPER | Engine: Stopped")
-        self._lbl_status_time = QLabel()
-        self._lbl_market_status = QLabel("시장: -")
+        self._lbl_status_left = QLabel("Mode: PAPER | Engine: 정지됨")
         self.status_bar.addWidget(self._lbl_status_left, 1)
-        self.status_bar.addPermanentWidget(self._lbl_market_status)
-        self.status_bar.addPermanentWidget(self._lbl_status_time)
 
-        # Connect sidebar signals
-        self.sidebar.start_clicked.connect(self._on_start)
-        self.sidebar.stop_clicked.connect(self._on_stop)
-        self.sidebar.halt_clicked.connect(self._on_halt)
-        self.sidebar.screening_clicked.connect(self._on_screening)
-        self.sidebar.force_close_clicked.connect(self._on_force_close)
-        self.sidebar.report_clicked.connect(self._on_report)
-        self.sidebar.reconnect_clicked.connect(self._on_reconnect)
-        self.sidebar.mode_changed.connect(self._on_mode_changed)
-        self.sidebar.strategy_changed.connect(self._on_strategy_changed)
+        # 네비 시그널 연결
+        self.nav_panel.page_changed.connect(self.content_stack.setCurrentIndex)
+        self.nav_panel.start_clicked.connect(self._on_start)
+        self.nav_panel.stop_clicked.connect(self._on_stop)
+        self.nav_panel.halt_clicked.connect(self._on_halt)
+        self.nav_panel.screening_clicked.connect(self._on_screening)
+        self.nav_panel.force_close_clicked.connect(self._on_force_close)
+        self.nav_panel.report_clicked.connect(self._on_report)
+        self.nav_panel.reconnect_clicked.connect(self._on_reconnect)
+        self.nav_panel.mode_changed.connect(self._on_mode_changed)
+        self.nav_panel.strategy_changed.connect(self._on_strategy_changed)
 
-        # Connect tab signals
+        # 탭 시그널 연결
         self.screener_tab.run_screening_clicked.connect(self._on_screening)
         self.strategy_tab.settings_saved.connect(self._on_settings_saved)
         self.backtest_tab.run_backtest_clicked.connect(self._on_run_backtest)
         self.backtest_tab.run_compare_clicked.connect(self._on_run_compare)
+
+        # sidebar 호환: 내부 참조용 alias (일부 메서드에서 사용)
+        self.sidebar = self.nav_panel
 
     # ── 테마 / 타이틀바 ───────────────────────────────────────────────────────
 
@@ -114,14 +118,11 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(dark_theme())
 
     def _apply_dark_titlebar(self):
-        """Windows 타이틀바를 다크 모드로 변경."""
         try:
             hwnd = int(self.winId())
-            DWMWA_USE_IMMERSIVE_DARK_MODE = 20
             value = ctypes.c_int(1)
             ctypes.windll.dwmapi.DwmSetWindowAttribute(
-                hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE,
-                ctypes.byref(value), ctypes.sizeof(value),
+                hwnd, 20, ctypes.byref(value), ctypes.sizeof(value),
             )
         except Exception:
             pass
@@ -131,20 +132,15 @@ class MainWindow(QMainWindow):
     def _setup_loguru_sink(self):
         self._log_signal.connect(self._dispatch_log)
 
-        # 파일 로깅
         try:
             logger.add(
                 "logs/day.log",
-                rotation="10 MB",
-                retention=5,
-                level="DEBUG",
-                encoding="utf-8",
-                compression="zip",
+                rotation="10 MB", retention=5, level="DEBUG",
+                encoding="utf-8", compression="zip",
             )
         except Exception:
             pass
 
-        # 매매 전용 로그 (WS 트래픽에 밀리지 않도록 분리)
         try:
             _trade_kw = re.compile(
                 r"매수|매도|체결|주문|청산|손절|TP1|트레일링|신호|포지션|손익|PnL|"
@@ -157,17 +153,12 @@ class MainWindow(QMainWindow):
 
             logger.add(
                 "logs/trade.log",
-                rotation="5 MB",
-                retention=10,
-                level="INFO",
-                encoding="utf-8",
-                filter=_trade_filter,
-                compression="zip",
+                rotation="5 MB", retention=10, level="INFO",
+                encoding="utf-8", filter=_trade_filter, compression="zip",
             )
         except Exception:
             pass
 
-        # JSONL 구조화 로깅 (이벤트별 장후 분석용)
         try:
             from utils.logging_config import setup_json_logging
             setup_json_logging("logs")
@@ -191,16 +182,15 @@ class MainWindow(QMainWindow):
     def _setup_refresh_timer(self):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._refresh_status_bar)
-        self._timer.start(1000)
+        self._timer.start(5000)
 
     def _refresh_status_bar(self):
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S KST")
-        self._lbl_status_time.setText(f"  {now}  ")
+        # 헤더 바에 실시간 정보가 있으므로 상태바는 5초 주기로만 갱신
+        pass
 
     # ── 엔진 제어 ─────────────────────────────────────────────────────────────
 
     def _on_mode_changed(self, mode: str):
-        """LIVE 모드 전환 시 확인 다이얼로그."""
         if mode == "live":
             reply = QMessageBox.warning(
                 self, "실거래 모드",
@@ -209,22 +199,19 @@ class MainWindow(QMainWindow):
                 QMessageBox.StandardButton.No,
             )
             if reply != QMessageBox.StandardButton.Yes:
-                # Revert to paper
-                self.sidebar._paper_btn.setChecked(True)
-                self.sidebar._on_paper_clicked()
+                self.nav_panel.revert_to_paper()
 
     def _on_strategy_changed(self, strategy: str):
-        """전략 변경 → 엔진에 전달."""
         if self._worker:
             self._worker.signals.request_strategy_change.emit(strategy)
 
     def _on_start(self):
-        mode = self.sidebar.get_mode()
+        mode = self.nav_panel.get_mode()
         self._worker = EngineWorker(mode=mode)
         self._connect_worker_signals()
         self._worker.start()
-        self.sidebar.set_engine_running(True)
-        self._lbl_status_left.setText(f"Mode: {mode.upper()} | Engine: Starting...")
+        self.nav_panel.set_engine_running(True)
+        self._lbl_status_left.setText(f"Mode: {mode.upper()} | Engine: 시작 중...")
 
     def _connect_worker_signals(self):
         s = self._worker.signals
@@ -240,82 +227,53 @@ class MainWindow(QMainWindow):
         s.market_status_updated.connect(self._on_market_status)
 
     def _on_market_status(self, kospi_strong: bool, kosdaq_strong: bool):
-        """Phase 3 Day 12+: 시장필터 갱신 수신 → 상태바 + 대시보드."""
-        k = "강세" if kospi_strong else "약세"
-        q = "강세" if kosdaq_strong else "약세"
-        self._lbl_market_status.setText(f"  시장: KOSPI {k} | KOSDAQ {q}  ")
-        # 대시보드 상태 스트립에도 전파
-        if hasattr(self, "dashboard_tab") and hasattr(self.dashboard_tab, "on_market_status"):
-            self.dashboard_tab.on_market_status(kospi_strong, kosdaq_strong)
+        self.header_bar.on_market_status(kospi_strong, kosdaq_strong)
+        self.dashboard_view.on_market_status(kospi_strong, kosdaq_strong)
 
     def _on_stop(self):
         if not self._worker:
             return
-
         self._stop_btn_pressed = True
-        self.sidebar._stop_btn.setEnabled(False)
-        self.sidebar._start_btn.setEnabled(False)
+        self.nav_panel.set_engine_running(False)
         self._lbl_status_left.setText(
-            f"Mode: {self.sidebar.get_mode().upper()} | Engine: Stopping..."
+            f"Mode: {self.nav_panel.get_mode().upper()} | Engine: 정지 중..."
         )
-
-        # 정상 경로: request_stop 시그널 → engine_worker._on_request_stop가
-        # _running=False + scheduler shutdown + _stop_event.set(threadsafe).
-        # _stop_event가 set되어야 polling loop의 wait_for가 즉시 깨어나며,
-        # 그렇지 않으면 다음 timeout(2초)까지 지연되어 _stop_phase2의 강제
-        # terminate로 빠진다. 직전 구현은 _running만 만져서 이 문제가 발생.
         self._worker.signals.request_stop.emit()
-
-        # fallback: 5초 안에도 미종료 시 terminate. 정상 흐름이라면
-        # signals.stopped이 먼저 도착해 _on_engine_stopped가 worker=None 처리.
         QTimer.singleShot(5000, self._stop_phase2)
 
     def _stop_phase2(self):
-        """5초 후 fallback — 자연 종료 실패 시 terminate.
-
-        정상 흐름에서는 signals.stopped 시그널이 먼저 도착해 worker=None이
-        되므로 이 함수는 isRunning() 체크에서 즉시 return.
-        """
         if not self._worker or not self._worker.isRunning():
             return
-
         logger.warning("엔진 자연 종료 실패 — terminate fallback")
         self._worker.terminate()
-        # terminate 후엔 wait를 충분히. 미종료 상태에서 worker=None을 하면
-        # QThread가 running 중에 destroy되어 Qt가 fatal abort → 프로세스 사망.
         if not self._worker.wait(3000):
-            logger.error(
-                "terminate 후에도 3초 내 미종료 — worker reference 유지 (프로세스 보호)"
-            )
-            self.sidebar.set_engine_running(False)
+            logger.error("terminate 후 3초 내 미종료 — worker reference 유지")
+            self.nav_panel.set_engine_running(False)
             self._lbl_status_left.setText(
-                f"Mode: {self.sidebar.get_mode().upper()} | Engine: Hung"
+                f"Mode: {self.nav_panel.get_mode().upper()} | Engine: Hung"
             )
             return
 
-        # 텔레그램은 별도 스레드에서 (UI 블로킹 없음)
         import threading
         threading.Thread(target=self._send_stop_telegram, daemon=True).start()
 
-        # UI 복구
         self._stop_btn_pressed = False
-        self.sidebar.set_engine_running(False)
-        self.sidebar.update_connection(False, False)
+        self.nav_panel.set_engine_running(False)
+        self.nav_panel.update_connection(False, False)
         self._lbl_status_left.setText(
-            f"Mode: {self.sidebar.get_mode().upper()} | Engine: Stopped"
+            f"Mode: {self.nav_panel.get_mode().upper()} | Engine: 정지됨"
         )
         self._worker = None
 
     def _send_stop_telegram(self):
-        """텔레그램 발송 (TelegramNotifier 내부 ThreadPool에서 처리 — UI 블로킹 없음)."""
         try:
             from config.settings import AppConfig
             from notification.telegram_bot import TelegramNotifier
             config = AppConfig.from_yaml()
             notifier = TelegramNotifier(config.telegram)
-            mode_tag = "[PAPER] " if self.sidebar.get_mode() == "paper" else ""
+            mode_tag = "[PAPER] " if self.nav_panel.get_mode() == "paper" else ""
             notifier.send(f"{mode_tag}시스템 종료 (GUI)", retries=1)
-            notifier.aclose()  # 워커 스레드의 send 완료까지 대기 후 정리
+            notifier.aclose()
         except Exception:
             pass
 
@@ -352,23 +310,18 @@ class MainWindow(QMainWindow):
             self._worker.signals.request_reconnect.emit()
 
     def _on_settings_saved(self):
-        """전략 탭 설정 저장 → config.yaml에 병합 기록."""
         config_path = Path("config.yaml")
         try:
             existing = yaml.safe_load(open(config_path, encoding="utf-8")) or {}
             new_values = self.strategy_tab.get_config()
-            # strategy 섹션 병합
             existing.setdefault("strategy", {}).update(new_values.get("strategy", {}))
-            # trading 섹션 병합
             existing.setdefault("trading", {}).update(new_values.get("trading", {}))
             with open(config_path, "w", encoding="utf-8") as f:
                 yaml.dump(existing, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
-            # 유니버스 저장
             tickers = self.strategy_tab.get_universe()
             if tickers:
                 uni_path = Path("config/universe.yaml")
                 uni_data = {"stocks": [{"ticker": t, "name": ""} for t in tickers]}
-                # 기존 이름 유지
                 if uni_path.exists():
                     old_uni = yaml.safe_load(open(uni_path, encoding="utf-8")) or {}
                     name_map = {s["ticker"]: s.get("name", "") for s in old_uni.get("stocks", [])}
@@ -383,7 +336,6 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "저장 실패", str(e))
 
     def _on_run_backtest(self, params: dict):
-        """백테스트 실행 (별도 스레드)."""
         import asyncio
         from threading import Thread
 
@@ -391,7 +343,6 @@ class MainWindow(QMainWindow):
         ticker = params["ticker"]
         start = params["start_date"]
         end = params["end_date"]
-
         self.backtest_tab.set_progress(10)
 
         def _run():
@@ -402,7 +353,6 @@ class MainWindow(QMainWindow):
                     self._run_backtest_async(strategy_name, ticker, start, end)
                 )
                 loop.close()
-                # UI 업데이트는 메인 스레드에서
                 QTimer.singleShot(0, lambda: self._show_backtest_result(result))
             except Exception as e:
                 err = str(e)
@@ -428,7 +378,6 @@ class MainWindow(QMainWindow):
         if strategy_name != "momentum":
             return {"error": f"Unknown strategy: {strategy_name} (momentum만 지원)"}
         strategy = MomentumStrategy(trading_config)
-
         db = DbManager("daytrader.db")
         await db.init()
         bt = Backtester(db=db, config=trading_config, backtest_config=backtest_config)
@@ -450,12 +399,10 @@ class MainWindow(QMainWindow):
             date_str = entry_ts.strftime("%m-%d") if hasattr(entry_ts, "strftime") else str(entry_ts)[:5]
             time_str = entry_ts.strftime("%H:%M") if hasattr(entry_ts, "strftime") else str(entry_ts)[11:16]
             formatted_trades.append({
-                "date": date_str,
-                "time": time_str,
+                "date": date_str, "time": time_str,
                 "side": t.get("exit_reason", ""),
                 "price": t.get("exit_price", 0),
-                "qty": 0,
-                "pnl": t.get("pnl", 0),
+                "qty": 0, "pnl": t.get("pnl", 0),
                 "cumulative_pnl": cum_pnl,
             })
         total_pnl = result.get("total_pnl", 0)
@@ -477,7 +424,6 @@ class MainWindow(QMainWindow):
         QMessageBox.critical(self, "백테스트 오류", error)
 
     def _on_run_compare(self, params: dict):
-        """6전략 비교 백테스트 실행."""
         import asyncio
         from threading import Thread
 
@@ -511,28 +457,23 @@ class MainWindow(QMainWindow):
             slippage=bt_cfg.get("slippage", 0.0003),
         )
         tc = TradingConfig()
-        strategies = {
-            "Momentum": MomentumStrategy(tc),
-        }
         db = DbManager("daytrader.db")
         await db.init()
         bt = Backtester(db=db, config=tc, backtest_config=backtest_config)
-        results = []
-        for name, strategy in strategies.items():
-            kpi = await bt.run_multi_day(
-                params["ticker"], params["start_date"], params["end_date"], strategy,
-            )
-            pf = kpi.get("profit_factor", 0)
-            results.append({
-                "strategy": name,
-                "total_trades": kpi.get("total_trades", 0),
-                "win_rate": kpi.get("win_rate", 0),
-                "profit_factor": pf,
-                "total_pnl": kpi.get("total_pnl", 0),
-                "verdict": "O" if pf >= 1.0 else "X",
-            })
+        strategy = MomentumStrategy(tc)
+        kpi = await bt.run_multi_day(
+            params["ticker"], params["start_date"], params["end_date"], strategy,
+        )
+        pf = kpi.get("profit_factor", 0)
+        results = [{
+            "strategy": "Momentum",
+            "total_trades": kpi.get("total_trades", 0),
+            "win_rate": kpi.get("win_rate", 0),
+            "profit_factor": pf,
+            "total_pnl": kpi.get("total_pnl", 0),
+            "verdict": "O" if pf >= 1.0 else "X",
+        }]
         await db.close()
-        results.sort(key=lambda x: x["profit_factor"], reverse=True)
         return results
 
     def _show_compare_result(self, results: list[dict]):
@@ -540,73 +481,63 @@ class MainWindow(QMainWindow):
         self.backtest_tab.show_compare_results(results)
 
     def _load_config_to_ui(self):
-        """config.yaml → 전략 탭 UI에 로드."""
         config_path = Path("config.yaml")
         try:
             cfg = yaml.safe_load(open(config_path, encoding="utf-8")) or {}
             self.strategy_tab.load_config(cfg)
-            # 유니버스 로드
             uni_path = Path("config/universe.yaml")
             if uni_path.exists():
                 uni = yaml.safe_load(open(uni_path, encoding="utf-8")) or {}
                 stocks = uni.get("stocks", [])
                 self.strategy_tab.load_universe(stocks)
                 self.backtest_tab.set_tickers([s["ticker"] for s in stocks])
-            # force_strategy → 사이드바 콤보 동기화
             force = cfg.get("strategy", {}).get("force", "")
             if force:
-                combo = self.sidebar._strategy_combo
-                for i in range(combo.count()):
-                    if combo.itemText(i).lower() == force.lower():
-                        combo.setCurrentIndex(i)
-                        break
+                self.nav_panel.set_strategy(force)
         except Exception as e:
             logger.warning(f"config UI 로드 실패: {e}")
 
     # ── 엔진 이벤트 핸들러 ────────────────────────────────────────────────────
 
     def _on_engine_started(self):
-        mode = self.sidebar.get_mode()
-        self._lbl_status_left.setText(f"Mode: {mode.upper()} | Engine: Running")
-        self.sidebar.update_connection(True, True)
-        # 콤보 선택값이 Auto가 아니면 엔진에 즉시 전달
-        combo_text = self.sidebar._strategy_combo.currentText()
-        if combo_text != "Auto":
-            strategy = combo_text.lower()
-            self._worker.signals.request_strategy_change.emit(strategy)
+        mode = self.nav_panel.get_mode()
+        self._lbl_status_left.setText(f"Mode: {mode.upper()} | Engine: 실행 중")
+        self.nav_panel.update_connection(True, True)
+        combo_text = self.nav_panel.get_strategy()
+        if combo_text and combo_text != "Auto":
+            self._worker.signals.request_strategy_change.emit(combo_text.lower())
 
     def _on_engine_stopped(self):
         self._stop_btn_pressed = False
-        self.sidebar.set_engine_running(False)
-        self.sidebar.update_connection(False, False)
+        self.nav_panel.set_engine_running(False)
+        self.nav_panel.update_connection(False, False)
         self._lbl_status_left.setText(
-            f"Mode: {self.sidebar.get_mode().upper()} | Engine: Stopped"
+            f"Mode: {self.nav_panel.get_mode().upper()} | Engine: 정지됨"
         )
         self._worker = None
 
     def _on_engine_error(self, error: str):
-        # 에러 시에도 UI 상태 복구 (stopped 시그널이 뒤따라오지만 안전 차원)
-        self.sidebar.set_engine_running(False)
+        self.nav_panel.set_engine_running(False)
         self._lbl_status_left.setText(
-            f"Mode: {self.sidebar.get_mode().upper()} | Engine: Error"
+            f"Mode: {self.nav_panel.get_mode().upper()} | Engine: 오류"
         )
         QMessageBox.critical(self, "엔진 오류", error)
 
     def _on_status_updated(self, status: dict):
-        # 정지 요청 중이면 상태바 덮어쓰기 방지
         if getattr(self, "_stop_btn_pressed", False):
             return
 
-        self.sidebar.update_status(status)
-        # 연결 상태 업데이트
+        self.nav_panel.update_status(status)
         ws_ok = status.get("ws_connected", False)
-        rest_ok = status.get("running", False)  # REST는 엔진 실행 중이면 연결
-        self.sidebar.update_connection(rest_ok, ws_ok)
-        # 대시보드 상태 패널: 차단 판정 + 자본 표시용 캐시
-        if hasattr(self.dashboard_tab, "on_engine_status"):
-            self.dashboard_tab.on_engine_status(status)
-        # Update dashboard summary
-        self.dashboard_tab.update_summary({
+        rest_ok = status.get("running", False)
+        self.nav_panel.update_connection(rest_ok, ws_ok)
+
+        # 헤더 바 업데이트
+        self.header_bar.on_engine_status(status)
+
+        # 대시보드 패널 업데이트
+        self.dashboard_view.on_engine_status(status)
+        self.dashboard_view.update_summary({
             "daily_pnl": status.get("daily_pnl", 0),
             "daily_pnl_pct": status.get("daily_pnl_pct", 0),
             "trades_count": status.get("trades_count", 0),
@@ -621,42 +552,40 @@ class MainWindow(QMainWindow):
             "available_capital": status.get("available_capital", 0),
             "initial_capital": status.get("initial_capital", 0),
         })
-        # Update status bar
+
+        # 하단 상태바 (간소화)
         strategy = status.get("strategy", "—")
         active = status.get("active_count", 0)
         pos_count = status.get("positions_count", 0)
         max_pos = status.get("max_positions", 3)
-        mode = self.sidebar.get_mode().upper()
-        combo_text = self.sidebar._strategy_combo.currentText()
-        force_tag = f" [{combo_text}]" if combo_text != "Auto" else ""
-        capital = status.get("available_capital", 0)
+        mode = self.nav_panel.get_mode().upper()
+        combo_text = self.nav_panel.get_strategy()
+        force_tag = f" [{combo_text}]" if combo_text not in ("Auto", "") else ""
         self._lbl_status_left.setText(
-            f"Mode: {mode}{force_tag} | Engine: Running | "
-            f"Strategy: {strategy} | 감시: {active}종목 | 포지션: {pos_count}/{max_pos} | "
-            f"가용: {int(capital):,}원"
+            f"Mode: {mode}{force_tag} | Engine: 실행 중 | "
+            f"Strategy: {strategy} | 감시: {active}종목 | 포지션: {pos_count}/{max_pos}"
         )
 
     def _on_positions_updated(self, positions: list):
-        self.dashboard_tab.update_positions(positions)
+        self.dashboard_view.update_positions(positions)
 
     def _on_trades_updated(self, trades: list):
-        self.dashboard_tab.update_trades(trades)
+        self.dashboard_view.update_trades(trades)
 
     def _on_pnl_updated(self, pnl: float):
         import time as _time
-        self.dashboard_tab.update_pnl_chart(_time.time(), pnl)
-        # Phase 3 Day 12+ Level 1: 일일손실 라벨 갱신
-        if hasattr(self.dashboard_tab, "on_daily_loss"):
-            capital = None
-            if self._worker and self._worker._risk_manager:
-                capital = self._worker._risk_manager._daily_capital
-            self.dashboard_tab.on_daily_loss(pnl, capital)
+        self.dashboard_view.update_pnl_chart(_time.time(), pnl)
+        capital = None
+        if self._worker and self._worker._risk_manager:
+            capital = self._worker._risk_manager._daily_capital
+        self.header_bar.on_daily_pnl(pnl, capital)
+        self.dashboard_view.on_daily_loss(pnl, capital)
 
     def _on_candidates_updated(self, candidates: list):
         self.screener_tab.update_candidates(candidates)
 
     def _on_watchlist_updated(self, items: list):
-        self.dashboard_tab.update_watchlist(items)
+        self.dashboard_view.update_watchlist(items)
 
     # ── 트레이 ────────────────────────────────────────────────────────────────
 
@@ -688,10 +617,8 @@ class MainWindow(QMainWindow):
             )
             return
 
-        # 엔진 미실행 시 — 실수로 X 클릭한 경우를 막기 위해 명시적 확인.
         reply = QMessageBox.question(
-            self,
-            "DayTrader",
+            self, "DayTrader",
             "프로그램을 종료하시겠습니까?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,

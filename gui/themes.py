@@ -1,6 +1,10 @@
 """GUI 테마 시스템 — Catppuccin Mocha 다크 테마.
 
 QSS를 파일이 아닌 함수로 반환하여 PyInstaller 번들 시 경로 문제를 방지.
+
+.. deprecated::
+    Phase 1 이후 gui/design_tokens.py 로 전환 중.
+    이 파일은 하위 호환성을 위해 유지됨.
 """
 
 COLORS = {
