@@ -1,4 +1,4 @@
-"""메인 윈도우 — 상단 헤더 + 좌측 네비 + 메인 콘텐츠 레이아웃 (Phase 1 재설계)."""
+"""메인 윈도우 — 헤더 바 + 사이드바 + 탭 레이아웃."""
 
 import ctypes
 import re
@@ -9,13 +9,13 @@ import yaml
 from PyQt6.QtCore import QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication, QLabel, QMainWindow, QMessageBox,
-    QStackedWidget, QStatusBar, QHBoxLayout, QVBoxLayout, QWidget,
+    QTabWidget, QStatusBar, QHBoxLayout, QVBoxLayout, QWidget,
 )
 from loguru import logger
 
 from gui.themes import dark_theme
 from gui.tray_icon import TrayIcon
-from gui.views.nav_panel import NavPanel
+from gui.widgets.sidebar import Sidebar
 from gui.views.header_bar import HeaderBar
 from gui.views.dashboard_view import DashboardView
 from gui.widgets.screener_tab import ScreenerTab
@@ -26,7 +26,7 @@ from gui.workers.engine_worker import EngineWorker
 
 
 class MainWindow(QMainWindow):
-    """DayTrader 메인 윈도우 (Phase 1 재설계: 헤더 + 좌측 네비 + 콘텐츠 스택)."""
+    """DayTrader 메인 윈도우 (헤더 + 사이드바 + 탭)."""
 
     _log_signal = pyqtSignal(str, str)
 
@@ -60,57 +60,54 @@ class MainWindow(QMainWindow):
         self.header_bar = HeaderBar()
         root.addWidget(self.header_bar)
 
-        # 바디: 좌측 네비 + 우측 콘텐츠
+        # 바디: 좌측 사이드바 + 우측 탭
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(0)
 
-        # 좌측 네비게이션 패널
-        self.nav_panel = NavPanel()
-        body.addWidget(self.nav_panel)
+        self.sidebar = Sidebar()
+        body.addWidget(self.sidebar)
 
-        # 우측 콘텐츠 스택
-        self.content_stack = QStackedWidget()
+        # 우측 탭 위젯
+        self.tab_widget = QTabWidget()
         self.dashboard_view = DashboardView()
         self.screener_tab = ScreenerTab()
         self.backtest_tab = BacktestTab()
         self.strategy_tab = StrategyTab()
         self.log_tab = LogTab()
 
-        self.content_stack.addWidget(self.dashboard_view)   # index 0
-        self.content_stack.addWidget(self.screener_tab)     # index 1
-        self.content_stack.addWidget(self.backtest_tab)     # index 2
-        self.content_stack.addWidget(self.strategy_tab)     # index 3
-        self.content_stack.addWidget(self.log_tab)          # index 4
-        body.addWidget(self.content_stack, stretch=1)
+        self.tab_widget.addTab(self.dashboard_view, "대시보드")
+        self.tab_widget.addTab(self.screener_tab, "스크리너")
+        self.tab_widget.addTab(self.backtest_tab, "백테스트")
+        self.tab_widget.addTab(self.strategy_tab, "전략 설정")
+        self.tab_widget.addTab(self.log_tab, "로그")
+        body.addWidget(self.tab_widget, stretch=1)
         root.addLayout(body, stretch=1)
 
-        # 하단 상태바 (Mode/Engine/감시/포지션)
+        # 하단 상태바
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self._lbl_status_left = QLabel("Mode: PAPER | Engine: 정지됨")
+        self._lbl_status_time = QLabel("")
         self.status_bar.addWidget(self._lbl_status_left, 1)
+        self.status_bar.addPermanentWidget(self._lbl_status_time)
 
-        # 네비 시그널 연결
-        self.nav_panel.page_changed.connect(self.content_stack.setCurrentIndex)
-        self.nav_panel.start_clicked.connect(self._on_start)
-        self.nav_panel.stop_clicked.connect(self._on_stop)
-        self.nav_panel.halt_clicked.connect(self._on_halt)
-        self.nav_panel.screening_clicked.connect(self._on_screening)
-        self.nav_panel.force_close_clicked.connect(self._on_force_close)
-        self.nav_panel.report_clicked.connect(self._on_report)
-        self.nav_panel.reconnect_clicked.connect(self._on_reconnect)
-        self.nav_panel.mode_changed.connect(self._on_mode_changed)
-        self.nav_panel.strategy_changed.connect(self._on_strategy_changed)
+        # 사이드바 시그널 연결
+        self.sidebar.start_clicked.connect(self._on_start)
+        self.sidebar.stop_clicked.connect(self._on_stop)
+        self.sidebar.halt_clicked.connect(self._on_halt)
+        self.sidebar.screening_clicked.connect(self._on_screening)
+        self.sidebar.force_close_clicked.connect(self._on_force_close)
+        self.sidebar.report_clicked.connect(self._on_report)
+        self.sidebar.reconnect_clicked.connect(self._on_reconnect)
+        self.sidebar.mode_changed.connect(self._on_mode_changed)
+        self.sidebar.strategy_changed.connect(self._on_strategy_changed)
 
         # 탭 시그널 연결
         self.screener_tab.run_screening_clicked.connect(self._on_screening)
         self.strategy_tab.settings_saved.connect(self._on_settings_saved)
         self.backtest_tab.run_backtest_clicked.connect(self._on_run_backtest)
         self.backtest_tab.run_compare_clicked.connect(self._on_run_compare)
-
-        # sidebar 호환: 내부 참조용 alias (일부 메서드에서 사용)
-        self.sidebar = self.nav_panel
 
     # ── 테마 / 타이틀바 ───────────────────────────────────────────────────────
 
@@ -182,11 +179,10 @@ class MainWindow(QMainWindow):
     def _setup_refresh_timer(self):
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._refresh_status_bar)
-        self._timer.start(5000)
+        self._timer.start(1000)
 
     def _refresh_status_bar(self):
-        # 헤더 바에 실시간 정보가 있으므로 상태바는 5초 주기로만 갱신
-        pass
+        self._lbl_status_time.setText(datetime.now().strftime("%H:%M:%S"))
 
     # ── 엔진 제어 ─────────────────────────────────────────────────────────────
 
@@ -199,18 +195,18 @@ class MainWindow(QMainWindow):
                 QMessageBox.StandardButton.No,
             )
             if reply != QMessageBox.StandardButton.Yes:
-                self.nav_panel.revert_to_paper()
+                self.sidebar.revert_to_paper()
 
     def _on_strategy_changed(self, strategy: str):
         if self._worker:
             self._worker.signals.request_strategy_change.emit(strategy)
 
     def _on_start(self):
-        mode = self.nav_panel.get_mode()
+        mode = self.sidebar.get_mode()
         self._worker = EngineWorker(mode=mode)
         self._connect_worker_signals()
         self._worker.start()
-        self.nav_panel.set_engine_running(True)
+        self.sidebar.set_engine_running(True)
         self._lbl_status_left.setText(f"Mode: {mode.upper()} | Engine: 시작 중...")
 
     def _connect_worker_signals(self):
@@ -234,9 +230,9 @@ class MainWindow(QMainWindow):
         if not self._worker:
             return
         self._stop_btn_pressed = True
-        self.nav_panel.set_engine_running(False)
+        self.sidebar.set_engine_running(False)
         self._lbl_status_left.setText(
-            f"Mode: {self.nav_panel.get_mode().upper()} | Engine: 정지 중..."
+            f"Mode: {self.sidebar.get_mode().upper()} | Engine: 정지 중..."
         )
         self._worker.signals.request_stop.emit()
         QTimer.singleShot(5000, self._stop_phase2)
@@ -248,9 +244,9 @@ class MainWindow(QMainWindow):
         self._worker.terminate()
         if not self._worker.wait(3000):
             logger.error("terminate 후 3초 내 미종료 — worker reference 유지")
-            self.nav_panel.set_engine_running(False)
+            self.sidebar.set_engine_running(False)
             self._lbl_status_left.setText(
-                f"Mode: {self.nav_panel.get_mode().upper()} | Engine: Hung"
+                f"Mode: {self.sidebar.get_mode().upper()} | Engine: Hung"
             )
             return
 
@@ -258,10 +254,10 @@ class MainWindow(QMainWindow):
         threading.Thread(target=self._send_stop_telegram, daemon=True).start()
 
         self._stop_btn_pressed = False
-        self.nav_panel.set_engine_running(False)
-        self.nav_panel.update_connection(False, False)
+        self.sidebar.set_engine_running(False)
+        self.sidebar.update_connection(False, False)
         self._lbl_status_left.setText(
-            f"Mode: {self.nav_panel.get_mode().upper()} | Engine: 정지됨"
+            f"Mode: {self.sidebar.get_mode().upper()} | Engine: 정지됨"
         )
         self._worker = None
 
@@ -271,7 +267,7 @@ class MainWindow(QMainWindow):
             from notification.telegram_bot import TelegramNotifier
             config = AppConfig.from_yaml()
             notifier = TelegramNotifier(config.telegram)
-            mode_tag = "[PAPER] " if self.nav_panel.get_mode() == "paper" else ""
+            mode_tag = "[PAPER] " if self.sidebar.get_mode() == "paper" else ""
             notifier.send(f"{mode_tag}시스템 종료 (GUI)", retries=1)
             notifier.aclose()
         except Exception:
@@ -493,33 +489,33 @@ class MainWindow(QMainWindow):
                 self.backtest_tab.set_tickers([s["ticker"] for s in stocks])
             force = cfg.get("strategy", {}).get("force", "")
             if force:
-                self.nav_panel.set_strategy(force)
+                self.sidebar.set_strategy(force)
         except Exception as e:
             logger.warning(f"config UI 로드 실패: {e}")
 
     # ── 엔진 이벤트 핸들러 ────────────────────────────────────────────────────
 
     def _on_engine_started(self):
-        mode = self.nav_panel.get_mode()
+        mode = self.sidebar.get_mode()
         self._lbl_status_left.setText(f"Mode: {mode.upper()} | Engine: 실행 중")
-        self.nav_panel.update_connection(True, True)
-        combo_text = self.nav_panel.get_strategy()
+        self.sidebar.update_connection(True, True)
+        combo_text = self.sidebar.get_strategy()
         if combo_text and combo_text != "Auto":
             self._worker.signals.request_strategy_change.emit(combo_text.lower())
 
     def _on_engine_stopped(self):
         self._stop_btn_pressed = False
-        self.nav_panel.set_engine_running(False)
-        self.nav_panel.update_connection(False, False)
+        self.sidebar.set_engine_running(False)
+        self.sidebar.update_connection(False, False)
         self._lbl_status_left.setText(
-            f"Mode: {self.nav_panel.get_mode().upper()} | Engine: 정지됨"
+            f"Mode: {self.sidebar.get_mode().upper()} | Engine: 정지됨"
         )
         self._worker = None
 
     def _on_engine_error(self, error: str):
-        self.nav_panel.set_engine_running(False)
+        self.sidebar.set_engine_running(False)
         self._lbl_status_left.setText(
-            f"Mode: {self.nav_panel.get_mode().upper()} | Engine: 오류"
+            f"Mode: {self.sidebar.get_mode().upper()} | Engine: 오류"
         )
         QMessageBox.critical(self, "엔진 오류", error)
 
@@ -527,15 +523,12 @@ class MainWindow(QMainWindow):
         if getattr(self, "_stop_btn_pressed", False):
             return
 
-        self.nav_panel.update_status(status)
+        self.sidebar.update_status(status)
         ws_ok = status.get("ws_connected", False)
         rest_ok = status.get("running", False)
-        self.nav_panel.update_connection(rest_ok, ws_ok)
+        self.sidebar.update_connection(rest_ok, ws_ok)
 
-        # 헤더 바 업데이트
         self.header_bar.on_engine_status(status)
-
-        # 대시보드 패널 업데이트
         self.dashboard_view.on_engine_status(status)
         self.dashboard_view.update_summary({
             "daily_pnl": status.get("daily_pnl", 0),
@@ -553,14 +546,13 @@ class MainWindow(QMainWindow):
             "initial_capital": status.get("initial_capital", 0),
         })
 
-        # 하단 상태바
         strategy = status.get("strategy", "—")
         active = status.get("active_count", 0)
         pos_count = status.get("positions_count", 0)
         max_pos = status.get("max_positions", 3)
         available = int(status.get("available_capital", 0) or 0)
-        mode = self.nav_panel.get_mode().upper()
-        combo_text = self.nav_panel.get_strategy()
+        mode = self.sidebar.get_mode().upper()
+        combo_text = self.sidebar.get_strategy()
         force_tag = f" [{combo_text}]" if combo_text not in ("Auto", "") else ""
         self._lbl_status_left.setText(
             f"Mode: {mode}{force_tag} | Strategy: {strategy} | "

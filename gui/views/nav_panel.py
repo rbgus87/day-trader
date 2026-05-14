@@ -1,4 +1,9 @@
-"""gui/views/nav_panel.py — 좌측 네비게이션 패널 (sidebar.py 대체, 동일 시그널 유지)."""
+"""gui/views/nav_panel.py — 좌측 네비게이션 패널 (Phase 1 시험적 구현).
+
+.. deprecated::
+    Phase 1 이후 기존 sidebar.py + QTabWidget 레이아웃으로 복원됨.
+    이 파일은 향후 참고용으로 유지되며 main_window.py에서 사용하지 않음.
+"""
 from __future__ import annotations
 
 from PyQt6.QtWidgets import (

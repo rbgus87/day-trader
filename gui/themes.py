@@ -104,69 +104,67 @@ QPushButton:disabled {{
 }}
 
 QPushButton#startBtn {{
-    background-color: {c['green']};
-    color: {c['base']};
-    border-color: {c['green']};
+    background-color: {c['surface0']};
+    color: {c['text']};
+    border: 1px solid {c['surface1']};
     font-weight: bold;
 }}
 
 QPushButton#startBtn:hover {{
-    background-color: #b9f0b4;
-    border-color: #b9f0b4;
+    background-color: {c['surface1']};
+    border-color: {c['overlay0']};
 }}
 
 QPushButton#startBtn:pressed {{
-    background-color: #93d08f;
+    background-color: {c['surface2']};
 }}
 
 QPushButton#startBtn:disabled {{
-    background-color: {c['surface1']};
+    background-color: {c['surface0']};
     color: {c['overlay0']};
-    border-color: {c['surface1']};
+    border-color: {c['surface0']};
 }}
 
 QPushButton#stopBtn {{
-    background-color: {c['red']};
-    color: {c['base']};
-    border-color: {c['red']};
+    background-color: #e64553;
+    color: white;
+    border: none;
     font-weight: bold;
 }}
 
 QPushButton#stopBtn:hover {{
-    background-color: #f59db5;
-    border-color: #f59db5;
+    background-color: #c73a46;
 }}
 
 QPushButton#stopBtn:pressed {{
-    background-color: #e07891;
+    background-color: #b03040;
 }}
 
 QPushButton#stopBtn:disabled {{
     background-color: {c['surface1']};
     color: {c['overlay0']};
-    border-color: {c['surface1']};
+    border: 1px solid {c['surface0']};
 }}
 
 QPushButton#haltBtn {{
-    background-color: {c['peach']};
-    color: {c['base']};
-    border-color: {c['peach']};
+    background-color: {c['red']};
+    color: white;
+    border: none;
     font-weight: bold;
 }}
 
 QPushButton#haltBtn:hover {{
-    background-color: #fbbe97;
-    border-color: #fbbe97;
+    background-color: #e0748e;
 }}
 
 QPushButton#haltBtn:pressed {{
-    background-color: #e89f74;
+    background-color: #c95f78;
 }}
 
 QPushButton#haltBtn:disabled {{
     background-color: {c['surface1']};
     color: {c['overlay0']};
-    border-color: {c['surface1']};
+    border: 1px solid {c['surface0']};
 }}
 
 /* ─── Tables ────────────────────────────────────────────────────────────── */

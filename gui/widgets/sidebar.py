@@ -410,6 +410,22 @@ class Sidebar(QFrame):
             f"color: {dot_color}; font-size: 12px;"
         )
 
+    def revert_to_paper(self) -> None:
+        """LIVE → PAPER 강제 복원 (모드 확인 취소 시 호출)."""
+        if self._mode != "paper":
+            self._on_paper_clicked()
+
+    def get_strategy(self) -> str:
+        """현재 선택된 전략 콤보 텍스트 반환."""
+        return self._strategy_combo.currentText()
+
+    def set_strategy(self, force: str) -> None:
+        """전략 콤보를 force 값으로 설정 (대소문자 무시)."""
+        for i in range(self._strategy_combo.count()):
+            if self._strategy_combo.itemText(i).lower() == force.lower():
+                self._strategy_combo.setCurrentIndex(i)
+                return
+
     def update_connection(self, rest_ok: bool, ws_ok: bool) -> None:
         """연결 상태를 UI에 반영.
 
