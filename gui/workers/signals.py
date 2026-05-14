@@ -53,3 +53,4 @@ class EngineSignals(QObject):
     request_reconnect = pyqtSignal()
     request_daily_reset = pyqtSignal()
     request_strategy_change = pyqtSignal(str)  # 전략명 ("" = auto)
+    request_manual_close = pyqtSignal(str)  # ticker — 개별 포지션 수동 청산

@@ -1,7 +1,7 @@
 """gui/views/dashboard_view.py — 실시간 대시보드 뷰 (Phase 2 재구성)."""
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import QSplitter, QVBoxLayout, QWidget
 
 from gui.views.dashboard.market_status_panel import MarketStatusPanel
@@ -26,6 +26,8 @@ class DashboardView(QWidget):
         │ TradesPanel (당일 체결)                       │
         └──────────────────────────────────────────────┘
     """
+
+    manual_close_requested = pyqtSignal(str, str, int)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -56,6 +58,7 @@ class DashboardView(QWidget):
         )
         left_splitter.setChildrenCollapsible(False)
         self._positions = PositionsPanel()
+        self._positions.manual_close_requested.connect(self.manual_close_requested)
         self._watchlist = WatchlistPanel()
         left_splitter.addWidget(self._positions)
         left_splitter.addWidget(self._watchlist)

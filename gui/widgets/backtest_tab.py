@@ -1,5 +1,8 @@
 """Backtest Tab — Strategy backtesting with parameter selection and results display."""
 
+import numpy as np
+import pyqtgraph as pg
+
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -16,7 +19,7 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
 )
 from PyQt6.QtCore import Qt, QDate, pyqtSignal
-from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QColor, QFont
 
 
 class BacktestTab(QWidget):
@@ -44,6 +47,9 @@ class BacktestTab(QWidget):
         self._results_panel = self._build_results_panel()
         self._results_panel.setVisible(False)
         root.addWidget(self._results_panel, stretch=1)
+
+        self._charts_panel = self._build_charts_panel()
+        root.addWidget(self._charts_panel)
 
     def _build_parameter_panel(self) -> QGroupBox:
         group = QGroupBox("백테스트 설정")
@@ -96,6 +102,28 @@ class BacktestTab(QWidget):
         layout.addWidget(self._progress_bar, stretch=1)
 
         return layout
+
+    def _build_charts_panel(self) -> QWidget:
+        panel = QWidget()
+        layout = QHBoxLayout(panel)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
+
+        # 청산 사유 바 차트
+        self._chart_exit = pg.PlotWidget(title="청산 사유 분포")
+        self._chart_exit.setBackground("#2a2a3d")
+        self._chart_exit.setMaximumHeight(180)
+        self._chart_exit.getAxis("bottom").setStyle(tickFont=QFont("Malgun Gothic", 8))
+        layout.addWidget(self._chart_exit)
+
+        # PnL 분포 히스토그램
+        self._chart_pnl = pg.PlotWidget(title="PnL 분포")
+        self._chart_pnl.setBackground("#2a2a3d")
+        self._chart_pnl.setMaximumHeight(180)
+        layout.addWidget(self._chart_pnl)
+
+        panel.setVisible(False)
+        return panel
 
     def _build_results_panel(self) -> QGroupBox:
         group = QGroupBox("결과")
@@ -282,6 +310,7 @@ class BacktestTab(QWidget):
         table.horizontalHeader().setStretchLastSection(True)
 
         self._results_panel.setVisible(True)
+        self._update_charts(trades)
 
     def show_compare_results(self, results: list[dict]) -> None:
         """6전략 비교 결과 표시."""
@@ -325,3 +354,60 @@ class BacktestTab(QWidget):
 
         table.resizeColumnsToContents()
         table.horizontalHeader().setStretchLastSection(True)
+
+    def _update_charts(self, trades: list[dict]):
+        if not trades:
+            self._charts_panel.setVisible(False)
+            return
+
+        # 청산 사유 분포
+        reason_counts: dict[str, int] = {}
+        for t in trades:
+            reason = t.get("side", "unknown") or "unknown"
+            reason_counts[reason] = reason_counts.get(reason, 0) + 1
+
+        self._chart_exit.clear()
+        reasons = list(reason_counts.keys())
+        counts = [reason_counts[r] for r in reasons]
+        colors = {
+            "forced_close": "#f9e2af", "stop_loss": "#f38ba8", "trailing_stop": "#89dceb",
+            "breakeven_stop": "#a6e3a1", "momentum_fade": "#cba6f7", "limit_up_exit": "#89b4fa",
+            "manual_close": "#fab387",
+        }
+        bar_item = pg.BarGraphItem(
+            x=list(range(len(reasons))), height=counts, width=0.7,
+            brushes=[colors.get(r, "#6c7086") for r in reasons],
+        )
+        self._chart_exit.addItem(bar_item)
+        ax = self._chart_exit.getAxis("bottom")
+        ax.setTicks([[(i, r[:6]) for i, r in enumerate(reasons)]])
+        ax.setPen(pg.mkPen("#585b70"))
+        ax.setTextPen(pg.mkPen("#a6adc8"))
+        self._chart_exit.getAxis("left").setPen(pg.mkPen("#585b70"))
+        self._chart_exit.getAxis("left").setTextPen(pg.mkPen("#a6adc8"))
+
+        # PnL 분포 히스토그램
+        self._chart_pnl.clear()
+        pnls = [t.get("pnl", 0) for t in trades if t.get("pnl") is not None]
+        if pnls:
+            arr = np.array(pnls, dtype=float)
+            y, x = np.histogram(arr, bins=20)
+            step = pg.PlotCurveItem(
+                x, np.append(y, 0), stepMode="center",
+                fillLevel=0,
+                brush=pg.mkBrush(166, 227, 161, 80),
+                pen=pg.mkPen("#a6e3a1", width=1),
+            )
+            self._chart_pnl.addItem(step)
+            # 0 기준선
+            zero_line = pg.InfiniteLine(
+                pos=0, angle=90,
+                pen=pg.mkPen("#585b70", width=1, style=Qt.PenStyle.DashLine),
+            )
+            self._chart_pnl.addItem(zero_line)
+        self._chart_pnl.getAxis("bottom").setPen(pg.mkPen("#585b70"))
+        self._chart_pnl.getAxis("bottom").setTextPen(pg.mkPen("#a6adc8"))
+        self._chart_pnl.getAxis("left").setPen(pg.mkPen("#585b70"))
+        self._chart_pnl.getAxis("left").setTextPen(pg.mkPen("#a6adc8"))
+
+        self._charts_panel.setVisible(True)

@@ -48,6 +48,7 @@ class Sidebar(QFrame):
     reconnect_clicked = pyqtSignal()
     mode_changed = pyqtSignal(str)  # "paper" or "live"
     strategy_changed = pyqtSignal(str)  # 전략명 ("" = auto)
+    test_alert_clicked = pyqtSignal()
 
     # ── 색상 상수 ────────────────────────────────────────────────────────────
     _COLOR_MAUVE = "#cba6f7"
@@ -216,6 +217,7 @@ class Sidebar(QFrame):
             ("강제청산", "전체 포지션 즉시 청산", self.force_close_clicked),
             ("리포트", "일일 매매 리포트 발송", self.report_clicked),
             ("WS 재연결", "WebSocket 연결 재시도", self.reconnect_clicked),
+            ("알림 테스트", "텔레그램 알림 테스트 발송", self.test_alert_clicked),
         ]
 
         self._manual_btns = []

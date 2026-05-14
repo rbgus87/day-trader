@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from datetime import datetime as _dt
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
-    QHBoxLayout, QLabel, QProgressBar, QScrollArea, QSizePolicy,
+    QHBoxLayout, QLabel, QProgressBar, QPushButton, QScrollArea, QSizePolicy,
     QVBoxLayout, QWidget,
 )
 
@@ -17,6 +17,8 @@ _GAUGE_RANGE = 15.0   # ±15% 게이지 범위
 
 class PositionCard(QWidget):
     """단일 포지션 카드 위젯."""
+
+    close_requested = pyqtSignal(str, str, int)  # ticker, name, qty
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -117,6 +119,24 @@ class PositionCard(QWidget):
             f"color: {Colors.text_muted}; font-size: 10px; background: transparent;"
         )
         root.addWidget(self._stop_lbl)
+
+        # ── 수동 청산 버튼 ─────────────────────────────────────────────
+        close_btn = QPushButton("청산")
+        close_btn.setFixedHeight(24)
+        close_btn.setStyleSheet(
+            "QPushButton { background: #c0392b; color: white; border-radius: 4px; "
+            "font-size: 11px; font-weight: bold; border: none; }"
+            "QPushButton:hover { background: #e74c3c; }"
+            "QPushButton:pressed { background: #922b21; }"
+        )
+        close_btn.clicked.connect(self._on_close_clicked)
+        root.addWidget(close_btn)
+
+    def _on_close_clicked(self):
+        ticker = self._data.get("ticker", "")
+        name = self._data.get("name", ticker)
+        qty = int(self._data.get("remaining_qty", 0) or self._data.get("qty", 0) or 0)
+        self.close_requested.emit(ticker, name, qty)
 
     # ── 업데이트 ──────────────────────────────────────────────────────────────
 
@@ -220,6 +240,8 @@ class PositionCard(QWidget):
 class PositionsPanel(QWidget):
     """보유 포지션 카드 목록 패널 (최대 3개)."""
 
+    manual_close_requested = pyqtSignal(str, str, int)  # ticker, name, qty
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._max_positions = 3
@@ -276,6 +298,7 @@ class PositionsPanel(QWidget):
         while len(self._cards) < len(positions):
             c = PositionCard()
             c.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            c.close_requested.connect(self.manual_close_requested)
             self._cards.append(c)
             # empty_lbl 위에 삽입
             self._container_layout.insertWidget(

@@ -178,6 +178,7 @@ class EngineWorker(QThread):
         self.signals.request_halt.connect(self._on_request_halt)
         self.signals.request_screening.connect(self._on_request_screening)
         self.signals.request_force_close.connect(self._on_request_force_close)
+        self.signals.request_manual_close.connect(self._on_request_manual_close)
         self.signals.request_report.connect(self._on_request_report)
         self.signals.request_reconnect.connect(self._on_request_reconnect)
         self.signals.request_daily_reset.connect(self._on_request_daily_reset)
@@ -2903,6 +2904,58 @@ class EngineWorker(QThread):
         """전체 포지션 강제 청산."""
         if self._loop and self._loop.is_running():
             asyncio.run_coroutine_threadsafe(self._force_close(), self._loop)
+
+    def _on_request_manual_close(self, ticker: str):
+        """개별 포지션 수동 청산."""
+        if self._loop and self._loop.is_running():
+            asyncio.run_coroutine_threadsafe(self._async_manual_close_one(ticker), self._loop)
+
+    async def _async_manual_close_one(self, ticker: str):
+        """단일 종목 수동 청산 (exit_reason=manual_close)."""
+        if not self._risk_manager or not self._order_manager:
+            return
+        pos = self._risk_manager.get_open_positions().get(ticker)
+        if not pos:
+            logger.warning(f"[MANUAL-CLOSE] {ticker} 포지션 없음")
+            return
+        qty = pos.get("remaining_qty") or pos.get("qty") or 0
+        if qty <= 0:
+            return
+        close_price = int(self._latest_prices.get(ticker, pos.get("entry_price", 0)))
+        entry = pos.get("entry_price", 0)
+        pnl = (close_price - entry) * qty if entry > 0 else 0
+        pnl_pct = ((close_price / entry) - 1) * 100 if entry > 0 else 0
+        strategy_name = pos.get("strategy", "") or "unknown"
+        prefer_best = self._vi_handler.should_use_best_limit(ticker) if self._vi_handler else False
+        result = await self._order_manager.execute_sell_force_close(
+            ticker=ticker, qty=qty, price=close_price,
+            strategy=strategy_name, pnl=pnl, pnl_pct=pnl_pct,
+            exit_reason="manual_close",
+            prefer_best_limit=prefer_best,
+            on_rejection=lambda tk, rt: (self._vi_handler.flag_suspected(tk, f"주문 거부 (rt_cd={rt})") if self._vi_handler else None),
+        )
+        if result is None:
+            logger.error(f"[MANUAL-CLOSE] 주문 실패: {ticker}")
+            return
+        is_paper = self._mode == "paper"
+        if is_paper:
+            _entry_time = pos.get("entry_time")
+            self._risk_manager.settle_sell(ticker, float(close_price), qty)
+            strat_info = self._active_strategies.get(ticker)
+            if strat_info:
+                strat_info["strategy"].on_exit()
+            logger.bind(
+                event="exit",
+                ticker=ticker,
+                reason="manual_close",
+                price=int(close_price),
+                qty=qty,
+                pnl=int(pnl),
+                pnl_pct=round(pnl_pct, 2),
+            ).info(f"수동 청산: {ticker} {qty}주 @ {close_price:,} PnL={pnl:+,.0f}")
+        else:
+            self._order_tracker.submit(result["order_no"], ticker, "sell", qty)
+            logger.info(f"[ORDER-TRACK] {result['order_no']} SUBMIT {ticker} sell {qty} (manual_close)")
 
     def _on_request_report(self):
         """일일 리포트 수동 발송."""

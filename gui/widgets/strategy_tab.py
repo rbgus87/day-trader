@@ -89,6 +89,18 @@ class StrategyTab(QWidget):
         self._lbl_entry_1st_ratio: QLabel | None = None
         self._lbl_market_ma_length: QLabel | None = None
         self._lbl_universe_refresh_status: QLabel | None = None
+        self._lbl_atr_stop_enabled: QLabel | None = None
+        self._lbl_atr_stop_mult: QLabel | None = None
+        self._lbl_atr_stop_clamp: QLabel | None = None
+        self._lbl_breakeven_trigger: QLabel | None = None
+        self._lbl_momentum_fade_threshold: QLabel | None = None
+        self._lbl_momentum_fade_min_profit: QLabel | None = None
+        self._lbl_max_entry_above_breakout: QLabel | None = None
+        self._lbl_intraday_block: QLabel | None = None
+        self._lbl_intraday_resume: QLabel | None = None
+        self._lbl_obi_filter: QLabel | None = None
+        self._lbl_stale_exit: QLabel | None = None
+        self._lbl_afternoon_entry: QLabel | None = None
         self._build_ui()
 
     # ------------------------------------------------------------------
@@ -159,17 +171,53 @@ class StrategyTab(QWidget):
         form.setContentsMargins(10, 16, 10, 10)
         form.setSpacing(8)
 
-        self._lbl_stop_loss_pct = _ro_label("-8.0 % (ADR-010 고정 손절)")
-        form.addRow("stop_loss_pct:", self._lbl_stop_loss_pct)
+        # ATR 손절
+        self._lbl_atr_stop_enabled = _ro_label("활성 (ATR×2.0 비례 손절)")
+        form.addRow("atr_stop:", self._lbl_atr_stop_enabled)
 
-        self._lbl_atr_trail_multiplier = _ro_label("1.0")
-        form.addRow("atr_trail_multiplier:", self._lbl_atr_trail_multiplier)
+        self._lbl_atr_stop_clamp = _ro_label("4% ~ 15% (clamp)")
+        form.addRow("atr_stop_clamp:", self._lbl_atr_stop_clamp)
 
-        self._lbl_atr_trail_min_pct = _ro_label("2.0 %")
-        form.addRow("atr_trail_min_pct:", self._lbl_atr_trail_min_pct)
+        self._lbl_stop_loss_pct = _ro_label("-8.0 % (ATR 미가용 시 fallback)")
+        form.addRow("stop_loss_fallback:", self._lbl_stop_loss_pct)
 
-        self._lbl_atr_trail_max_pct = _ro_label("10.0 %")
-        form.addRow("atr_trail_max_pct:", self._lbl_atr_trail_max_pct)
+        # Trailing
+        self._lbl_atr_trail_multiplier = _ro_label("1.0 (Chandelier)")
+        form.addRow("trail_multiplier:", self._lbl_atr_trail_multiplier)
+
+        self._lbl_atr_trail_min_pct = _ro_label("2.5 %")
+        form.addRow("trail_min_pct:", self._lbl_atr_trail_min_pct)
+
+        self._lbl_atr_trail_max_pct = _ro_label("8.0 %")
+        form.addRow("trail_max_pct:", self._lbl_atr_trail_max_pct)
+
+        time_decay_lbl = _ro_label("12:00→×0.7 / 13:30→×0.5 / 14:30→×0.3 (floor 1%)")
+        time_decay_lbl.setWordWrap(True)
+        form.addRow("time_decay:", time_decay_lbl)
+
+        # Breakeven Stop
+        self._lbl_breakeven_trigger = _ro_label("3.0 % 수익 도달 시 → entry+1% (ADR-017)")
+        form.addRow("breakeven_stop:", self._lbl_breakeven_trigger)
+
+        # Momentum Fade
+        self._lbl_momentum_fade_threshold = _ro_label("-0.8 % (ROC 10분)")
+        form.addRow("fade_threshold:", self._lbl_momentum_fade_threshold)
+
+        self._lbl_momentum_fade_min_profit = _ro_label("3.0 % (최소 수익 3% 이상 시 발동)")
+        form.addRow("fade_min_profit:", self._lbl_momentum_fade_min_profit)
+
+        # 기타
+        self._lbl_max_entry_above_breakout = _ro_label("10.0 % (돌파 후 최대 추격)")
+        form.addRow("max_entry_above_breakout:", self._lbl_max_entry_above_breakout)
+
+        self._lbl_obi_filter = _ro_label("비활성 (0D 필드 코드 확인 전)")
+        form.addRow("obi_filter:", self._lbl_obi_filter)
+
+        self._lbl_stale_exit = _ro_label("비활성 확정 (그리드 PF < baseline×0.95)")
+        form.addRow("stale_exit:", self._lbl_stale_exit)
+
+        self._lbl_afternoon_entry = _ro_label("비활성 확정 (그리드 PF < baseline×0.95)")
+        form.addRow("afternoon_entry:", self._lbl_afternoon_entry)
 
         force_close_info = QLabel("15:10 강제 청산 (고정)")
         force_close_info.setStyleSheet("color: #6c7086; font-size: 11px;")
@@ -244,6 +292,15 @@ class StrategyTab(QWidget):
 
         self._lbl_market_ma_length = _ro_label("5 (MA5)")
         form.addRow("market_ma_length:", self._lbl_market_ma_length)
+
+        self._lbl_intraday_block = _ro_label("-1.0 % (장중 차단 임계값)")
+        form.addRow("intraday_block_threshold:", self._lbl_intraday_block)
+
+        self._lbl_intraday_resume = _ro_label("-0.5 % (장중 재개 임계값)")
+        form.addRow("intraday_resume_threshold:", self._lbl_intraday_resume)
+
+        intraday_interval_lbl = _ro_label("10분 갱신 주기")
+        form.addRow("intraday_check_interval:", intraday_interval_lbl)
 
         return group
 
@@ -422,19 +479,31 @@ class StrategyTab(QWidget):
         # 청산 조건 (읽기 전용)
         if self._lbl_stop_loss_pct is not None:
             self._lbl_stop_loss_pct.setText(
-                f"{float(momentum.get('stop_loss_pct', -0.08)) * 100:.1f} % (ADR-010 고정 손절)"
+                f"{float(momentum.get('stop_loss_pct', -0.08)) * 100:.1f} % (ATR 미가용 시 fallback)"
             )
         if self._lbl_atr_trail_multiplier is not None:
             self._lbl_atr_trail_multiplier.setText(
-                f"{float(momentum.get('atr_trail_multiplier', 1.0)):.1f}"
+                f"{float(momentum.get('atr_trail_multiplier', 1.0)):.1f} (Chandelier)"
             )
         if self._lbl_atr_trail_min_pct is not None:
             self._lbl_atr_trail_min_pct.setText(
-                f"{float(momentum.get('atr_trail_min_pct', 0.02)) * 100:.1f} %"
+                f"{float(momentum.get('atr_trail_min_pct', 0.025)) * 100:.1f} %"
             )
         if self._lbl_atr_trail_max_pct is not None:
             self._lbl_atr_trail_max_pct.setText(
-                f"{float(momentum.get('atr_trail_max_pct', 0.10)) * 100:.1f} %"
+                f"{float(momentum.get('atr_trail_max_pct', 0.080)) * 100:.1f} %"
+            )
+        if self._lbl_momentum_fade_threshold is not None:
+            self._lbl_momentum_fade_threshold.setText(
+                f"{float(momentum.get('momentum_fade_threshold', -0.008)) * 100:.1f} % (ROC 10분)"
+            )
+        if self._lbl_momentum_fade_min_profit is not None:
+            self._lbl_momentum_fade_min_profit.setText(
+                f"{float(momentum.get('momentum_fade_min_profit', 0.03)) * 100:.1f} % (최소 수익 3% 이상 시 발동)"
+            )
+        if self._lbl_max_entry_above_breakout is not None:
+            self._lbl_max_entry_above_breakout.setText(
+                f"{float(momentum.get('max_entry_above_breakout_pct', 0.10)) * 100:.1f} % (돌파 후 최대 추격)"
             )
 
         # 리스크 관리 (편집 가능)
@@ -465,6 +534,12 @@ class StrategyTab(QWidget):
         if self._lbl_market_ma_length is not None:
             ma = int(trading_cfg.get("market_ma_length", 5))
             self._lbl_market_ma_length.setText(f"{ma} (MA{ma})")
+        if self._lbl_intraday_block is not None:
+            block = float(trading_cfg.get("intraday_block_threshold", -0.01)) * 100
+            self._lbl_intraday_block.setText(f"{block:.1f} % (장중 차단 임계값)")
+        if self._lbl_intraday_resume is not None:
+            resume = float(trading_cfg.get("intraday_resume_threshold", -0.005)) * 100
+            self._lbl_intraday_resume.setText(f"{resume:.1f} % (장중 재개 임계값)")
 
         # 알림 정책
         notif_cfg = config.get("notifications", {}) or {}

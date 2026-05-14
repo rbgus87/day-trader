@@ -38,6 +38,7 @@ class MainWindow(QMainWindow):
 
         self._worker: EngineWorker | None = None
         self._stop_btn_pressed = False
+        self._current_positions: list = []
 
         self._init_ui()
         self._apply_theme()
@@ -102,6 +103,7 @@ class MainWindow(QMainWindow):
         self.sidebar.reconnect_clicked.connect(self._on_reconnect)
         self.sidebar.mode_changed.connect(self._on_mode_changed)
         self.sidebar.strategy_changed.connect(self._on_strategy_changed)
+        self.sidebar.test_alert_clicked.connect(self._on_test_alert)
 
         # 탭 시그널 연결
         self.screener_tab.run_screening_clicked.connect(self._on_screening)
@@ -223,6 +225,7 @@ class MainWindow(QMainWindow):
         s.watchlist_updated.connect(self._on_watchlist_updated)
         s.market_status_updated.connect(self._on_market_status)
         s.trade_executed.connect(self._on_trade_executed)
+        self.dashboard_view.manual_close_requested.connect(self._on_manual_close)
 
     def _on_market_status(self, kospi_strong: bool, kosdaq_strong: bool):
         self.header_bar.on_market_status(kospi_strong, kosdaq_strong)
@@ -276,8 +279,16 @@ class MainWindow(QMainWindow):
             pass
 
     def _on_halt(self):
-        logger.info("Halt 긴급 클릭")
-        if self._worker:
+        pos_count = len(self._current_positions)
+        pos_text = f"현재 보유 {pos_count}개 포지션은 유지됩니다." if pos_count > 0 else "현재 보유 포지션 없음."
+        reply = QMessageBox.warning(
+            self, "긴급 정지 확인",
+            f"신규 매매를 즉시 중단합니다.\n{pos_text}\n\n계속하시겠습니까?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes and self._worker:
+            logger.warning("Halt 긴급 정지 확인됨")
             self._worker.signals.request_halt.emit()
 
     def _on_screening(self):
@@ -297,6 +308,18 @@ class MainWindow(QMainWindow):
             if reply == QMessageBox.StandardButton.Yes:
                 self._worker.signals.request_force_close.emit()
 
+    def _on_manual_close(self, ticker: str, name: str, qty: int):
+        display = f"{name}({ticker})" if name and name != ticker else ticker
+        reply = QMessageBox.warning(
+            self, "수동 청산 확인",
+            f"{display} {qty}주를\n시장가 매도하시겠습니까?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes and self._worker:
+            logger.info(f"수동 청산 요청: {ticker} {qty}주")
+            self._worker.signals.request_manual_close.emit(ticker)
+
     def _on_report(self):
         logger.info("리포트 수동 발송 클릭")
         if self._worker:
@@ -306,6 +329,24 @@ class MainWindow(QMainWindow):
         logger.info("WS 재연결 클릭")
         if self._worker:
             self._worker.signals.request_reconnect.emit()
+
+    def _on_test_alert(self):
+        from threading import Thread
+        def _send():
+            try:
+                from config.settings import AppConfig
+                from notification.telegram_bot import TelegramNotifier
+                config = AppConfig.from_yaml()
+                notifier = TelegramNotifier(config.telegram)
+                notifier.send("[TEST] DayTrader 알림 테스트 정상", retries=1)
+                notifier.aclose()
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(0, lambda: QMessageBox.information(self, "알림 테스트", "텔레그램 발송 완료"))
+            except Exception as e:
+                err = str(e)
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(0, lambda err=err: QMessageBox.critical(self, "알림 테스트 실패", err))
+        Thread(target=_send, daemon=True).start()
 
     def _on_settings_saved(self):
         config_path = Path("config.yaml")
@@ -562,6 +603,7 @@ class MainWindow(QMainWindow):
         )
 
     def _on_positions_updated(self, positions: list):
+        self._current_positions = positions
         self.dashboard_view.update_positions(positions)
 
     def _on_trades_updated(self, trades: list):
