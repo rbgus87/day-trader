@@ -28,9 +28,9 @@ class OrderbookWidget(QWidget):
         # OBI 행
         obi_row = QHBoxLayout()
         obi_lbl = QLabel("OBI")
-        obi_lbl.setStyleSheet(f"color: {Colors.text_muted}; font-size: 10px;")
+        obi_lbl.setStyleSheet(f"color: {Colors.text_muted}; font-size: 10px; background: transparent;")
         self._obi_val = QLabel("—")
-        self._obi_val.setStyleSheet(f"color: {Colors.text_primary}; font-size: 11px; font-weight: bold;")
+        self._obi_val.setStyleSheet(f"color: {Colors.text_primary}; font-size: 11px; font-weight: bold; background: transparent;")
         obi_row.addWidget(obi_lbl)
         obi_row.addWidget(self._obi_val)
         obi_row.addStretch()
@@ -99,7 +99,7 @@ class OrderbookWidget(QWidget):
 
         obi_color = Colors.accent_blue if obi >= 0 else Colors.accent_red
         self._obi_val.setText(f"{obi:+.3f}")
-        self._obi_val.setStyleSheet(f"color: {obi_color}; font-size: 11px; font-weight: bold;")
+        self._obi_val.setStyleSheet(f"color: {obi_color}; font-size: 11px; font-weight: bold; background: transparent;")
 
         all_qty = sum(q for _, q in asks + bids) or 1
 
