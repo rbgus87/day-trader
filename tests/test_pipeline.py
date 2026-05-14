@@ -88,9 +88,9 @@ async def test_position_monitor_stop_loss(risk_manager, order_manager):
     assert risk_manager.check_stop_loss("005930", tick["price"])
 
     # 시뮬레이션: tick_consumer 내부 로직 재현
-    qty = pos["remaining_qty"]
+    qty = pos.remaining_qty
     await order_manager.execute_sell_stop(ticker="005930", qty=qty)
-    pnl = (tick["price"] - pos["entry_price"]) * qty
+    pnl = (tick["price"] - pos.entry_price) * qty
     risk_manager.record_pnl(pnl)
     risk_manager.remove_position("005930")
 
@@ -110,17 +110,17 @@ async def test_position_monitor_tp1(risk_manager, order_manager):
     pos = risk_manager.get_position("005930")
     assert risk_manager.check_tp1("005930", tick["price"])
 
-    sell_qty = int(pos["remaining_qty"] * TradingConfig().tp1_sell_ratio)
-    await order_manager.execute_sell_tp1(ticker="005930", price=72200, remaining_qty=pos["remaining_qty"])
-    pnl = (tick["price"] - pos["entry_price"]) * sell_qty
+    sell_qty = int(pos.remaining_qty * TradingConfig().tp1_sell_ratio)
+    await order_manager.execute_sell_tp1(ticker="005930", price=72200, remaining_qty=pos.remaining_qty)
+    pnl = (tick["price"] - pos.entry_price) * sell_qty
     risk_manager.record_pnl(pnl)
     risk_manager.mark_tp1_hit("005930", sell_qty)
 
     order_manager.execute_sell_tp1.assert_called_once()
     pos_after = risk_manager.get_position("005930")
-    assert pos_after["tp1_hit"] is True
-    assert pos_after["remaining_qty"] == 50
-    assert pos_after["stop_loss"] == 70000  # 본전으로 이동
+    assert pos_after.tp1_hit is True
+    assert pos_after.remaining_qty == 50
+    assert pos_after.stop_loss == 70000  # 본전으로 이동
 
 
 @pytest.mark.asyncio
@@ -138,14 +138,14 @@ async def test_position_monitor_trailing_stop(risk_manager):
     # TP1 히트 시뮬레이션
     risk_manager.mark_tp1_hit("TEST001", 50)
     pos = risk_manager.get_position("TEST001")
-    assert pos["tp1_hit"] is True
+    assert pos.tp1_hit is True
 
     # 고점 갱신
     risk_manager.update_trailing_stop("TEST001", 73000)
     pos = risk_manager.get_position("TEST001")
-    assert pos["highest_price"] == 73000
+    assert pos.highest_price == 73000
     # 폴백 클램프 적용: max(atr_trail_min_pct, trailing_stop_pct)
-    assert pos["stop_loss"] == 73000 * (1 - TradingConfig().atr_trail_min_pct)
+    assert pos.stop_loss == 73000 * (1 - TradingConfig().atr_trail_min_pct)
 
 
 @pytest.mark.asyncio

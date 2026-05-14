@@ -1,10 +1,12 @@
 """tests/test_risk_manager.py"""
 
 import pytest
+from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
 from risk.risk_manager import RiskManager
 from config.settings import TradingConfig
+from core.position import Position, PositionStatus, ExitPhase
 
 
 @pytest.fixture
@@ -16,20 +18,42 @@ def risk_mgr():
     )
 
 
+def _make_position(
+    ticker="005930",
+    entry_price=70000,
+    stop_loss=68950,
+    qty=10,
+    remaining_qty=10,
+    highest_price=0.0,
+    trailing_pct=0.01,
+    tp1_hit=False,
+    status=PositionStatus.CONFIRMED,
+) -> Position:
+    pos = Position(
+        ticker=ticker,
+        entry_price=entry_price,
+        qty=qty,
+        remaining_qty=remaining_qty,
+        stop_loss=stop_loss,
+        strategy="",
+        entry_time=datetime.now(),
+        status=status,
+        trailing_pct=trailing_pct,
+        tp1_hit=tp1_hit,
+    )
+    if highest_price > 0.0:
+        pos.highest_price = highest_price
+    return pos
+
+
 def test_check_stop_loss_triggers(risk_mgr):
-    risk_mgr._positions["005930"] = {
-        "entry_price": 70000, "stop_loss": 68950,
-        "qty": 10, "remaining_qty": 10,
-    }
+    risk_mgr._positions["005930"] = _make_position(stop_loss=68950)
     result = risk_mgr.check_stop_loss("005930", current_price=68900)
     assert result is True
 
 
 def test_check_stop_loss_safe(risk_mgr):
-    risk_mgr._positions["005930"] = {
-        "entry_price": 70000, "stop_loss": 68950,
-        "qty": 10, "remaining_qty": 10,
-    }
+    risk_mgr._positions["005930"] = _make_position(stop_loss=68950)
     result = risk_mgr.check_stop_loss("005930", current_price=69000)
     assert result is False
 
@@ -50,33 +74,41 @@ def test_daily_loss_limit_allows(risk_mgr):
 async def test_update_trailing_stop(risk_mgr):
     # ATR 미가용 폴백 경로를 검증. atr_pct를 전달하지 않으므로 폴백 진입 →
     # min_pct 클램프(2%)가 적용되어 trailing_pct=0.01은 0.02로 상향됨.
-    risk_mgr._positions["TEST001"] = {
-        "entry_price": 70000, "stop_loss": 68950,
-        "qty": 10, "remaining_qty": 5,
-        "highest_price": 71400, "trailing_pct": 0.01,
-        "tp1_hit": True,
-    }
+    risk_mgr._positions["TEST001"] = _make_position(
+        ticker="TEST001",
+        entry_price=70000,
+        stop_loss=68950,
+        qty=10,
+        remaining_qty=5,
+        highest_price=71400,
+        trailing_pct=0.01,
+        tp1_hit=True,
+    )
     risk_mgr.update_trailing_stop("TEST001", current_price=72000)
     pos = risk_mgr._positions["TEST001"]
-    assert pos["highest_price"] == 72000
+    assert pos.highest_price == 72000
     # 폴백에 min_pct 클램프(0.02) 적용된 stop
-    assert pos["stop_loss"] == 72000 * (1 - 0.02)
+    assert pos.stop_loss == 72000 * (1 - 0.02)
 
 
 @pytest.mark.asyncio
 async def test_update_trailing_stop_with_atr(risk_mgr):
     # 호출자가 atr_pct를 전달하면 calculate_atr_trailing_stop 경로 진입.
-    risk_mgr._positions["TEST002"] = {
-        "entry_price": 70000, "stop_loss": 68000,
-        "qty": 10, "remaining_qty": 10,
-        "highest_price": 70000, "trailing_pct": 0.005,
-        "tp1_hit": True,
-    }
+    risk_mgr._positions["TEST002"] = _make_position(
+        ticker="TEST002",
+        entry_price=70000,
+        stop_loss=68000,
+        qty=10,
+        remaining_qty=10,
+        highest_price=0.0,
+        trailing_pct=0.005,
+        tp1_hit=True,
+    )
     # ATR 4% × multiplier 1.0 = 4% (min 2% / max 10% 사이)
     risk_mgr.update_trailing_stop("TEST002", current_price=72000, atr_pct=0.04)
     pos = risk_mgr._positions["TEST002"]
-    assert pos["highest_price"] == 72000
-    assert pos["stop_loss"] == pytest.approx(72000 * (1 - 0.04))
+    assert pos.highest_price == 72000
+    assert pos.stop_loss == pytest.approx(72000 * (1 - 0.04))
 
 
 # ---------------------------------------------------------------------------
@@ -92,12 +124,15 @@ def _trail_log_lines(mock_logger) -> list[str]:
 
 @patch("risk.risk_manager.logger")
 def test_trail_log_atr_branch(mock_logger, risk_mgr):
-    risk_mgr._positions["A"] = {
-        "entry_price": 70000, "stop_loss": 68000,
-        "qty": 10, "remaining_qty": 10,
-        "highest_price": 70000, "trailing_pct": 0.005,
-        "tp1_hit": True,
-    }
+    risk_mgr._positions["A"] = _make_position(
+        ticker="A",
+        entry_price=70000,
+        stop_loss=68000,
+        qty=10,
+        remaining_qty=10,
+        trailing_pct=0.005,
+        tp1_hit=True,
+    )
     risk_mgr.update_trailing_stop("A", current_price=72000, atr_pct=0.04)
     lines = _trail_log_lines(mock_logger)
     assert len(lines) == 1
@@ -107,12 +142,15 @@ def test_trail_log_atr_branch(mock_logger, risk_mgr):
 
 @patch("risk.risk_manager.logger")
 def test_trail_log_fallback_when_atr_pct_none(mock_logger, risk_mgr):
-    risk_mgr._positions["B"] = {
-        "entry_price": 70000, "stop_loss": 68000,
-        "qty": 10, "remaining_qty": 10,
-        "highest_price": 70000, "trailing_pct": 0.005,
-        "tp1_hit": True,
-    }
+    risk_mgr._positions["B"] = _make_position(
+        ticker="B",
+        entry_price=70000,
+        stop_loss=68000,
+        qty=10,
+        remaining_qty=10,
+        trailing_pct=0.005,
+        tp1_hit=True,
+    )
     risk_mgr.update_trailing_stop("B", current_price=72000, atr_pct=None)
     lines = _trail_log_lines(mock_logger)
     assert len(lines) == 1
@@ -124,12 +162,15 @@ def test_trail_log_fallback_when_atr_pct_none(mock_logger, risk_mgr):
 def test_trail_log_fallback_when_atr_disabled(mock_logger, risk_mgr):
     from dataclasses import replace
     risk_mgr._config = replace(risk_mgr._config, atr_trail_enabled=False)
-    risk_mgr._positions["C"] = {
-        "entry_price": 70000, "stop_loss": 68000,
-        "qty": 10, "remaining_qty": 10,
-        "highest_price": 70000, "trailing_pct": 0.005,
-        "tp1_hit": True,
-    }
+    risk_mgr._positions["C"] = _make_position(
+        ticker="C",
+        entry_price=70000,
+        stop_loss=68000,
+        qty=10,
+        remaining_qty=10,
+        trailing_pct=0.005,
+        tp1_hit=True,
+    )
     risk_mgr.update_trailing_stop("C", current_price=72000, atr_pct=0.04)
     lines = _trail_log_lines(mock_logger)
     assert len(lines) == 1
@@ -139,12 +180,16 @@ def test_trail_log_fallback_when_atr_disabled(mock_logger, risk_mgr):
 @patch("risk.risk_manager.logger")
 def test_trail_log_skipped_when_no_peak_update(mock_logger, risk_mgr):
     """current_price가 highest_price 이하이면 [TRAIL] 로그 스팸 방지."""
-    risk_mgr._positions["D"] = {
-        "entry_price": 70000, "stop_loss": 68000,
-        "qty": 10, "remaining_qty": 10,
-        "highest_price": 75000, "trailing_pct": 0.005,
-        "tp1_hit": True,
-    }
+    risk_mgr._positions["D"] = _make_position(
+        ticker="D",
+        entry_price=70000,
+        stop_loss=68000,
+        qty=10,
+        remaining_qty=10,
+        highest_price=75000,
+        trailing_pct=0.005,
+        tp1_hit=True,
+    )
     risk_mgr.update_trailing_stop("D", current_price=72000, atr_pct=0.04)
     assert _trail_log_lines(mock_logger) == []
 
@@ -200,13 +245,13 @@ async def test_save_daily_summary_no_trades(risk_mgr):
 # ---------------------------------------------------------------------------
 
 def test_register_position_default_status_pending(risk_mgr):
-    """status 기본값은 'pending' (real_mode 안전 기본)."""
+    """status 기본값은 PENDING (real_mode 안전 기본)."""
     risk_mgr.register_position(
         ticker="000001", entry_price=10000, qty=10, stop_loss=9200,
     )
     pos = risk_mgr.get_position("000001")
     assert pos is not None
-    assert pos["status"] == "pending"
+    assert pos.status == PositionStatus.PENDING
 
 
 def test_register_position_status_confirmed(risk_mgr):
@@ -217,17 +262,17 @@ def test_register_position_status_confirmed(risk_mgr):
     )
     pos = risk_mgr.get_position("000001")
     assert pos is not None
-    assert pos["status"] == "confirmed"
+    assert pos.status == PositionStatus.CONFIRMED
 
 
 def test_mark_confirmed_flips_status(risk_mgr):
-    """mark_confirmed: pending → confirmed."""
+    """mark_confirmed: PENDING → CONFIRMED."""
     risk_mgr.register_position(
         ticker="000001", entry_price=10000, qty=10, stop_loss=9200,
     )
-    assert risk_mgr.get_position("000001")["status"] == "pending"
+    assert risk_mgr.get_position("000001").status == PositionStatus.PENDING
     risk_mgr.mark_confirmed("000001")
-    assert risk_mgr.get_position("000001")["status"] == "confirmed"
+    assert risk_mgr.get_position("000001").status == PositionStatus.CONFIRMED
 
 
 def test_mark_confirmed_unknown_ticker_noop(risk_mgr):
@@ -237,16 +282,13 @@ def test_mark_confirmed_unknown_ticker_noop(risk_mgr):
 
 
 def test_restore_from_db_sets_status_confirmed():
-    """복구된 포지션은 status='confirmed'를 가져야 함 (이미 체결 완료 상태).
+    """복구된 포지션은 PositionStatus.CONFIRMED를 가져야 함 (이미 체결 완료 상태).
 
-    Task 6의 engine_worker가 pos['status']를 읽기 때문에 누락 시 KeyError.
+    restore_from_db 소스에 PositionStatus.CONFIRMED 리터럴이 있는지 확인.
     """
-    # _positions에 직접 주입 (restore_from_db 시뮬레이션)
-    # 실 테스트는 restore_from_db 호출 후 _positions를 검사하는 것이 이상적이나,
-    # DB 픽스처가 무거우므로 메서드의 dict literal에 'status' 키가 있는지만 확인.
     import inspect
     from risk.risk_manager import RiskManager
     src = inspect.getsource(RiskManager.restore_from_db)
-    assert '"status": "confirmed"' in src, (
-        "restore_from_db에 status='confirmed' 누락 — 재시작 후 KeyError 위험"
+    assert "PositionStatus.CONFIRMED" in src, (
+        "restore_from_db에 PositionStatus.CONFIRMED 누락"
     )
