@@ -38,6 +38,7 @@ class OrderbookWidget(QWidget):
 
         # 호가 바 영역 (ask 5 + bid 5)
         self._bars_widget = QWidget()
+        self._bars_widget.setStyleSheet("background: transparent;")
         bars_layout = QVBoxLayout(self._bars_widget)
         bars_layout.setSpacing(1)
         bars_layout.setContentsMargins(0, 2, 0, 2)
@@ -71,7 +72,7 @@ class OrderbookWidget(QWidget):
         )
         self._no_data_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._no_data_lbl.setStyleSheet(
-            f"color: {Colors.text_muted}; font-size: 10px; padding: 8px;"
+            f"color: {Colors.text_muted}; font-size: 10px; padding: 8px; background: transparent;"
         )
         self._card.addWidget(self._no_data_lbl)
 
@@ -136,6 +137,7 @@ class _ObBar(QWidget):
         self._build()
 
     def _build(self):
+        self.setStyleSheet("background: transparent;")
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(3)
@@ -144,7 +146,7 @@ class _ObBar(QWidget):
         self._price_lbl = QLabel("—")
         self._price_lbl.setFixedWidth(68)
         self._price_lbl.setStyleSheet(
-            f"color: {price_color}; font-size: 9px;"
+            f"color: {price_color}; font-size: 9px; background: transparent;"
         )
         self._price_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
 
@@ -162,7 +164,7 @@ class _ObBar(QWidget):
 
         self._qty_lbl = QLabel("—")
         self._qty_lbl.setFixedWidth(52)
-        self._qty_lbl.setStyleSheet(f"color: {Colors.text_muted}; font-size: 9px;")
+        self._qty_lbl.setStyleSheet(f"color: {Colors.text_muted}; font-size: 9px; background: transparent;")
         self._qty_lbl.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
         layout.addWidget(self._price_lbl)

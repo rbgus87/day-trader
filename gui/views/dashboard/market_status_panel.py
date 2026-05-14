@@ -7,8 +7,7 @@ from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from gui.components.progress_ring import ProgressRing
-from gui.design_tokens import Colors, Border, Spacing
-from gui.widgets.card import Card
+from gui.design_tokens import Colors
 
 _SCHEDULES = [
     (_time(9, 5),   "매수 시작"),
@@ -18,13 +17,11 @@ _SCHEDULES = [
 ]
 
 
-class MarketStatusPanel(QWidget):
-    """대시보드 상단 — 시장 상태 요약 바."""
+class MarketStatusPanel(QFrame):
+    """대시보드 상단 — 시장 상태 요약 바 (단일 카드, 높이 48px)."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._kospi_strong = False
-        self._kosdaq_strong = False
         self._build_ui()
 
         self._sched_timer = QTimer(self)
@@ -35,94 +32,97 @@ class MarketStatusPanel(QWidget):
     # ── UI ────────────────────────────────────────────────────────────────────
 
     def _build_ui(self):
-        self.setFixedHeight(56)
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(Spacing.gap_sm)
-
-        # KOSPI 카드
-        self._kospi_card = self._market_card("KOSPI")
-        layout.addWidget(self._kospi_card)
-
-        # KOSDAQ 카드
-        self._kosdaq_card = self._market_card("KOSDAQ")
-        layout.addWidget(self._kosdaq_card)
-
-        sep = self._vsep()
-        layout.addWidget(sep)
-
-        # 포지션 슬롯
-        slot_card = Card()
-        slot_row = QHBoxLayout()
-        slot_row.setSpacing(Spacing.gap_md)
-        self._slot_ring = ProgressRing(size=36)
-        slot_info = QVBoxLayout()
-        slot_info.setSpacing(0)
-        slot_title = QLabel("포지션 슬롯")
-        slot_title.setStyleSheet(f"color: {Colors.text_muted}; font-size: 10px;")
-        self._slot_lbl = QLabel("0 / 3")
-        self._slot_lbl.setStyleSheet(f"color: {Colors.text_primary}; font-size: 13px; font-weight: bold;")
-        slot_info.addWidget(slot_title)
-        slot_info.addWidget(self._slot_lbl)
-        slot_row.addWidget(self._slot_ring)
-        slot_row.addLayout(slot_info)
-        slot_row.addStretch()
-        slot_card.addLayout(slot_row)
-        layout.addWidget(slot_card)
-
-        sep2 = self._vsep()
-        layout.addWidget(sep2)
-
-        # VI 활성 수
-        vi_card = Card()
-        vi_layout = QVBoxLayout()
-        vi_layout.setSpacing(0)
-        vi_title = QLabel("VI 활성")
-        vi_title.setStyleSheet(f"color: {Colors.text_muted}; font-size: 10px;")
-        self._vi_lbl = QLabel("0종목")
-        self._vi_lbl.setStyleSheet(f"color: {Colors.text_primary}; font-size: 13px; font-weight: bold;")
-        vi_layout.addWidget(vi_title)
-        vi_layout.addWidget(self._vi_lbl)
-        vi_card.addLayout(vi_layout)
-        layout.addWidget(vi_card)
-
-        sep3 = self._vsep()
-        layout.addWidget(sep3)
-
-        # 다음 일정
-        sched_card = Card()
-        sched_layout = QVBoxLayout()
-        sched_layout.setSpacing(0)
-        sched_title = QLabel("다음 일정")
-        sched_title.setStyleSheet(f"color: {Colors.text_muted}; font-size: 10px;")
-        self._sched_lbl = QLabel("—")
-        self._sched_lbl.setStyleSheet(
-            f"color: {Colors.accent_yellow}; font-size: 12px; font-weight: bold;"
+        self.setObjectName("msp")
+        self.setStyleSheet(
+            "QFrame#msp {"
+            "  background-color: #2a2a3d;"
+            "  border: 1px solid #313244;"
+            "  border-radius: 8px;"
+            "}"
+            "QFrame#msp * { background: transparent; }"
         )
-        sched_layout.addWidget(sched_title)
-        sched_layout.addWidget(self._sched_lbl)
-        sched_card.addLayout(sched_layout)
-        layout.addWidget(sched_card, stretch=1)
+        self.setFixedHeight(48)
 
-    def _market_card(self, name: str) -> Card:
-        card = Card()
-        vbox = QVBoxLayout()
-        vbox.setSpacing(0)
-        title_lbl = QLabel(name)
-        title_lbl.setStyleSheet(f"color: {Colors.text_muted}; font-size: 10px;")
-        status_lbl = QLabel("약세 ▼")
-        status_lbl.setStyleSheet(f"color: {Colors.accent_red}; font-size: 13px; font-weight: bold;")
-        vbox.addWidget(title_lbl)
-        vbox.addWidget(status_lbl)
-        card.addLayout(vbox)
-        setattr(card, "_status_lbl", status_lbl)
-        return card
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 4, 10, 4)
+        layout.setSpacing(0)
+
+        # KOSPI
+        kospi_w, self._kospi_lbl = self._info_item("KOSPI", "약세 ▼", Colors.accent_red)
+        kospi_w.setFixedWidth(90)
+        layout.addWidget(kospi_w)
+        layout.addWidget(self._vsep())
+
+        # KOSDAQ
+        kosdaq_w, self._kosdaq_lbl = self._info_item("KOSDAQ", "약세 ▼", Colors.accent_red)
+        kosdaq_w.setFixedWidth(90)
+        layout.addWidget(kosdaq_w)
+        layout.addWidget(self._vsep())
+
+        # 포지션 슬롯 (링 + 텍스트)
+        slot_w = QWidget()
+        slot_w.setFixedWidth(110)
+        sl = QHBoxLayout(slot_w)
+        sl.setContentsMargins(8, 0, 8, 0)
+        sl.setSpacing(6)
+        self._slot_ring = ProgressRing(size=30)
+        si = QVBoxLayout()
+        si.setSpacing(1)
+        si.setContentsMargins(0, 0, 0, 0)
+        si.addWidget(self._mk_lbl("포지션", 9, Colors.text_muted))
+        self._slot_lbl = self._mk_lbl("0 / 3", 12, Colors.text_primary, bold=True)
+        si.addWidget(self._slot_lbl)
+        sl.addWidget(self._slot_ring)
+        sl.addLayout(si)
+        layout.addWidget(slot_w)
+        layout.addWidget(self._vsep())
+
+        # VI 활성
+        vi_w, self._vi_lbl = self._info_item("VI 활성", "0종목", Colors.text_primary)
+        vi_w.setFixedWidth(80)
+        layout.addWidget(vi_w)
+
+        layout.addStretch()
+
+        # 다음 일정 — 우측 정렬, 내용 크기에 맞춤
+        sched_w = QWidget()
+        sv = QVBoxLayout(sched_w)
+        sv.setContentsMargins(8, 0, 4, 0)
+        sv.setSpacing(1)
+        t = self._mk_lbl("다음 일정", 9, Colors.text_muted)
+        t.setAlignment(Qt.AlignmentFlag.AlignRight)
+        sv.addWidget(t)
+        self._sched_lbl = self._mk_lbl("—", 12, Colors.accent_yellow, bold=True)
+        self._sched_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
+        sv.addWidget(self._sched_lbl)
+        layout.addWidget(sched_w)
+
+    # ── 헬퍼 ─────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _mk_lbl(text: str, size: int, color: str, bold: bool = False) -> QLabel:
+        lbl = QLabel(text)
+        style = f"color: {color}; font-size: {size}px;"
+        if bold:
+            style += " font-weight: bold;"
+        lbl.setStyleSheet(style)
+        return lbl
+
+    def _info_item(self, title: str, initial: str, color: str) -> tuple[QWidget, QLabel]:
+        w = QWidget()
+        vbox = QVBoxLayout(w)
+        vbox.setContentsMargins(8, 0, 8, 0)
+        vbox.setSpacing(1)
+        vbox.addWidget(self._mk_lbl(title, 9, Colors.text_muted))
+        val = self._mk_lbl(initial, 12, color, bold=True)
+        vbox.addWidget(val)
+        return w, val
 
     def _vsep(self) -> QFrame:
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.VLine)
-        sep.setStyleSheet(f"color: {Colors.surface_border};")
         sep.setFixedWidth(1)
+        sep.setStyleSheet("background: #313244;")
         return sep
 
     # ── 스케줄 갱신 ───────────────────────────────────────────────────────────
@@ -138,21 +138,13 @@ class MarketStatusPanel(QWidget):
     # ── 공개 API ──────────────────────────────────────────────────────────────
 
     def update_market_status(self, kospi_strong: bool, kosdaq_strong: bool):
-        self._kospi_strong = kospi_strong
-        self._kosdaq_strong = kosdaq_strong
-        self._apply_market_card(self._kospi_card, kospi_strong)
-        self._apply_market_card(self._kosdaq_card, kosdaq_strong)
-
-    def _apply_market_card(self, card: Card, strong: bool):
-        lbl = getattr(card, "_status_lbl", None)
-        if lbl is None:
-            return
-        if strong:
-            lbl.setText("강세 ▲")
-            lbl.setStyleSheet(f"color: {Colors.accent_green}; font-size: 13px; font-weight: bold;")
-        else:
-            lbl.setText("약세 ▼")
-            lbl.setStyleSheet(f"color: {Colors.accent_red}; font-size: 13px; font-weight: bold;")
+        for lbl, strong in ((self._kospi_lbl, kospi_strong), (self._kosdaq_lbl, kosdaq_strong)):
+            if strong:
+                lbl.setText("강세 ▲")
+                lbl.setStyleSheet(f"color: {Colors.accent_green}; font-size: 12px; font-weight: bold;")
+            else:
+                lbl.setText("약세 ▼")
+                lbl.setStyleSheet(f"color: {Colors.accent_red}; font-size: 12px; font-weight: bold;")
 
     def update_slot(self, count: int, max_pos: int):
         self._slot_lbl.setText(f"{count} / {max_pos}")
@@ -165,4 +157,4 @@ class MarketStatusPanel(QWidget):
     def update_vi_count(self, count: int):
         self._vi_lbl.setText(f"{count}종목")
         color = Colors.accent_yellow if count > 0 else Colors.text_primary
-        self._vi_lbl.setStyleSheet(f"color: {color}; font-size: 13px; font-weight: bold;")
+        self._vi_lbl.setStyleSheet(f"color: {color}; font-size: 12px; font-weight: bold;")
