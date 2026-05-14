@@ -66,8 +66,10 @@ class WSRecorder:
         if self._file is None:
             return
 
-        self._flush()
-        self._file.close()
+        try:
+            self._flush()
+        finally:
+            self._file.close()
         logger.info(
             f"WSRecorder: 녹화 종료 — {self._current_file} "
             f"(총 {self._message_count}건)"
@@ -87,6 +89,8 @@ class WSRecorder:
         """
         if self._file is None:
             return
+        if isinstance(raw_message, bytes):
+            raw_message = raw_message.decode("utf-8", errors="replace")
 
         # LOGIN 필터링 (보안)
         try:
