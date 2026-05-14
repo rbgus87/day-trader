@@ -11,6 +11,8 @@ from typing import IO
 
 from loguru import logger
 
+_WRITE_BUFFER_SIZE = 50  # 버퍼 크기 (모듈 상수)
+
 
 class WSRecorder:
     """WebSocket 메시지를 JSONL 파일로 녹화한다.
@@ -22,10 +24,8 @@ class WSRecorder:
     def __init__(
         self,
         record_dir: str = "logs/ws_replay",
-        write_buffer_size: int = 50,
     ) -> None:
         self._record_dir = Path(record_dir)
-        self._write_buffer_size = write_buffer_size
 
         self._session_id: str | None = None
         self._file: IO[str] | None = None
@@ -106,7 +106,7 @@ class WSRecorder:
         self._buffer.append(line)
         self._message_count += 1
 
-        if len(self._buffer) >= self._write_buffer_size:
+        if len(self._buffer) >= _WRITE_BUFFER_SIZE:
             self._flush()
 
     # ------------------------------------------------------------------
