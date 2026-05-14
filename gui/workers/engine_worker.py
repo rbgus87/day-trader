@@ -283,6 +283,8 @@ class EngineWorker(QThread):
 
     async def _run_engine(self):
         """Initialize components and start pipeline."""
+        import time as _time_mod
+        _t_engine_start = _time_mod.monotonic()
         self._stop_event = asyncio.Event()
 
         # Lazy imports to avoid circular deps when GUI loads without full env
@@ -508,12 +510,6 @@ class EngineWorker(QThread):
         self._scheduler.start()
         logger.debug(f"BackgroundScheduler 시작됨, running={self._scheduler.running}")
 
-        # Late screening (장중 실행 시 즉시 스크리닝 — 점수 업데이트 + 현재가 초기화)
-        now = datetime.now().time()
-        if dt_time(8, 30) < now < dt_time(15, 10):
-            logger.info("장중 실행 감지 — 즉시 스크리닝 시작")
-            await self._run_screening()
-
         # Position reconciliation (장애 복구)
         try:
             # ADR-007: DB 오픈 포지션을 in-memory로 복원 (프로세스 재시작 장애 대비)
@@ -543,8 +539,9 @@ class EngineWorker(QThread):
         await self._risk_manager.check_consecutive_losses()
 
         # 시작 시퀀스: 종목 확정 → 전략 등록 → WS 구독 (순서 통일로 strategies/WS 불일치 방지)
-        import time as _time_mod
+        _t_infra = _time_mod.monotonic() - _t_engine_start
         _t0 = _time_mod.monotonic()
+        _t_cond = _t_ws = _t_ohlcv = 0.0
 
         try:
             core_stocks = self._load_universe()
@@ -552,6 +549,7 @@ class EngineWorker(QThread):
             logger.info(f"[STARTUP] 유니버스 로드: {_time_mod.monotonic() - _t0:.1f}s")
 
             # WS 연결을 조건검색과 병렬로 시작 (connect에는 종목 목록 불필요)
+            _t_ws_start = _time_mod.monotonic()
             ws_connect_task = asyncio.create_task(self._ws_client.connect())
 
             # 1. 조건검색으로 최종 감시 종목 확정 (실패 시 코어 fallback).
@@ -562,7 +560,9 @@ class EngineWorker(QThread):
             if self._config.condition_search.enabled:
                 try:
                     self.signals.startup_progress.emit("조건검색 중...", 20)
+                    _t_cond_start = _time_mod.monotonic()
                     cond_top = await self._fetch_condition_search_top()
+                    _t_cond = _time_mod.monotonic() - _t_cond_start
                     if cond_top:
                         final_stocks = cond_top
                         source = "condition_search"
@@ -570,7 +570,7 @@ class EngineWorker(QThread):
                 except Exception as e:
                     logger.error(f"[COND] 시작 시 조건검색 실패: {e} — 코어 유니버스 사용")
             logger.info(
-                f"[STARTUP] 조건검색 완료: {_time_mod.monotonic() - _t0:.1f}s "
+                f"[STARTUP] 조건검색 완료: {_t_cond:.1f}s "
                 f"({len(final_stocks)}종목, source={source})"
             )
             self.signals.startup_progress.emit(f"종목 확정 {len(final_stocks)}종목", 40)
@@ -581,7 +581,8 @@ class EngineWorker(QThread):
             # 3. WS connect 완료 대기 (조건검색과 병렬로 실행됨)
             try:
                 await ws_connect_task
-                logger.info(f"[STARTUP] WS 연결 완료: {_time_mod.monotonic() - _t0:.1f}s")
+                _t_ws = _time_mod.monotonic() - _t_ws_start
+                logger.info(f"[STARTUP] WS 연결 완료: {_t_ws:.1f}s")
             except Exception as e:
                 logger.error(f"WS 연결 실패: {e}")
 
@@ -633,17 +634,31 @@ class EngineWorker(QThread):
                 except Exception as e:
                     logger.error(f"시장 필터 초기 갱신 실패: {e}")
 
+            _t_ohlcv_start = _time_mod.monotonic()
             await asyncio.gather(
                 self._refresh_prev_day_ohlcv(final_stocks),
                 _initial_market_filter_refresh(),
             )
-            logger.info(
-                f"[STARTUP] OHLCV + 시장 필터 갱신 완료: {_time_mod.monotonic() - _t0:.1f}s"
-            )
+            _t_ohlcv = _time_mod.monotonic() - _t_ohlcv_start
+            logger.info(f"[STARTUP] OHLCV + 시장 필터 갱신 완료: {_t_ohlcv:.1f}s")
             self.signals.startup_progress.emit("준비 완료", 100)
 
         except Exception as e:
             logger.error(f"WS 연결/전략 등록 실패: {e}")
+
+        # Late screening — 시작 시퀀스(전략등록/OHLCV) 완료 후 실행
+        # _pending_cond_top 캐시 덕분에 조건검색/OHLCV 중복 없음
+        now = datetime.now().time()
+        if dt_time(8, 30) < now < dt_time(15, 10):
+            logger.info("장중 실행 감지 — 즉시 스크리닝 시작")
+            await self._run_screening()
+
+        _t_total = _time_mod.monotonic() - _t_engine_start
+        logger.info(
+            f"[STARTUP] 전체 완료: {_t_total:.1f}s "
+            f"(인프라 {_t_infra:.1f}s | 조건검색 {_t_cond:.1f}s | "
+            f"WS {_t_ws:.1f}s | OHLCV+MF {_t_ohlcv:.1f}s)"
+        )
 
         # Start pipeline
         self._running = True
@@ -2229,10 +2244,13 @@ class EngineWorker(QThread):
             stocks = self._load_universe()
         if not stocks:
             return
+        import time as _time_mod
+        _t_start = _time_mod.monotonic()
         logger.info(f"전일 OHLCV 갱신 시작 — {len(stocks)}종목")
 
         # asyncio.gather + Semaphore(5)로 병렬 조회 (rate_limiter가 실제 속도 제어)
         semaphore = asyncio.Semaphore(5)
+        _dbg_count = [0]  # 첫 3종목만 DEBUG 출력 (mutable for closure)
 
         async def _fetch_one(s: dict) -> tuple[int, int, int]:
             """Returns (init_delta, lu_api_delta, lu_fallback_delta)."""
@@ -2262,10 +2280,12 @@ class EngineWorker(QThread):
                         prev.get("acml_vol",
                         prev.get("acml_vlmn", 0)))
                     ))
-                    logger.info(
-                        f"[OHLCV-DBG] {ticker} prev_high={prev_high} prev_vol={prev_vol} "
-                        f"raw_keys={list(prev.keys())[:10]}"
-                    )
+                    if _dbg_count[0] < 3:
+                        _dbg_count[0] += 1
+                        logger.debug(
+                            f"[OHLCV-DBG] {ticker} prev_high={prev_high} prev_vol={prev_vol} "
+                            f"raw_keys={list(prev.keys())[:10]}"
+                        )
                     prev_close = abs(float(prev.get("cur_prc", prev.get("stck_clpr", 0))))
                     if prev_high > 0 and ticker in self._active_strategies:
                         strat = self._active_strategies[ticker]["strategy"]
@@ -2306,10 +2326,10 @@ class EngineWorker(QThread):
         lu_api_count = sum(r[1] for r in results)
         lu_fallback_count = sum(r[2] for r in results)
 
+        _elapsed = _time_mod.monotonic() - _t_start
         logger.info(
-            f"전일 OHLCV 갱신 완료: {init_count}/{len(stocks)} "
-            f"(상한가 {len(self._limit_up_map)}종 "
-            f"— API {lu_api_count} / fallback {lu_fallback_count})"
+            f"전일 OHLCV 갱신 완료: {init_count}/{len(stocks)} — {_elapsed:.1f}s "
+            f"(상한가 {len(self._limit_up_map)}종 — API {lu_api_count} / fallback {lu_fallback_count})"
         )
         # startup용 일봉 캐시는 1회 사용 후 정리 (잔여분 — 다음 호출 오염 방지)
         if self._daily_ohlcv_cache:

@@ -34,6 +34,8 @@ class CandidateCollector:
     5. PreMarketScreener.screen()에 전달할 candidates dict 리스트 반환
     """
 
+    _supply_warned: bool = False  # 수급 미구현 WARNING 1회만 출력
+
     def __init__(
         self,
         rest_client: KiwoomRestClient,
@@ -73,7 +75,9 @@ class CandidateCollector:
         candidates = []
         total = len(universe)
 
-        logger.warning("수급 데이터(기관/외국인 순매수) 미구현 — 스크리닝 수급 필터 비활성 상태")
+        if not CandidateCollector._supply_warned:
+            CandidateCollector._supply_warned = True
+            logger.warning("수급 데이터(기관/외국인 순매수) 미구현 — 스크리닝 수급 필터 비활성 상태")
 
         for idx, stock in enumerate(universe, 1):
             ticker = stock["ticker"]
