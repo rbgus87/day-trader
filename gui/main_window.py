@@ -225,6 +225,7 @@ class MainWindow(QMainWindow):
         s.watchlist_updated.connect(self._on_watchlist_updated)
         s.market_status_updated.connect(self._on_market_status)
         s.trade_executed.connect(self._on_trade_executed)
+        s.startup_progress.connect(self._on_startup_progress)
         self.dashboard_view.manual_close_requested.connect(self._on_manual_close)
 
     def _on_market_status(self, kospi_strong: bool, kosdaq_strong: bool):
@@ -537,6 +538,12 @@ class MainWindow(QMainWindow):
             logger.warning(f"config UI 로드 실패: {e}")
 
     # ── 엔진 이벤트 핸들러 ────────────────────────────────────────────────────
+
+    def _on_startup_progress(self, stage: str, pct: int):
+        mode = self.sidebar.get_mode().upper()
+        self._lbl_status_left.setText(
+            f"Mode: {mode} | 시작 중... [{pct}%] {stage}"
+        )
 
     def _on_engine_started(self):
         mode = self.sidebar.get_mode()

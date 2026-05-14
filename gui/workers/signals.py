@@ -43,6 +43,7 @@ class EngineSignals(QObject):
     watchlist_updated = pyqtSignal(list)
     log_message = pyqtSignal(str, str)
     market_status_updated = pyqtSignal(bool, bool)  # (kospi_strong, kosdaq_strong)
+    startup_progress = pyqtSignal(str, int)          # (단계명, 진행률 0-100)
 
     # UI → Worker
     request_stop = pyqtSignal()

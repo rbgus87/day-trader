@@ -543,8 +543,16 @@ class EngineWorker(QThread):
         await self._risk_manager.check_consecutive_losses()
 
         # 시작 시퀀스: 종목 확정 → 전략 등록 → WS 구독 (순서 통일로 strategies/WS 불일치 방지)
+        import time as _time_mod
+        _t0 = _time_mod.monotonic()
+
         try:
             core_stocks = self._load_universe()
+            self.signals.startup_progress.emit("유니버스 로드", 10)
+            logger.info(f"[STARTUP] 유니버스 로드: {_time_mod.monotonic() - _t0:.1f}s")
+
+            # WS 연결을 조건검색과 병렬로 시작 (connect에는 종목 목록 불필요)
+            ws_connect_task = asyncio.create_task(self._ws_client.connect())
 
             # 1. 조건검색으로 최종 감시 종목 확정 (실패 시 코어 fallback).
             # startup에서 한 번 호출한 결과는 _pending_cond_top에 캐시 — 직후 _run_screening의
@@ -553,6 +561,7 @@ class EngineWorker(QThread):
             source = "core"
             if self._config.condition_search.enabled:
                 try:
+                    self.signals.startup_progress.emit("조건검색 중...", 20)
                     cond_top = await self._fetch_condition_search_top()
                     if cond_top:
                         final_stocks = cond_top
@@ -561,14 +570,21 @@ class EngineWorker(QThread):
                 except Exception as e:
                     logger.error(f"[COND] 시작 시 조건검색 실패: {e} — 코어 유니버스 사용")
             logger.info(
-                f"시작 시 감시 종목 확정: {len(final_stocks)}종목 (source={source})"
+                f"[STARTUP] 조건검색 완료: {_time_mod.monotonic() - _t0:.1f}s "
+                f"({len(final_stocks)}종목, source={source})"
             )
+            self.signals.startup_progress.emit(f"종목 확정 {len(final_stocks)}종목", 40)
 
             # 2. 확정된 리스트로 전략 등록
             self._register_active_strategies(final_stocks)
 
-            # 3. WS connect + 동일 리스트로 구독 (strategies와 WS 1:1 일치)
-            await self._ws_client.connect()
+            # 3. WS connect 완료 대기 (조건검색과 병렬로 실행됨)
+            try:
+                await ws_connect_task
+                logger.info(f"[STARTUP] WS 연결 완료: {_time_mod.monotonic() - _t0:.1f}s")
+            except Exception as e:
+                logger.error(f"WS 연결 실패: {e}")
+
             final_tickers = [s["ticker"] for s in final_stocks]
             if final_tickers:
                 from core.kiwoom_ws import WS_TYPE_ORDERBOOK
@@ -593,14 +609,14 @@ class EngineWorker(QThread):
                         f"— scripts/update_universe_market.py 실행 권장"
                     )
 
-            # 4. 전일 OHLCV — 확정 리스트 기준
-            await self._refresh_prev_day_ohlcv(final_stocks)
+            # 4. 전일 OHLCV + 시장 필터 병렬 갱신
+            self.signals.startup_progress.emit("OHLCV 갱신 중...", 60)
 
-            # 시장 필터 초기 갱신 (Phase 1 Day 3)
-            if self._market_filter is not None:
+            async def _initial_market_filter_refresh():
+                if self._market_filter is None:
+                    return
                 try:
                     await self._market_filter.refresh()
-                    # Phase 3 Day 12+: GUI로 상태 전파
                     self.signals.market_status_updated.emit(
                         self._market_filter.kospi_strong,
                         self._market_filter.kosdaq_strong,
@@ -616,6 +632,16 @@ class EngineWorker(QThread):
                             pass
                 except Exception as e:
                     logger.error(f"시장 필터 초기 갱신 실패: {e}")
+
+            await asyncio.gather(
+                self._refresh_prev_day_ohlcv(final_stocks),
+                _initial_market_filter_refresh(),
+            )
+            logger.info(
+                f"[STARTUP] OHLCV + 시장 필터 갱신 완료: {_time_mod.monotonic() - _t0:.1f}s"
+            )
+            self.signals.startup_progress.emit("준비 완료", 100)
+
         except Exception as e:
             logger.error(f"WS 연결/전략 등록 실패: {e}")
 
@@ -2204,20 +2230,24 @@ class EngineWorker(QThread):
         if not stocks:
             return
         logger.info(f"전일 OHLCV 갱신 시작 — {len(stocks)}종목")
-        init_count = 0
-        lu_api_count = 0
-        lu_fallback_count = 0
-        for s in stocks:
+
+        # asyncio.gather + Semaphore(5)로 병렬 조회 (rate_limiter가 실제 속도 제어)
+        semaphore = asyncio.Semaphore(5)
+
+        async def _fetch_one(s: dict) -> tuple[int, int, int]:
+            """Returns (init_delta, lu_api_delta, lu_fallback_delta)."""
             ticker = s["ticker"]
+            _init = _lu_api = _lu_fb = 0
             try:
                 # _fetch_condition_search_top이 방금 같은 일봉을 조회했으면 재사용 (REST 절약)
                 cached = self._daily_ohlcv_cache.pop(ticker, None)
                 if cached is not None:
                     items = cached
                 else:
-                    daily = await self._rest_client.get_daily_ohlcv(
-                        ticker, base_dt=datetime.now().strftime('%Y%m%d'),
-                    )
+                    async with semaphore:
+                        daily = await self._rest_client.get_daily_ohlcv(
+                            ticker, base_dt=datetime.now().strftime('%Y%m%d'),
+                        )
                     items = (
                         daily.get("stk_dt_pole_chart_qry")
                         or daily.get("output2")
@@ -2241,17 +2271,18 @@ class EngineWorker(QThread):
                         strat = self._active_strategies[ticker]["strategy"]
                         if hasattr(strat, "set_prev_day_data"):
                             strat.set_prev_day_data(prev_high, prev_vol)
-                            init_count += 1
+                            _init += 1
                         self._prev_high_map[ticker] = prev_high
                     if prev_close > 0:
                         self._prev_close[ticker] = prev_close
                         # 상한가: 1차 ka10001 upl_pric 사용, 실패 시 전일종가 × 1.30 호가 절사
                         lu_val: float | None = None
                         try:
-                            api_lu = await self._rest_client.get_limit_up_price(ticker)
+                            async with semaphore:
+                                api_lu = await self._rest_client.get_limit_up_price(ticker)
                             if api_lu and api_lu > 0:
                                 lu_val = float(api_lu)
-                                lu_api_count += 1
+                                _lu_api += 1
                         except Exception as e:
                             logger.debug(f"상한가 API 실패 ({ticker}): {e}")
                         if lu_val is None:
@@ -2261,14 +2292,20 @@ class EngineWorker(QThread):
                                 calc = calculate_limit_up_price(prev_close, lu_pct)
                                 if calc > 0:
                                     lu_val = float(calc)
-                                    lu_fallback_count += 1
+                                    _lu_fb += 1
                             except Exception as e:
                                 logger.debug(f"상한가 계산 실패 ({ticker}): {e}")
                         if lu_val is not None:
                             self._limit_up_map[ticker] = lu_val
             except Exception as e:
                 logger.debug(f"전일 OHLCV 실패 ({ticker}): {e}")
-            await asyncio.sleep(0.1)
+            return _init, _lu_api, _lu_fb
+
+        results = await asyncio.gather(*[_fetch_one(s) for s in stocks])
+        init_count = sum(r[0] for r in results)
+        lu_api_count = sum(r[1] for r in results)
+        lu_fallback_count = sum(r[2] for r in results)
+
         logger.info(
             f"전일 OHLCV 갱신 완료: {init_count}/{len(stocks)} "
             f"(상한가 {len(self._limit_up_map)}종 "
