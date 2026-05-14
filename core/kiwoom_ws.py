@@ -15,6 +15,7 @@ from websockets.asyncio.client import connect as ws_connect
 from loguru import logger
 
 from core.auth import TokenManager
+from core.ws_recorder import WSRecorder
 from utils.market_calendar import is_ws_active_hours
 
 # 실시간 타입
@@ -60,6 +61,11 @@ class KiwoomWebSocketClient:
         # 재연결 시 구독 복원에 사용할 provider — () -> list[str] (TICK 종목)
         # 설정 시 _subscriptions 대신 provider 결과로 복원하므로 항상 현재 감시 목록과 일치.
         self._subscription_provider = None
+        self._recorder: WSRecorder | None = None
+
+    def set_recorder(self, recorder: WSRecorder | None) -> None:
+        """WSRecorder 연결. None 전달 시 녹화 해제."""
+        self._recorder = recorder
 
     def set_subscription_provider(self, provider) -> None:
         """재연결 시 구독할 TICK 종목 리스트를 반환하는 callback 등록.
@@ -168,6 +174,8 @@ class KiwoomWebSocketClient:
             try:
                 async for message in self._ws:
                     ws_msg_count += 1
+                    if self._recorder:
+                        self._recorder.record(message)
                     try:
                         data = json.loads(message)
                         await self._dispatch(data)

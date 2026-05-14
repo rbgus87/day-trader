@@ -205,6 +205,8 @@ broker:
   ws_url: "wss://api.kiwoom.com:10000/api/dostk/websocket"
   rate_limit_calls: 5               # 초당 최대 API 호출 수
   rate_limit_period: 1.0            # Rate Limit 윈도우 (초)
+  ws_record_enabled: false          # WS 메시지 녹화 (기본 비활성)
+  ws_record_dir: logs/ws_replay     # 녹화 파일 저장 디렉토리
 
 # --- 백테스트 비용 모델 ---
 backtest:

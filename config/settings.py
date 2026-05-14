@@ -38,6 +38,8 @@ class KiwoomConfig:
     ws_url: str = "wss://api.kiwoom.com:10000/api/dostk/websocket"
     rate_limit_calls: int = 5
     rate_limit_period: float = 1.0
+    ws_record_enabled: bool = False        # WS 메시지 녹화 (기본 비활성)
+    ws_record_dir: str = "logs/ws_replay"  # 녹화 파일 저장 디렉토리
 
 
 @dataclass(frozen=True)
@@ -311,6 +313,8 @@ class AppConfig:
             ws_url=broker.get("ws_url", "wss://api.kiwoom.com:10000/api/dostk/websocket"),
             rate_limit_calls=broker.get("rate_limit_calls", 5),
             rate_limit_period=broker.get("rate_limit_period", 1.0),
+            ws_record_enabled=broker.get("ws_record_enabled", False),
+            ws_record_dir=broker.get("ws_record_dir", "logs/ws_replay"),
         )
 
         # telegram → TelegramConfig (.env에서만)
