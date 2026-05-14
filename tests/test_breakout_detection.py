@@ -222,7 +222,7 @@ class TestBreakoutInfoDataclass:
 
     def test_breakout_info_fields(self):
         from datetime import datetime
-        from gui.workers.engine_worker import BreakoutInfo
+        from pipeline.trading_state import BreakoutInfo
 
         now = datetime.now()
         bi = BreakoutInfo(ticker="005930", breakout_price=75000.0, detected_at=now)

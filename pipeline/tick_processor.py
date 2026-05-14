@@ -1,0 +1,336 @@
+"""pipeline/tick_processor.py — 틱 처리 + 포지션 모니터링.
+
+_tick_consumer 내부 로직을 engine_worker에서 분리.
+PyQt6 미사용 — trade_executed 이벤트는 on_trade_executed 콜백으로 전달.
+"""
+from __future__ import annotations
+
+import time as _time
+from collections import deque
+from datetime import datetime
+from typing import Callable
+
+from loguru import logger
+
+from pipeline.trading_state import BreakoutInfo, TradingState
+
+
+class TickProcessor:
+    """단일 틱 처리: 캔들 빌더 전달 + 포지션 모니터링."""
+
+    def __init__(
+        self,
+        risk_manager,
+        order_manager,
+        vi_handler,
+        shadow_tracker,
+        order_tracker,
+        candle_builder,
+        config,
+        state: TradingState,
+        paper_mode: bool,
+        on_trade_executed: Callable[[dict], None],
+    ):
+        self._risk_manager = risk_manager
+        self._order_manager = order_manager
+        self._vi_handler = vi_handler
+        self._shadow_tracker = shadow_tracker
+        self._order_tracker = order_tracker
+        self._candle_builder = candle_builder
+        self._config = config
+        self._state = state
+        self._paper_mode = paper_mode
+        self._on_trade_executed = on_trade_executed
+
+        self._tick_count = 0
+        self._last_tick_log = _time.time()
+        self._first_tick_logged = False
+
+    # ── ATR helper ──
+
+    def _intraday_atr_pct(self, ticker: str, length: int = 14) -> float | None:
+        hist = self._state.candle_history.get(ticker)
+        if hist is None:
+            return None
+        if len(hist) < length + 1:
+            logger.info(f"[ATR-CALC] {ticker} reason=short len={len(hist)} need={length + 1}")
+            return None
+        cur_len = len(hist)
+        cached = self._state.atr_pct_cache.get(ticker)
+        if cached is not None and cached[0] == cur_len:
+            return cached[1]
+        atr_pct: float | None = None
+        reason: str | None = None
+        try:
+            import pandas as pd
+            from core.indicators import wilder_atr
+            df = pd.DataFrame(list(hist))
+            cols_needed = {"high", "low", "close"}
+            missing = cols_needed - set(df.columns)
+            if missing:
+                reason = f"cols_missing={sorted(missing)}"
+            else:
+                h = pd.to_numeric(df["high"], errors="coerce")
+                l = pd.to_numeric(df["low"], errors="coerce")
+                c = pd.to_numeric(df["close"], errors="coerce")
+                nan_rows = int((h.isna() | l.isna() | c.isna()).sum())
+                zero_rows = int(((h <= 0) | (l <= 0) | (c <= 0)).sum())
+                atr = wilder_atr(h, l, c, length=length)
+                if atr.empty:
+                    reason = f"empty (nan={nan_rows}, zero={zero_rows})"
+                else:
+                    last_atr = atr.iloc[-1]
+                    last_close = float(c.iloc[-1]) if not pd.isna(c.iloc[-1]) else 0.0
+                    if pd.isna(last_atr):
+                        reason = (
+                            f"nan_last_atr (rows={len(df)} nan={nan_rows} "
+                            f"zero={zero_rows} last_h={float(h.iloc[-1]) if not pd.isna(h.iloc[-1]) else 'NaN'} "
+                            f"last_l={float(l.iloc[-1]) if not pd.isna(l.iloc[-1]) else 'NaN'} "
+                            f"last_c={last_close})"
+                        )
+                    elif last_close <= 0:
+                        reason = f"close<=0({last_close})"
+                    else:
+                        atr_pct = float(last_atr) / last_close
+        except Exception as e:
+            reason = f"exc={type(e).__name__}:{e}"
+        if atr_pct is None and reason:
+            logger.info(f"[ATR-CALC] {ticker} reason={reason} len={cur_len}")
+        self._state.atr_pct_cache[ticker] = (cur_len, atr_pct)
+        return atr_pct
+
+    # ── 돌파 감지 + 즉시 진입 ──
+
+    async def _on_tick_no_position(self, ticker: str, price: float, tick: dict, signal_queue) -> None:
+        import pandas as _pd
+        if not self._state.active_strategies:
+            return
+        strat_info = self._state.active_strategies.get(ticker)
+        if strat_info is None:
+            return
+        strategy = strat_info["strategy"]
+        prev_high = getattr(strategy, "_prev_day_high", 0.0)
+        if prev_high <= 0:
+            return
+
+        min_bp = getattr(self._config.trading, "min_breakout_pct", 0.03)
+        breakout_threshold = prev_high * (1 + min_bp)
+
+        if price >= breakout_threshold and ticker not in self._state.breakout_detected:
+            self._state.breakout_detected[ticker] = BreakoutInfo(
+                ticker=ticker, breakout_price=price, detected_at=datetime.now(),
+            )
+            logger.info(
+                f"[BREAKOUT_TICK] {ticker} @ {price:,} "
+                f"(prev_high={prev_high:,} threshold={breakout_threshold:,.0f})"
+            )
+
+        if ticker not in self._state.breakout_detected:
+            return
+        if ticker in self._state.tick_signaled:
+            return
+
+        if self._risk_manager.is_trading_halted():
+            return
+        if self._risk_manager.is_ticker_blacklisted(ticker):
+            return
+        if self._risk_manager.is_in_loss_rest():
+            return
+        open_pos = self._risk_manager.get_open_positions()
+        if len(open_pos) >= self._config.trading.max_positions:
+            return
+        if not strategy.can_trade():
+            return
+        if self._vi_handler.is_vi_active(ticker):
+            return
+        if self._order_tracker is not None and self._order_tracker.get_pending(ticker) is not None:
+            return
+
+        hist = self._state.candle_history.get(ticker)
+        if not hist or len(hist) < 30:
+            return
+
+        df = _pd.DataFrame(hist)
+        breakout_info = self._state.breakout_detected[ticker]
+        signal = strategy.generate_signal(df, tick, breakout_price=breakout_info.breakout_price)
+        if signal:
+            self._state.tick_signaled.add(ticker)
+            await signal_queue.put(signal)
+            logger.info(f"[TICK_ENTRY] {ticker} 즉시 진입 신호 @ {price:,}")
+
+    # ── 메인 처리 ──
+
+    async def process_tick(self, tick: dict, signal_queue) -> None:
+        """단일 틱 처리 — _tick_consumer 내부 로직."""
+        now_ts = _time.time()
+        self._tick_count += 1
+        if not self._first_tick_logged:
+            logger.info(
+                f"[TICK] 첫 틱 수신: {tick.get('ticker', '?')} @ {tick.get('price', 0):,}"
+            )
+            self._first_tick_logged = True
+        if now_ts - self._last_tick_log >= 60:
+            logger.info(f"[TICK] {self._tick_count}건 수신 (최근 60초)")
+            self._tick_count = 0
+            self._last_tick_log = now_ts
+
+        try:
+            await self._candle_builder.on_tick(tick)
+            ticker = tick["ticker"]
+            price = tick["price"]
+            self._state.latest_prices[ticker] = price
+            if self._shadow_tracker is not None:
+                self._shadow_tracker.update_prices(ticker, price)
+            _prev = self._state.prev_close.get(ticker)
+            if _prev:
+                try:
+                    self._vi_handler.update_from_tick(ticker, price, _prev)
+                except Exception as _e:
+                    logger.warning(f"[VI] {ticker} update_from_tick 예외: {_e}")
+
+            pos = self._risk_manager.get_position(ticker)
+            if pos is None or pos["remaining_qty"] <= 0:
+                await self._on_tick_no_position(ticker, price, tick, signal_queue)
+                return
+
+            if self._order_tracker is not None:
+                _pending = self._order_tracker.get_pending(ticker)
+                if _pending is not None:
+                    if pos.get("highest_price", 0) < price:
+                        pos["highest_price"] = price
+                    logger.debug(
+                        f"[ORDER-TRACK] {ticker} pending {_pending.side} — exit 스킵"
+                    )
+                    return
+
+            # 상한가 즉시 청산
+            if self._risk_manager.check_limit_up(ticker, price):
+                await self._handle_exit(ticker, pos, price, "limit_up_exit")
+                return
+
+            # 손절 체크
+            if self._risk_manager.check_stop_loss(ticker, price):
+                pure_trail = not getattr(self._config.trading, "atr_tp_enabled", True)
+                is_trailing = pos.get("tp1_hit") or pure_trail
+                if pos.get("breakeven_active") and pos["stop_loss"] >= pos["entry_price"]:
+                    reason_code = "breakeven_stop"
+                elif is_trailing and price > pos["entry_price"] * 0.975:
+                    reason_code = "trailing_stop"
+                else:
+                    reason_code = "stop_loss"
+                await self._handle_exit(ticker, pos, price, reason_code)
+                return
+
+            # 모멘텀 둔화 청산
+            hist = self._state.candle_history.get(ticker)
+            if hist and self._risk_manager.check_momentum_fade(
+                ticker, price, hist, now=datetime.now(),
+            ):
+                await self._handle_exit(ticker, pos, price, "momentum_fade")
+                return
+
+            # 횡보 조기 청산
+            if self._risk_manager.check_stale_position(ticker, price, now=datetime.now()):
+                await self._handle_exit(ticker, pos, price, "stale_exit")
+                return
+
+            # TP1 체크 (현재 atr_tp_enabled:false — dead path)
+            if self._risk_manager.check_tp1(ticker, price):
+                sell_qty = int(pos["remaining_qty"] * self._config.trading.tp1_sell_ratio)
+                entry = pos["entry_price"]
+                pnl = (price - entry) * sell_qty
+                pnl_pct = ((price / entry) - 1) * 100 if entry > 0 else 0
+                strategy_name = pos.get("strategy", "") or "unknown"
+                await self._order_manager.execute_sell_tp1(
+                    ticker=ticker, price=int(price), remaining_qty=pos["remaining_qty"],
+                    strategy=strategy_name, pnl=pnl, pnl_pct=pnl_pct, exit_reason="tp1_hit",
+                )
+                self._risk_manager.mark_tp1_hit(ticker, sell_qty, sell_price=price)
+                self._state.rt_wins += 1
+                logger.info(f"TP1 실행: {ticker} {sell_qty}주 @ {price:,} PnL={pnl:+,.0f}")
+                self._on_trade_executed({
+                    "time": datetime.now().strftime("%H:%M:%S"),
+                    "side": "sell", "ticker": ticker,
+                    "price": int(price), "qty": sell_qty,
+                    "pnl": int(pnl), "reason": "tp1_hit",
+                })
+                return
+
+            # 트레일링 스톱 갱신
+            daily_pct = self._state.ticker_atr_pct.get(ticker)
+            atr_pct = (daily_pct / 100.0) if daily_pct else self._intraday_atr_pct(ticker)
+            self._risk_manager.update_trailing_stop(ticker, price, atr_pct=atr_pct, now=datetime.now())
+
+        except Exception as e:
+            logger.error(f"tick_consumer 오류: {e}")
+
+    async def _handle_exit(self, ticker: str, pos: dict, price: float, reason_code: str) -> None:
+        """공통 청산 처리: execute_sell → paper settle 또는 real submit."""
+        qty = pos["remaining_qty"]
+        entry = pos["entry_price"]
+        pnl = (price - entry) * qty
+        pnl_pct = ((price / entry) - 1) * 100 if entry > 0 else 0
+        strategy_name = pos.get("strategy", "") or "unknown"
+        prefer_best = self._vi_handler.should_use_best_limit(ticker)
+
+        if reason_code == "limit_up_exit":
+            result = await self._order_manager.execute_sell_stop(
+                ticker=ticker, qty=qty, price=int(price),
+                strategy=strategy_name, pnl=pnl, pnl_pct=pnl_pct,
+                exit_reason=reason_code,
+            )
+        else:
+            result = await self._order_manager.execute_sell_stop(
+                ticker=ticker, qty=qty, price=int(price),
+                strategy=strategy_name, pnl=pnl, pnl_pct=pnl_pct,
+                exit_reason=reason_code,
+                prefer_best_limit=prefer_best,
+                on_rejection=lambda tk, rt: self._vi_handler.flag_suspected(
+                    tk, f"주문 거부 (rt_cd={rt})"
+                ),
+            )
+
+        if result is None:
+            if reason_code == "limit_up_exit":
+                new_stop = self._risk_manager.raise_stop_to_limit_up_floor(ticker)
+                logger.warning(
+                    f"limit_up_exit 실패 → stop 상향: {ticker} new_stop={new_stop:,.0f}"
+                )
+            return
+
+        if self._paper_mode:
+            _entry_time = pos.get("entry_time")
+            self._risk_manager.settle_sell(ticker, price, qty)
+            if pnl >= 0:
+                self._state.rt_wins += 1
+            else:
+                self._state.rt_losses += 1
+            logger.bind(
+                event="exit", ticker=ticker, reason=reason_code,
+                price=int(price), qty=qty, pnl=int(pnl), pnl_pct=round(pnl_pct, 2),
+                hold_minutes=round(
+                    (datetime.now() - _entry_time).total_seconds() / 60, 1
+                ) if _entry_time else None,
+            ).info(f"{reason_code} 실행: {ticker} {qty}주 @ {price:,} PnL={pnl:+,.0f}")
+            strat_info = self._state.active_strategies.get(ticker)
+            if strat_info:
+                strat_info["strategy"].on_exit()
+            self._on_trade_executed({
+                "time": datetime.now().strftime("%H:%M:%S"),
+                "side": "sell", "ticker": ticker,
+                "price": int(price), "qty": qty,
+                "pnl": int(pnl), "reason": reason_code,
+            })
+        else:
+            self._order_tracker.submit(result["order_no"], ticker, "sell", qty)
+            if reason_code == "limit_up_exit":
+                self._state.limit_up_exit_pending.add(ticker)
+            logger.info(
+                f"[ORDER-TRACK] {result['order_no']} SUBMIT {ticker} sell {qty} ({reason_code})"
+            )
+
+    def check_no_tick_warning(self) -> None:
+        """5분간 틱 수신 0건 경고 (consumer 루프의 timeout 경로에서 호출)."""
+        if _time.time() - self._last_tick_log >= 300 and self._tick_count == 0:
+            logger.warning("[TICK] 5분간 틱 수신 0건 — WS 연결 확인 필요")
+            self._last_tick_log = _time.time()

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import yaml
 
-from gui.workers.engine_worker import _write_universe_yaml
+from pipeline.screener_scheduler import write_universe_yaml as _write_universe_yaml
 
 
 def _sample_top() -> list[dict]:

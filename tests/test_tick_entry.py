@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pandas as pd
 import pytest
 
-from gui.workers.engine_worker import BreakoutInfo
+from pipeline.trading_state import BreakoutInfo
 
 
 # ---------------------------------------------------------------------------
