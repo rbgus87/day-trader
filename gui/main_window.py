@@ -173,6 +173,7 @@ class MainWindow(QMainWindow):
 
     def _dispatch_log(self, text: str, level: str):
         self.log_tab.append_log(text, level)
+        self.dashboard_view.on_log_message(text, level)
 
     # ── 상태바 타이머 ─────────────────────────────────────────────────────────
 
@@ -221,6 +222,7 @@ class MainWindow(QMainWindow):
         s.candidates_updated.connect(self._on_candidates_updated)
         s.watchlist_updated.connect(self._on_watchlist_updated)
         s.market_status_updated.connect(self._on_market_status)
+        s.trade_executed.connect(self._on_trade_executed)
 
     def _on_market_status(self, kospi_strong: bool, kosdaq_strong: bool):
         self.header_bar.on_market_status(kospi_strong, kosdaq_strong)
@@ -579,6 +581,9 @@ class MainWindow(QMainWindow):
 
     def _on_watchlist_updated(self, items: list):
         self.dashboard_view.update_watchlist(items)
+
+    def _on_trade_executed(self, trade: dict):
+        self.dashboard_view.on_trade_executed(trade)
 
     # ── 트레이 ────────────────────────────────────────────────────────────────
 
