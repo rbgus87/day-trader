@@ -169,9 +169,9 @@ class NavPanel(QFrame):
         for btn in (self._start_btn, self._stop_btn, self._halt_btn):
             btn.setFixedHeight(32)
 
-        self._start_btn.setStyleSheet(self._ctrl_style(Colors.accent_green))
-        self._stop_btn.setStyleSheet(self._ctrl_style(Colors.accent_red))
-        self._halt_btn.setStyleSheet(self._ctrl_style(Colors.accent_yellow))
+        self._start_btn.setStyleSheet(self._start_style())
+        self._stop_btn.setStyleSheet(self._stop_style())
+        self._halt_btn.setStyleSheet(self._halt_style())
 
         self._stop_btn.setEnabled(False)
         self._halt_btn.setEnabled(False)
@@ -248,17 +248,19 @@ class NavPanel(QFrame):
 
     def _nav_style(self, active: bool) -> str:
         if active:
-            bg = Colors.surface
+            bg = Colors.surface_elevated
             fg = Colors.text_primary
-            left = f"border-left: 2px solid {Colors.accent_mauve};"
+            left = f"border-left: 3px solid {Colors.accent_mauve};"
+            weight = "font-weight: bold;"
         else:
             bg = "transparent"
             fg = Colors.text_muted
-            left = "border-left: 2px solid transparent;"
+            left = "border-left: 3px solid transparent;"
+            weight = ""
         return (
             f"QPushButton {{ background: {bg}; color: {fg}; border: none; {left} "
             f"border-radius: {Border.radius_sm}px; padding: 4px 12px; "
-            f"font-size: 12px; text-align: left; }}"
+            f"font-size: 12px; text-align: left; {weight} }}"
             f"QPushButton:hover {{ background: {Colors.surface_elevated}; color: {Colors.text_primary}; }}"
         )
 
@@ -270,6 +272,34 @@ class NavPanel(QFrame):
             f"QPushButton:hover {{ background: {color}44; }}"
             f"QPushButton:disabled {{ background: {Colors.surface}; color: {Colors.text_muted}; "
             f"border-color: {Colors.surface_border}; }}"
+        )
+
+    def _start_style(self) -> str:
+        return (
+            f"QPushButton {{ background: {Colors.surface}; color: {Colors.text_primary}; "
+            f"border: 1px solid {Colors.surface_border}; border-radius: {Border.radius_sm}px; "
+            f"font-size: 11px; font-weight: bold; }}"
+            f"QPushButton:hover {{ background: {Colors.surface_elevated}; color: white; }}"
+            f"QPushButton:disabled {{ color: {Colors.text_muted}; border-color: {Colors.surface_border}; "
+            f"background: {Colors.surface}; }}"
+        )
+
+    def _stop_style(self) -> str:
+        return (
+            f"QPushButton {{ background: #e64553; color: white; border: none; "
+            f"border-radius: {Border.radius_sm}px; font-size: 11px; font-weight: bold; }}"
+            f"QPushButton:hover {{ background: #c73a46; }}"
+            f"QPushButton:disabled {{ background: {Colors.surface}; color: {Colors.text_muted}; "
+            f"border: 1px solid {Colors.surface_border}; }}"
+        )
+
+    def _halt_style(self) -> str:
+        return (
+            f"QPushButton {{ background: #f38ba8; color: white; border: none; "
+            f"border-radius: {Border.radius_sm}px; font-size: 11px; font-weight: bold; }}"
+            f"QPushButton:hover {{ background: #e0748e; }}"
+            f"QPushButton:disabled {{ background: {Colors.surface}; color: {Colors.text_muted}; "
+            f"border: 1px solid {Colors.surface_border}; }}"
         )
 
     def _manual_btn(self, text: str) -> QPushButton:

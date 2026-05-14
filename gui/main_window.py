@@ -553,17 +553,18 @@ class MainWindow(QMainWindow):
             "initial_capital": status.get("initial_capital", 0),
         })
 
-        # 하단 상태바 (간소화)
+        # 하단 상태바
         strategy = status.get("strategy", "—")
         active = status.get("active_count", 0)
         pos_count = status.get("positions_count", 0)
         max_pos = status.get("max_positions", 3)
+        available = int(status.get("available_capital", 0) or 0)
         mode = self.nav_panel.get_mode().upper()
         combo_text = self.nav_panel.get_strategy()
         force_tag = f" [{combo_text}]" if combo_text not in ("Auto", "") else ""
         self._lbl_status_left.setText(
-            f"Mode: {mode}{force_tag} | Engine: 실행 중 | "
-            f"Strategy: {strategy} | 감시: {active}종목 | 포지션: {pos_count}/{max_pos}"
+            f"Mode: {mode}{force_tag} | Strategy: {strategy} | "
+            f"감시: {active}종목 | 포지션: {pos_count}/{max_pos} | 가용: {available:,}원"
         )
 
     def _on_positions_updated(self, positions: list):
