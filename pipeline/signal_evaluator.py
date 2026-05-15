@@ -127,6 +127,20 @@ class SignalEvaluator:
 
             candle["price"] = candle.get("close", 0)
             df = pd.DataFrame(self._state.candle_history[ticker])
+
+            # 갭 전략 시그널 체크 (09:00~09:20 구간, gap_pullback_enabled=true 시)
+            gap_strat = self._state.gap_strategies.get(ticker)
+            if gap_strat is not None:
+                # 당일 시가 미설정 시 첫 캔들에서 주입
+                if gap_strat._open_price <= 0 and not df.empty:
+                    first_open = float(df.iloc[0].get("open", 0))
+                    if first_open > 0:
+                        gap_strat.set_open_price(first_open)
+                gap_signal = gap_strat.generate_signal(df, candle)
+                if gap_signal is not None:
+                    self._signal_eval_count += 1
+                    return gap_signal  # 갭 신호 우선 반환 (시간창 분리로 모멘텀과 충돌 無)
+
             breakout_info = self._state.breakout_detected.get(ticker)
             bp = breakout_info.breakout_price if breakout_info else None
             self._signal_eval_count += 1

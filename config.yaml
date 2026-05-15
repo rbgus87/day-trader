@@ -182,6 +182,21 @@ strategy:
     momentum_fade_min_hold_min: 15       # 진입 후 최소 15분 보유
     momentum_fade_min_profit: 0.03       # 현재 수익률 +3% 이상
 
+  # 갭업 눌림목 전략 — 장 초반(09:00~09:20) 갭업 후 눌림 반등 포착
+  # 모멘텀과 독립: 시간대 분리(갭 09:00~09:20, 모멘텀 09:30~), 슬롯 공유
+  gap_pullback:
+    enabled: false                  # 그리드 검증 후 활성화
+    gap_min_pct: 0.02               # 갭업 최소: 시가 > 전일종가 × 1.02
+    gap_max_pct: 0.08               # 갭업 최대: 8% 초과는 과열
+    pullback_min_pct: 0.01          # 눌림 최소: 시가 대비 -1% 이상
+    pullback_max_pct: 0.03          # 눌림 최대: -3% 초과는 약세
+    entry_start: "09:00"
+    entry_end: "09:20"
+    force_close: "09:45"            # 45분 내 결판 — 강제 청산
+    max_positions: 1                # 갭 전략 최대 슬롯 (global max_positions 3 중 1)
+    volume_ratio: 1.5               # 전일 동시간대 거래량 × 1.5 이상
+    atr_stop_mult: 0.5              # 손절: 눌림저점 - ATR × 0.5
+
   # 전략 선택기 임계값 (StrategySelector — 현재 항상 momentum)
   selector:
     momentum_etf_threshold: 2.0     # 섹터 ETF 등락 ≥ 2.0% → 모멘텀 전략

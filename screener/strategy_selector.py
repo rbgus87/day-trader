@@ -50,8 +50,12 @@ class StrategySelector:
         candidate = market_data.get("candidate_ticker")
 
         force = getattr(self._config, "force_strategy", "")
-        if force and force != "momentum":
-            logger.warning(f"force_strategy={force} 무시 — momentum만 지원")
+        if force and force not in ("momentum", "gap_pullback", ""):
+            logger.warning(f"force_strategy={force} 무시 — momentum/gap_pullback만 지원")
+
+        if force == "gap_pullback":
+            logger.info("전략 선택: gap_pullback (강제)")
+            return "gap_pullback", candidate
 
         logger.info(
             f"전략 선택: 모멘텀 (섹터 ETF {market_data.get('sector_etf_change_pct', 0):.2f}%)",

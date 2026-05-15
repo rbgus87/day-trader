@@ -198,6 +198,8 @@ class SessionManager:
         else:
             for strat_info in self._state.active_strategies.values():
                 strat_info["strategy"].reset()
+            for gap_strat in self._state.gap_strategies.values():
+                gap_strat.reset()
         await self.refresh_ohlcv(stocks)
         logger.info("[자동] 일일 리셋 완료")
         if self._notifier and self._config.notifications.daily_reset:
@@ -280,6 +282,10 @@ class SessionManager:
                             strat.set_prev_day_data(prev_high, prev_vol, prev_close)
                             _init += 1
                         self._state.prev_high_map[ticker] = prev_high
+                    # 갭 전략 전일 데이터 주입
+                    gap_strat = self._state.gap_strategies.get(ticker)
+                    if gap_strat is not None and prev_close > 0:
+                        gap_strat.set_prev_day_data(0.0, prev_vol, prev_close)
                     if prev_close > 0:
                         self._state.prev_close[ticker] = prev_close
                         lu_val: float | None = None

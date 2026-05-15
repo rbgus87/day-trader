@@ -204,6 +204,14 @@ class TickProcessor:
                     )
                     return
 
+            # 갭 전략 강제 청산 시각 체크 (09:45)
+            if getattr(pos, "strategy", "") == "gap_pullback":
+                gap_strat = self._state.gap_strategies.get(ticker)
+                _fc = getattr(gap_strat, "_force_close_time", None) if gap_strat else None
+                if _fc and datetime.now().time() >= _fc:
+                    await self._handle_exit(ticker, pos, price, "forced_close")
+                    return
+
             # 상한가 즉시 청산
             if self._risk_manager.check_limit_up(ticker, price):
                 await self._handle_exit(ticker, pos, price, "limit_up_exit")

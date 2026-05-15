@@ -222,6 +222,19 @@ class TradingConfig:
     gap_breakout_adjust_enabled: bool = False
     gap_threshold_pct: float = 0.03    # 갭업 3% 이상 시 시가를 돌파 기준가로
 
+    # 갭업 눌림목 전략 (GapPullbackStrategy)
+    gap_pullback_enabled: bool = False
+    gap_pullback_min_pct: float = 0.02           # 최소 갭업 2%
+    gap_pullback_max_pct: float = 0.08           # 최대 갭업 8%
+    gap_pullback_min_pullback_pct: float = 0.01  # 최소 눌림 1%
+    gap_pullback_max_pullback_pct: float = 0.03  # 최대 눌림 3%
+    gap_pullback_entry_start: str = "09:00"
+    gap_pullback_entry_end: str = "09:20"
+    gap_pullback_force_close: str = "09:45"
+    gap_pullback_max_positions: int = 1
+    gap_pullback_volume_ratio: float = 1.5
+    gap_pullback_atr_stop_mult: float = 0.5
+
 
 @dataclass(frozen=True)
 class ScreenerConfig:
@@ -327,6 +340,7 @@ class AppConfig:
         t = cfg.get("trading", {})
         s = cfg.get("strategy", {})
         mom = s.get("momentum", {})
+        gap = s.get("gap_pullback", {})
 
         trading = TradingConfig(
             daily_max_loss_pct=t.get("daily_max_loss_pct", -0.02),
@@ -429,6 +443,18 @@ class AppConfig:
             obi_min=mom.get("obi_min", 0.55),
             spread_max_pct=mom.get("spread_max_pct", 0.005),
             ask_wall_block_enabled=mom.get("ask_wall_block_enabled", False),
+            # 갭업 눌림목 전략
+            gap_pullback_enabled=gap.get("enabled", False),
+            gap_pullback_min_pct=gap.get("gap_min_pct", 0.02),
+            gap_pullback_max_pct=gap.get("gap_max_pct", 0.08),
+            gap_pullback_min_pullback_pct=gap.get("pullback_min_pct", 0.01),
+            gap_pullback_max_pullback_pct=gap.get("pullback_max_pct", 0.03),
+            gap_pullback_entry_start=gap.get("entry_start", "09:00"),
+            gap_pullback_entry_end=gap.get("entry_end", "09:20"),
+            gap_pullback_force_close=gap.get("force_close", "09:45"),
+            gap_pullback_max_positions=gap.get("max_positions", 1),
+            gap_pullback_volume_ratio=gap.get("volume_ratio", 1.5),
+            gap_pullback_atr_stop_mult=gap.get("atr_stop_mult", 0.5),
         )
 
         # screener 섹션

@@ -90,7 +90,10 @@ class ScreenerScheduler:
     # ── 전략 등록 ──
 
     def register_active_strategies(self, stocks: list[dict]) -> None:
-        """유니버스 종목에 MomentumStrategy 인스턴스 등록."""
+        """유니버스 종목에 MomentumStrategy 인스턴스 등록.
+
+        gap_pullback_enabled=true 시 GapPullbackStrategy도 함께 등록.
+        """
         from strategy.momentum_strategy import MomentumStrategy
 
         prev_data: dict[str, tuple[float, int, float]] = {}
@@ -102,7 +105,12 @@ class ScreenerScheduler:
             if high > 0:
                 prev_data[ticker] = (float(high), int(vol), float(close))
 
+        gap_enabled = getattr(self._config.trading, "gap_pullback_enabled", False)
+        if gap_enabled:
+            from strategy.gap_pullback_strategy import GapPullbackStrategy
+
         self._state.active_strategies = {}
+        self._state.gap_strategies = {}
         for s in stocks:
             ticker = s["ticker"]
             strat = MomentumStrategy(self._config.trading)
@@ -121,11 +129,24 @@ class ScreenerScheduler:
             if "market" in s:
                 self._state.ticker_markets[ticker] = s["market"]
             self._state.ticker_names[ticker] = s.get("name", ticker)
+
+            # 갭 전략 등록 (enabled 시)
+            if gap_enabled:
+                gap_strat = GapPullbackStrategy(self._config.trading)
+                gap_strat.set_ticker(ticker)
+                if ticker in prev_data:
+                    _, pv, pc = prev_data[ticker]
+                    gap_strat.set_prev_day_data(0.0, pv, pc)
+                self._state.gap_strategies[ticker] = gap_strat
+
         self._state.active_strategy = (
             list(self._state.active_strategies.values())[0]["strategy"]
             if self._state.active_strategies else None
         )
-        logger.info(f"유니버스 전체 전략 등록: {len(self._state.active_strategies)}종목")
+        logger.info(
+            f"유니버스 전체 전략 등록: {len(self._state.active_strategies)}종목"
+            + (f" + gap_pullback {len(self._state.gap_strategies)}종목" if gap_enabled else "")
+        )
 
     # ── 조건검색 ──
 

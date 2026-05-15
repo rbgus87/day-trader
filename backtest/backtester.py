@@ -351,6 +351,32 @@ class Backtester:
                 high = float(row["high"])
                 close = float(row["close"])
 
+                # 전략별 강제 청산 시각 (GapPullbackStrategy: 09:45)
+                _strat_fc = getattr(strategy, "_force_close_time", None)
+                if _strat_fc is not None:
+                    _ts_time = ts.time() if hasattr(ts, "time") else None
+                    if _ts_time and _ts_time >= _strat_fc:
+                        remaining = position.get("remaining_ratio", 1.0)
+                        fc_slipped, net_fc = apply_sell_costs(close, self._costs)
+                        pnl = (net_fc - position["net_entry"]) * remaining
+                        pnl_pct = (net_fc - position["net_entry"]) / position["net_entry"]
+                        trades.append({
+                            "entry_ts": position["entry_ts"],
+                            "exit_ts": row["ts"],
+                            "entry_price": position["entry_price"],
+                            "exit_price": fc_slipped,
+                            "pnl": pnl,
+                            "pnl_pct": pnl_pct,
+                            "exit_reason": "forced_close",
+                        })
+                        logger.debug(
+                            f"[BT] 전략 강제청산 ts={row['ts']} fc={_strat_fc} "
+                            f"exit={fc_slipped:.1f} pnl={pnl:.1f}"
+                        )
+                        position = None
+                        strategy.on_exit()
+                        continue
+
                 # 상한가 즉시 청산 (stop_loss 체크 전, 최우선)
                 lu = position.get("limit_up_price")
                 if (

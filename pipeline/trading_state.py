@@ -27,6 +27,7 @@ class TradingState:
     # 전략 관리
     active_strategies: dict = field(default_factory=dict)  # {ticker: {"strategy","name","score"}}
     active_strategy: object = None
+    gap_strategies: dict = field(default_factory=dict)     # {ticker: GapPullbackStrategy}
 
     # 캔들 데이터
     candle_history: dict = field(default_factory=dict)   # {ticker: deque}
