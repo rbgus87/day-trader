@@ -39,6 +39,7 @@ class MainWindow(QMainWindow):
         self._worker: EngineWorker | None = None
         self._stop_btn_pressed = False
         self._current_positions: list = []
+        self._max_positions = 3
 
         self._init_ui()
         self._apply_theme()
@@ -570,6 +571,7 @@ class MainWindow(QMainWindow):
         combo_text = self.sidebar.get_strategy()
         if combo_text and combo_text != "Auto":
             self._worker.signals.request_strategy_change.emit(combo_text.lower())
+        self._update_tray_tooltip()
 
     def _on_engine_stopped(self):
         self._stop_btn_pressed = False
@@ -579,6 +581,7 @@ class MainWindow(QMainWindow):
             f"Mode: {self.sidebar.get_mode().upper()} | Engine: 정지됨"
         )
         self._worker = None
+        self._update_tray_tooltip()
 
     def _on_engine_error(self, error: str):
         self.sidebar.set_engine_running(False)
@@ -618,6 +621,7 @@ class MainWindow(QMainWindow):
         active = status.get("active_count", 0)
         pos_count = status.get("positions_count", 0)
         max_pos = status.get("max_positions", 3)
+        self._max_positions = max_pos
         available = int(status.get("available_capital", 0) or 0)
         mode = self.sidebar.get_mode().upper()
         combo_text = self.sidebar.get_strategy()
@@ -657,12 +661,32 @@ class MainWindow(QMainWindow):
     def _setup_tray(self):
         self._tray = TrayIcon(self)
         self._tray.show_requested.connect(self._tray_show)
+        self._tray.toggle_requested.connect(self._tray_toggle)
         self._tray.quit_requested.connect(self._tray_quit)
         self._tray.stop_requested.connect(self._on_stop)
+        self._tray.tray.show()
+        self._tray_tooltip_timer = QTimer(self)
+        self._tray_tooltip_timer.timeout.connect(self._update_tray_tooltip)
+        self._tray_tooltip_timer.start(60_000)
 
     def _tray_show(self):
         self.showNormal()
         self.activateWindow()
+
+    def _tray_toggle(self):
+        if self.isVisible():
+            self.hide()
+        else:
+            self.showNormal()
+            self.activateWindow()
+
+    def _update_tray_tooltip(self):
+        mode = self.sidebar.get_mode().upper()
+        engine_state = "엔진 실행 중" if (self._worker and self._worker.isRunning()) else "엔진 정지됨"
+        pos_count = len(self._current_positions)
+        self._tray.tray.setToolTip(
+            f"DayTrader — {mode} | {engine_state} | 포지션 {pos_count}/{self._max_positions}"
+        )
 
     def _tray_quit(self):
         self._cleanup_and_quit()
@@ -673,7 +697,6 @@ class MainWindow(QMainWindow):
         if self._worker and self._worker.isRunning():
             event.ignore()
             self.hide()
-            self._tray.tray.show()
             self._tray.tray.showMessage(
                 "DayTrader",
                 "엔진이 구동 중입니다. 트레이에서 실행됩니다.",

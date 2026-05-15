@@ -9,6 +9,7 @@ class TrayIcon(QObject):
     """DayTrader 시스템 트레이 아이콘."""
 
     show_requested = pyqtSignal()
+    toggle_requested = pyqtSignal()
     quit_requested = pyqtSignal()
     stop_requested = pyqtSignal()
 
@@ -67,7 +68,7 @@ class TrayIcon(QObject):
 
     def _on_activated(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
-            self.show_requested.emit()
+            self.toggle_requested.emit()
 
     def show_minimized_message(self):
         self.tray.showMessage(
