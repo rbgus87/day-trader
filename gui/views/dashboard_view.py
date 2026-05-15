@@ -11,6 +11,7 @@ from gui.views.dashboard.watchlist_panel import WatchlistPanel
 from gui.views.dashboard.signal_timeline import SignalTimeline
 from gui.views.dashboard.orderbook_widget import OrderbookWidget
 from gui.views.dashboard.trades_panel import TradesPanel
+from gui.views.dashboard.daily_summary_panel import DailySummaryPanel
 
 
 class DashboardView(QWidget):
@@ -84,7 +85,12 @@ class DashboardView(QWidget):
         mid_splitter.setSizes([480, 520])
         root.addWidget(mid_splitter, stretch=1)
 
-        # ── 3. 당일 체결 (하단 전폭) ────────────────────────────────────
+        # ── 3. 일일 요약 패널 (장 마감 후 자동 표시) ──────────────────────
+        self._daily_summary = DailySummaryPanel()
+        self._daily_summary.close_requested.connect(lambda: self._daily_summary.setVisible(False))
+        root.addWidget(self._daily_summary)
+
+        # ── 4. 당일 체결 (하단 전폭) ────────────────────────────────────
         self._trades = TradesPanel()
         root.addWidget(self._trades)
 
@@ -130,6 +136,10 @@ class DashboardView(QWidget):
         """trade_executed 시그널 → Equity Curve 마커 + Signal Timeline."""
         self._equity_chart.add_trade_marker(trade)
         self._signal_timeline.add_trade(trade)
+
+    def show_daily_summary(self, data: dict) -> None:
+        """15:30 daily_report 완료 후 일일 요약 패널을 갱신·표시한다."""
+        self._daily_summary.update_summary(data)
 
     def on_log_message(self, text: str, level: str) -> None:
         """loguru 로그 → Signal Timeline 차단 이벤트 필터링."""

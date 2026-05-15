@@ -48,6 +48,7 @@ class EngineSignals(QObject):
     log_message = pyqtSignal(str, str)
     market_status_updated = pyqtSignal(bool, bool)  # (kospi_strong, kosdaq_strong)
     startup_progress = pyqtSignal(str, int)          # (단계명, 진행률 0-100)
+    daily_summary_updated = pyqtSignal(dict)          # 15:30 일일 요약 (trades/pnl/exit_reasons/shadow)
 
     # UI → Worker
     request_stop = pyqtSignal()

@@ -290,7 +290,7 @@ class EngineWorker(QThread):
         self._scheduler.add_job(_sa(_sm.refresh_token, "token"), "cron", hour=8, minute=0, misfire_grace_time=300)
         self._scheduler.add_job(_sa(lambda: _ss.run_screening(_sm.refresh_ohlcv), "screening"), "cron", hour=8, minute=30, misfire_grace_time=300)
         self._scheduler.add_job(_sa(_sm.force_close, "force_close"), "cron", hour=15, minute=10, misfire_grace_time=60, id="force_close", replace_existing=True)
-        self._scheduler.add_job(_sa(_sm.daily_report, "daily_report"), "cron", hour=15, minute=30, misfire_grace_time=300)
+        self._scheduler.add_job(_sa(self._async_daily_report, "daily_report"), "cron", hour=15, minute=30, misfire_grace_time=300)
         self._scheduler.add_job(_sa(lambda: _sm.daily_reset(_ss.register_active_strategies), "daily_reset"), "cron", hour=0, minute=1, misfire_grace_time=600)
         self._scheduler.add_job(_sa(_sm.refresh_ohlcv_all, "refresh_ohlcv"), "cron", hour=8, minute=5, misfire_grace_time=600)
         self._scheduler.add_job(_sa(_sm.skip_universe_refresh, "universe_refresh"), "cron", day_of_week="mon", hour=7, minute=30, misfire_grace_time=600)
@@ -476,7 +476,53 @@ class EngineWorker(QThread):
 
     def _on_request_report(self):
         if self._loop and self._loop.is_running():
-            asyncio.run_coroutine_threadsafe(self._session_manager.daily_report(), self._loop)
+            asyncio.run_coroutine_threadsafe(self._async_daily_report(), self._loop)
+
+    async def _async_daily_report(self) -> None:
+        """daily_report 실행 후 GUI 일일 요약 시그널 emit."""
+        await self._session_manager.daily_report()
+        await self._emit_daily_summary()
+
+    async def _emit_daily_summary(self) -> None:
+        """DB + 섀도우 트래커에서 일일 요약 데이터를 수집해 시그널 emit."""
+        try:
+            today = datetime.now().strftime("%Y-%m-%d")
+            summary = await self._db.fetch_one(
+                "SELECT * FROM daily_pnl WHERE date = ?", (today,)
+            )
+            sell_rows = await self._db.fetch_all(
+                "SELECT exit_reason FROM trades WHERE side='sell' AND traded_at LIKE ? || '%'",
+                (today,),
+            )
+            exit_reasons: dict[str, int] = {}
+            for row in sell_rows:
+                reason = row.get("exit_reason") or "unknown"
+                exit_reasons[reason] = exit_reasons.get(reason, 0) + 1
+
+            shadow: dict = {}
+            if self._shadow_tracker:
+                shadow = self._shadow_tracker.get_summary()
+
+            losses_val = 0
+            if summary:
+                losses_val = int(
+                    summary.get("losses")
+                    or (int(summary["total_trades"]) - int(summary["wins"]))
+                )
+
+            data = {
+                "date": today,
+                "total_trades": int(summary["total_trades"]) if summary else 0,
+                "wins":         int(summary["wins"])         if summary else 0,
+                "losses":       losses_val,
+                "win_rate":     float(summary["win_rate"])   if summary else 0.0,
+                "total_pnl":    int(summary["total_pnl"])    if summary else 0,
+                "exit_reasons": exit_reasons,
+                "shadow":       shadow,
+            }
+            self.signals.daily_summary_updated.emit(data)
+        except Exception as e:
+            logger.warning(f"일일 요약 GUI 업데이트 실패: {e}")
 
     def _on_request_reconnect(self):
         if self._loop and self._loop.is_running():

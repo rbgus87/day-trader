@@ -233,6 +233,7 @@ class MainWindow(QMainWindow):
         s.trade_executed.connect(self._on_trade_executed)
         s.startup_progress.connect(self._on_startup_progress)
         s.ws_record_status.connect(self._on_ws_record_status)
+        s.daily_summary_updated.connect(self._on_daily_summary_updated)
         self.dashboard_view.manual_close_requested.connect(self._on_manual_close)
 
     def _on_market_status(self, kospi_strong: bool, kosdaq_strong: bool):
@@ -359,6 +360,9 @@ class MainWindow(QMainWindow):
     def _on_ws_record_toggled(self, enabled: bool) -> None:
         if self._worker:
             self._worker.signals.request_ws_record.emit(enabled)
+
+    def _on_daily_summary_updated(self, data: dict) -> None:
+        self.dashboard_view.show_daily_summary(data)
 
     def _on_ws_record_status(self, recording: bool, count: int) -> None:
         if recording:
