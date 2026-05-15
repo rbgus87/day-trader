@@ -66,11 +66,21 @@ def _make_universe_yaml(tmp_path: Path, stocks: list[dict] | None = None) -> Pat
 # Fixtures
 # ---------------------------------------------------------------------------
 
+def _make_investor_trading_response(inst_qty: int = 5000, frgn_qty: int = 3000) -> dict:
+    """ka10079 투자자별 매매동향 mock 응답 (TODO 필드명 추정값)."""
+    return {
+        "orgn_ntby_qty": str(inst_qty),   # 기관 순매수 수량
+        "frgn_ntby_qty": str(frgn_qty),   # 외국인 순매수 수량
+        "return_code": 0,
+    }
+
+
 @pytest.fixture
 def mock_rest():
     rest = MagicMock()
     rest.get_daily_ohlcv = AsyncMock(return_value=_make_daily_ohlcv_response(30))
     rest.get_current_price = AsyncMock(return_value=_make_current_price_response(5000))
+    rest.get_investor_trading = AsyncMock(return_value=_make_investor_trading_response())
     return rest
 
 
@@ -242,9 +252,10 @@ class TestCollect:
             assert "has_event" in c
             assert "score" in c
 
-        # API 호출 횟수: 2종목 × (일봉 1회 + 현재가 1회) = 4회
+        # API 호출 횟수: 2종목 × (일봉 1회 + 현재가 1회 + 수급 1회) = 6회
         assert mock_rest.get_daily_ohlcv.call_count == 2
         assert mock_rest.get_current_price.call_count == 2
+        assert mock_rest.get_investor_trading.call_count == 2
 
     @pytest.mark.asyncio
     async def test_collect_handles_api_error(self, mock_rest, tmp_path):
@@ -280,6 +291,82 @@ class TestCollect:
 
         candidates = await collector.collect()
         assert candidates == []
+
+    @pytest.mark.asyncio
+    async def test_collect_investor_api_failure_fallback(self, mock_rest, tmp_path):
+        """수급 API 실패 시 institutional_buy=0, foreign_buy=0으로 fallback하여 candidate 반환."""
+        mock_rest.get_investor_trading = AsyncMock(side_effect=Exception("ka10079 error"))
+
+        universe_path = _make_universe_yaml(tmp_path)
+        collector = CandidateCollector(mock_rest, universe_path=universe_path)
+
+        candidates = await collector.collect()
+
+        # 수급 실패해도 candidates는 정상 반환
+        assert len(candidates) == 2
+        for c in candidates:
+            assert c["institutional_buy"] == 0
+            assert c["foreign_buy"] == 0
+            assert "_supply_fetched" not in c  # 내부 플래그 미노출
+
+    @pytest.mark.asyncio
+    async def test_collect_supply_fetched_flag_not_exposed(self, collector):
+        """_supply_fetched 내부 플래그가 최종 candidates에 포함되지 않는다."""
+        candidates = await collector.collect()
+        for c in candidates:
+            assert "_supply_fetched" not in c
+
+    @pytest.mark.asyncio
+    async def test_collect_investor_data_reflected(self, mock_rest, tmp_path):
+        """수급 API 성공 시 institutional_buy, foreign_buy가 실제 값으로 채워진다."""
+        mock_rest.get_investor_trading = AsyncMock(
+            return_value=_make_investor_trading_response(inst_qty=8000, frgn_qty=2500)
+        )
+        universe_path = _make_universe_yaml(tmp_path, stocks=[{"ticker": "005930", "name": "삼성전자"}])
+        collector = CandidateCollector(mock_rest, universe_path=universe_path)
+
+        candidates = await collector.collect()
+        assert len(candidates) == 1
+        assert candidates[0]["institutional_buy"] == 8000
+        assert candidates[0]["foreign_buy"] == 2500
+
+
+# ---------------------------------------------------------------------------
+# 수급 데이터 파싱 테스트
+# ---------------------------------------------------------------------------
+
+class TestInvestorParsing:
+    def test_parse_institutional_positive(self, collector):
+        """기관 순매수 양수 파싱."""
+        data = _make_investor_trading_response(inst_qty=5000, frgn_qty=0)
+        assert collector._parse_institutional(data) == 5000
+
+    def test_parse_foreign_positive(self, collector):
+        """외국인 순매수 양수 파싱."""
+        data = _make_investor_trading_response(inst_qty=0, frgn_qty=3000)
+        assert collector._parse_foreign(data) == 3000
+
+    def test_parse_institutional_negative(self, collector):
+        """기관 순매도(음수)도 정수로 파싱한다."""
+        data = {"orgn_ntby_qty": "-2000"}
+        assert collector._parse_institutional(data) == -2000
+
+    def test_parse_returns_zero_for_missing_field(self, collector):
+        """필드 없으면 0 반환."""
+        assert collector._parse_institutional({}) == 0
+        assert collector._parse_foreign({}) == 0
+
+    def test_parse_handles_comma_separated(self, collector):
+        """쉼표 포함 숫자 문자열도 파싱 (예: '1,500')."""
+        data = {"orgn_ntby_qty": "1,500", "frgn_ntby_qty": "2,000"}
+        assert collector._parse_institutional(data) == 1500
+        assert collector._parse_foreign(data) == 2000
+
+    def test_parse_handles_invalid_value(self, collector):
+        """파싱 불가 값이면 0 반환."""
+        data = {"orgn_ntby_qty": "N/A", "frgn_ntby_qty": ""}
+        assert collector._parse_institutional(data) == 0
+        assert collector._parse_foreign(data) == 0
 
 
 # ---------------------------------------------------------------------------

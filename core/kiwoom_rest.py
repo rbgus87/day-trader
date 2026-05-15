@@ -21,6 +21,7 @@ API_STOCK_MINUTE = "ka10080"
 API_ACCOUNT_BALANCE = "ka10070"
 API_INDEX_DAILY = "ka20006"        # 업종 일봉 (지수)
 API_STOCK_LIST = "ka10099"         # 종목정보 리스트 (시장별)
+API_INVESTOR_TRADE = "ka10079"    # 투자자별 매매동향 (TODO: TR ID 미확인 — scripts/test_investor_api.py 로 확인)
 
 EP_ORDER = "/api/dostk/ordr"
 EP_STOCK = "/api/dostk/stkinfo"
@@ -285,6 +286,15 @@ class KiwoomRestClient:
             if isinstance(val, list):
                 return val
         return []
+
+    async def get_investor_trading(self, ticker: str) -> dict:
+        """투자자별 매매동향 조회 (ka10079).
+
+        TODO: 실제 응답 필드명은 scripts/test_investor_api.py 로 장 중 확인 필요.
+        현재 파라미터·필드명은 추정값이며 실증 전까지 변경될 수 있음.
+        """
+        body = {"stk_cd": ticker}
+        return await self.request("POST", EP_STOCK, API_INVESTOR_TRADE, data=body)
 
     async def get_market_snapshot(self) -> dict:
         """시장 지수/섹터 ETF 스냅샷을 반환한다.

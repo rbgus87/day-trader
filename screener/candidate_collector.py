@@ -23,6 +23,10 @@ _DEFAULT_UNIVERSE_PATH = Path(__file__).parent.parent / "config" / "universe.yam
 # 일봉 수집 기간 (MA20 + ATR14 계산용)
 _DAILY_LOOKBACK_DAYS = 40
 
+# 투자자별 매매동향 필드명 (TODO: 실제 ka10079 응답 확인 후 수정 — scripts/test_investor_api.py 참조)
+_FIELD_INST_BUY = "orgn_ntby_qty"   # 기관 순매수 수량 (추정)
+_FIELD_FRGN_BUY = "frgn_ntby_qty"  # 외국인 순매수 수량 (추정)
+
 
 class CandidateCollector:
     """종목 유니버스에서 스크리닝 후보 데이터를 수집한다.
@@ -33,8 +37,6 @@ class CandidateCollector:
     4. 현재가 API로 시가총액, 거래대금 수집
     5. PreMarketScreener.screen()에 전달할 candidates dict 리스트 반환
     """
-
-    _supply_warned: bool = False  # 수급 미구현 WARNING 1회만 출력
 
     def __init__(
         self,
@@ -74,10 +76,8 @@ class CandidateCollector:
 
         candidates = []
         total = len(universe)
-
-        if not CandidateCollector._supply_warned:
-            CandidateCollector._supply_warned = True
-            logger.warning("수급 데이터(기관/외국인 순매수) 미구현 — 스크리닝 수급 필터 비활성 상태")
+        supply_ok = 0
+        supply_fail = 0
 
         for idx, stock in enumerate(universe, 1):
             ticker = stock["ticker"]
@@ -88,6 +88,10 @@ class CandidateCollector:
                     ticker, name, start_date, end_date,
                 )
                 if candidate:
+                    if candidate.pop("_supply_fetched", False):
+                        supply_ok += 1
+                    else:
+                        supply_fail += 1
                     candidates.append(candidate)
                     logger.debug(
                         f"[{idx}/{total}] {ticker} {name} — 수집 완료 "
@@ -98,6 +102,14 @@ class CandidateCollector:
             except Exception as exc:
                 logger.warning(f"[{idx}/{total}] {ticker} {name} — 수집 실패: {exc}")
                 continue
+
+        if supply_fail == 0 and supply_ok > 0:
+            logger.info(f"수급 데이터 조회 완료: {supply_ok}/{total}종목")
+        elif supply_fail > 0:
+            logger.warning(
+                f"수급 데이터(기관/외국인 순매수) 조회 실패 {supply_fail}종목 "
+                f"— 해당 종목 수급 필터 비활성 (0 fallback)"
+            )
 
         logger.info(f"Candidates 수집 완료: {len(candidates)}/{total}종목")
         return candidates
@@ -110,18 +122,30 @@ class CandidateCollector:
         end_date: str,
     ) -> dict | None:
         """단일 종목의 candidate 데이터를 수집한다."""
-        # 일봉 + 현재가 병렬 조회
+        # 일봉 + 현재가 + 수급 병렬 조회
         daily_task = self._fetch_daily_ohlcv(ticker, end_date)
         price_task = self._fetch_current_price(ticker)
+        investor_task = self._fetch_investor_trading(ticker)
 
-        daily_data, price_data = await asyncio.gather(
-            daily_task, price_task, return_exceptions=True,
+        daily_data, price_data, investor_data = await asyncio.gather(
+            daily_task, price_task, investor_task, return_exceptions=True,
         )
 
         if isinstance(daily_data, Exception) or isinstance(price_data, Exception):
             exc = daily_data if isinstance(daily_data, Exception) else price_data
             logger.warning(f"{ticker} API 오류: {exc}")
             return None
+
+        # 수급 데이터 파싱 (실패해도 0으로 fallback — 기존 동작 유지)
+        if not isinstance(investor_data, Exception):
+            institutional_buy = self._parse_institutional(investor_data)
+            foreign_buy = self._parse_foreign(investor_data)
+            supply_fetched = True
+        else:
+            logger.debug(f"{ticker} 수급 API 실패: {investor_data} — 0으로 fallback")
+            institutional_buy = 0
+            foreign_buy = 0
+            supply_fetched = False
 
         # 일봉 DataFrame 생성
         df = self._parse_daily_ohlcv(daily_data)
@@ -202,11 +226,12 @@ class CandidateCollector:
             "prev_volume": prev_volume,
             "atr_pct": atr_pct,
             "ma20_trend": ma20_trend,
-            "institutional_buy": 0,  # 향후 수급 API 연동
-            "foreign_buy": 0,        # 향후 수급 API 연동
-            "has_event": False,      # 향후 공시 API 연동
+            "institutional_buy": institutional_buy,
+            "foreign_buy": foreign_buy,
+            "has_event": False,  # 향후 공시 API 연동
             "score": score,
             "prev_close": prev_close,
+            "_supply_fetched": supply_fetched,  # collect()에서 팝, 외부 미노출
         }
 
     # ------------------------------------------------------------------
@@ -220,6 +245,10 @@ class CandidateCollector:
     async def _fetch_current_price(self, ticker: str) -> dict:
         """현재가 조회."""
         return await self._rest.get_current_price(ticker)
+
+    async def _fetch_investor_trading(self, ticker: str) -> dict:
+        """투자자별 매매동향 조회 (ka10079)."""
+        return await self._rest.get_investor_trading(ticker)
 
     # ------------------------------------------------------------------
     # 데이터 파싱
@@ -341,6 +370,34 @@ class CandidateCollector:
             return int(amounts.mean())
 
         return 0
+
+    def _parse_institutional(self, investor_data: dict) -> int:
+        """ka10079 응답에서 기관 순매수 수량을 파싱한다.
+
+        TODO: _FIELD_INST_BUY 상수를 실제 응답 필드명으로 수정 필요.
+        scripts/test_investor_api.py 실행 후 확정.
+        """
+        val = investor_data.get(_FIELD_INST_BUY)
+        if val is None:
+            return 0
+        try:
+            return int(float(str(val).replace(",", "")))
+        except (ValueError, TypeError):
+            return 0
+
+    def _parse_foreign(self, investor_data: dict) -> int:
+        """ka10079 응답에서 외국인 순매수 수량을 파싱한다.
+
+        TODO: _FIELD_FRGN_BUY 상수를 실제 응답 필드명으로 수정 필요.
+        scripts/test_investor_api.py 실행 후 확정.
+        """
+        val = investor_data.get(_FIELD_FRGN_BUY)
+        if val is None:
+            return 0
+        try:
+            return int(float(str(val).replace(",", "")))
+        except (ValueError, TypeError):
+            return 0
 
     def _extract_market_cap(self, price_data: dict) -> int:
         """현재가 응답에서 시가총액 추출 (원).
