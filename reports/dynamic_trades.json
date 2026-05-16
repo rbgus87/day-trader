@@ -1,0 +1,4342 @@
+[
+  {
+    "entry_ts": "2025-04-18T10:10:00",
+    "exit_ts": "2025-04-18T15:35:00",
+    "entry_price": 392117.6,
+    "exit_price": 392882.10000000003,
+    "pnl": -139.01415499998257,
+    "pnl_pct": -0.0003544684196885882,
+    "exit_reason": "forced_close",
+    "ticker": "196170"
+  },
+  {
+    "entry_ts": "2025-04-21T09:33:00",
+    "exit_ts": "2025-04-21T10:21:00",
+    "entry_price": 24057.215,
+    "exit_price": 23539.186125,
+    "pnl": -572.246707418748,
+    "pnl_pct": -0.023783338316020995,
+    "exit_reason": "stop_loss",
+    "ticker": "009830"
+  },
+  {
+    "entry_ts": "2025-04-21T09:52:00",
+    "exit_ts": "2025-04-21T15:35:00",
+    "entry_price": 36160.845,
+    "exit_price": 35939.215000000004,
+    "pnl": -304.3234389999925,
+    "pnl_pct": -0.00841456545969523,
+    "exit_reason": "forced_close",
+    "ticker": "036930"
+  },
+  {
+    "entry_ts": "2025-04-22T10:55:00",
+    "exit_ts": "2025-04-22T15:35:00",
+    "entry_price": 309592.85,
+    "exit_price": 311406.55,
+    "pnl": 1097.7369900000049,
+    "pnl_pct": 0.003545212217100243,
+    "exit_reason": "forced_close",
+    "ticker": "079550"
+  },
+  {
+    "entry_ts": "2025-05-07T11:51:00",
+    "exit_ts": "2025-05-07T15:35:00",
+    "entry_price": 4461.338,
+    "exit_price": 4438.668000000001,
+    "pnl": -32.882336899999245,
+    "pnl_pct": -0.007369404714282097,
+    "exit_reason": "forced_close",
+    "ticker": "030530"
+  },
+  {
+    "entry_ts": "2025-05-07T10:23:00",
+    "exit_ts": "2025-05-07T10:35:00",
+    "entry_price": 14194.257,
+    "exit_price": 14386.682700000001,
+    "pnl": 159.36519364500055,
+    "pnl_pct": 0.011225757885821912,
+    "exit_reason": "breakeven_stop",
+    "ticker": "437730"
+  },
+  {
+    "entry_ts": "2025-05-08T11:27:00",
+    "exit_ts": "2025-05-08T13:36:00",
+    "entry_price": 15534.659,
+    "exit_price": 15795.26,
+    "pnl": 224.31099214999995,
+    "pnl_pct": 0.01443722392280499,
+    "exit_reason": "trailing_stop",
+    "ticker": "098460"
+  },
+  {
+    "entry_ts": "2025-05-08T10:22:00",
+    "exit_ts": "2025-05-08T10:46:00",
+    "entry_price": 40762.225,
+    "exit_price": 42399.77625,
+    "pnl": 1540.2773973125004,
+    "pnl_pct": 0.03778121509201098,
+    "exit_reason": "breakeven_stop",
+    "ticker": "257720"
+  },
+  {
+    "entry_ts": "2025-05-09T09:41:00",
+    "exit_ts": "2025-05-09T09:51:00",
+    "entry_price": 30959.285,
+    "exit_price": 30849.492375,
+    "pnl": -180.7629263562485,
+    "pnl_pct": -0.005837854975780317,
+    "exit_reason": "stop_loss",
+    "ticker": "082740"
+  },
+  {
+    "entry_ts": "2025-05-09T11:51:00",
+    "exit_ts": "2025-05-09T14:37:00",
+    "entry_price": 30809.239999999998,
+    "exit_price": 30998.19775,
+    "pnl": 117.69023883750197,
+    "pnl_pct": 0.0038193927519571914,
+    "exit_reason": "stop_loss",
+    "ticker": "082740"
+  },
+  {
+    "entry_ts": "2025-05-12T11:18:00",
+    "exit_ts": "2025-05-12T15:35:00",
+    "entry_price": 83925.17,
+    "exit_price": 82975.1,
+    "pnl": -1141.0552404999908,
+    "pnl_pct": -0.013594063710372088,
+    "exit_reason": "forced_close",
+    "ticker": "042700"
+  },
+  {
+    "entry_ts": "2025-05-13T10:04:00",
+    "exit_ts": "2025-05-13T15:35:00",
+    "entry_price": 149444.82,
+    "exit_price": 147955.6,
+    "pnl": -1829.7412630000035,
+    "pnl_pct": -0.012241754802699466,
+    "exit_reason": "forced_close",
+    "ticker": "000250"
+  },
+  {
+    "entry_ts": "2025-05-13T09:33:00",
+    "exit_ts": "2025-05-13T10:10:00",
+    "entry_price": 15444.632,
+    "exit_price": 15439.3668,
+    "pnl": -40.776533419999396,
+    "pnl_pct": -0.002639779170997457,
+    "exit_reason": "stop_loss",
+    "ticker": "437730"
+  },
+  {
+    "entry_ts": "2025-05-13T09:33:00",
+    "exit_ts": "2025-05-13T09:37:00",
+    "entry_price": 38911.67,
+    "exit_price": 37964.857125,
+    "pnl": -1034.274068318744,
+    "pnl_pct": -0.02657606189804171,
+    "exit_reason": "stop_loss",
+    "ticker": "108490"
+  },
+  {
+    "entry_ts": "2025-05-14T10:22:00",
+    "exit_ts": "2025-05-14T11:15:00",
+    "entry_price": 38811.64,
+    "exit_price": 42594.71775,
+    "pnl": 3685.6773608375006,
+    "pnl_pct": 0.09494895325599945,
+    "exit_reason": "breakeven_stop",
+    "ticker": "322000"
+  },
+  {
+    "entry_ts": "2025-05-14T10:37:00",
+    "exit_ts": "2025-05-14T14:21:00",
+    "entry_price": 7772.331,
+    "exit_price": 7877.8859250000005,
+    "pnl": 87.45162061125029,
+    "pnl_pct": 0.011249971834128649,
+    "exit_reason": "stop_loss",
+    "ticker": "097230"
+  },
+  {
+    "entry_ts": "2025-05-16T11:29:00",
+    "exit_ts": "2025-05-16T12:15:00",
+    "entry_price": 64519.35,
+    "exit_price": 64727.325975,
+    "pnl": 59.134321653749794,
+    "pnl_pct": 0.0009163987677467988,
+    "exit_reason": "stop_loss",
+    "ticker": "052690"
+  },
+  {
+    "entry_ts": "2025-05-16T10:53:00",
+    "exit_ts": "2025-05-16T11:28:00",
+    "entry_price": 15784.734,
+    "exit_price": 15507.596325,
+    "pnl": -312.8467171987486,
+    "pnl_pct": -0.019816602372213825,
+    "exit_reason": "stop_loss",
+    "ticker": "437730"
+  },
+  {
+    "entry_ts": "2025-05-16T10:00:00",
+    "exit_ts": "2025-05-16T10:19:00",
+    "entry_price": 1982.5946,
+    "exit_price": 2044.3865,
+    "pnl": 57.09907983500011,
+    "pnl_pct": 0.028795859858370177,
+    "exit_reason": "momentum_fade",
+    "ticker": "032820"
+  },
+  {
+    "entry_ts": "2025-05-19T09:33:00",
+    "exit_ts": "2025-05-19T10:37:00",
+    "entry_price": 20306.09,
+    "exit_price": 19588.84490327226,
+    "pnl": -762.4070267697753,
+    "pnl_pct": -0.0375401016575493,
+    "exit_reason": "stop_loss",
+    "ticker": "475150"
+  },
+  {
+    "entry_ts": "2025-05-20T11:40:00",
+    "exit_ts": "2025-05-20T11:53:00",
+    "entry_price": 71421.42,
+    "exit_price": 72420.76725,
+    "pnl": 832.9293874125142,
+    "pnl_pct": 0.011660429976644302,
+    "exit_reason": "breakeven_stop",
+    "ticker": "000500"
+  },
+  {
+    "entry_ts": "2025-05-20T09:47:00",
+    "exit_ts": "2025-05-20T14:13:00",
+    "entry_price": 24607.379999999997,
+    "exit_price": 25667.2975,
+    "pnl": 1001.0417033750055,
+    "pnl_pct": 0.04067444683828834,
+    "exit_reason": "breakeven_stop",
+    "ticker": "077970"
+  },
+  {
+    "entry_ts": "2025-05-21T11:06:00",
+    "exit_ts": "2025-05-21T15:35:00",
+    "entry_price": 7502.25,
+    "exit_price": 7527.741,
+    "pnl": 8.181019350000497,
+    "pnl_pct": 0.001090311890585268,
+    "exit_reason": "forced_close",
+    "ticker": "097230"
+  },
+  {
+    "entry_ts": "2025-05-23T10:53:00",
+    "exit_ts": "2025-05-23T15:35:00",
+    "entry_price": 65719.70999999999,
+    "exit_price": 64580.62,
+    "pnl": -1287.7962894999873,
+    "pnl_pct": -0.019592343743264136,
+    "exit_reason": "forced_close",
+    "ticker": "052690"
+  },
+  {
+    "entry_ts": "2025-05-23T10:12:00",
+    "exit_ts": "2025-05-23T15:35:00",
+    "entry_price": 47914.369999999995,
+    "exit_price": 48185.54,
+    "pnl": 160.38393350000115,
+    "pnl_pct": 0.0033468013775006,
+    "exit_reason": "forced_close",
+    "ticker": "375500"
+  },
+  {
+    "entry_ts": "2025-05-23T09:34:00",
+    "exit_ts": "2025-05-23T15:35:00",
+    "entry_price": 2115.6345,
+    "exit_price": 2029.391,
+    "pnl": -90.92403582499992,
+    "pnl_pct": -0.04297074908974596,
+    "exit_reason": "forced_close",
+    "ticker": "090710"
+  },
+  {
+    "entry_ts": "2025-05-27T11:28:00",
+    "exit_ts": "2025-05-27T13:54:00",
+    "entry_price": 76422.92,
+    "exit_price": 80182.13095857565,
+    "pnl": 3575.355939014713,
+    "pnl_pct": 0.04677680093952579,
+    "exit_reason": "breakeven_stop",
+    "ticker": "298380"
+  },
+  {
+    "entry_ts": "2025-05-27T09:53:00",
+    "exit_ts": "2025-05-27T13:25:00",
+    "entry_price": 58217.46,
+    "exit_price": 60181.94,
+    "pnl": 1826.356209999998,
+    "pnl_pct": 0.031366574523439356,
+    "exit_reason": "momentum_fade",
+    "ticker": "000880"
+  },
+  {
+    "entry_ts": "2025-05-27T10:19:00",
+    "exit_ts": "2025-05-27T11:02:00",
+    "entry_price": 48614.58,
+    "exit_price": 50184.94,
+    "pnl": 1455.170192000005,
+    "pnl_pct": 0.02992830441418241,
+    "exit_reason": "momentum_fade",
+    "ticker": "226950"
+  },
+  {
+    "entry_ts": "2025-05-28T10:25:00",
+    "exit_ts": "2025-05-28T11:00:00",
+    "entry_price": 150345.09,
+    "exit_price": 150592.30875,
+    "pnl": -99.10647731251083,
+    "pnl_pct": -0.0006590944444575827,
+    "exit_reason": "stop_loss",
+    "ticker": "180640"
+  },
+  {
+    "entry_ts": "2025-05-28T11:37:00",
+    "exit_ts": "2025-05-28T14:02:00",
+    "entry_price": 150545.15,
+    "exit_price": 144132.21642892828,
+    "pnl": -6745.399608893931,
+    "pnl_pct": -0.04479976904404643,
+    "exit_reason": "stop_loss",
+    "ticker": "039030"
+  },
+  {
+    "entry_ts": "2025-05-29T09:53:00",
+    "exit_ts": "2025-05-29T10:13:00",
+    "entry_price": 15124.536,
+    "exit_price": 15098.219175,
+    "pnl": -61.0466766262507,
+    "pnl_pct": -0.0040356623831700345,
+    "exit_reason": "stop_loss",
+    "ticker": "006800"
+  },
+  {
+    "entry_ts": "2025-05-30T09:34:00",
+    "exit_ts": "2025-05-30T10:00:00",
+    "entry_price": 44563.365,
+    "exit_price": 44300.455875,
+    "pnl": -364.8396098812518,
+    "pnl_pct": -0.008185757340080348,
+    "exit_reason": "stop_loss",
+    "ticker": "322000"
+  },
+  {
+    "entry_ts": "2025-06-02T11:05:00",
+    "exit_ts": "2025-06-02T13:09:00",
+    "entry_price": 51115.33,
+    "exit_price": 51565.775625,
+    "pnl": 331.91190790625114,
+    "pnl_pct": 0.006492418782916262,
+    "exit_reason": "stop_loss",
+    "ticker": "257720"
+  },
+  {
+    "entry_ts": "2025-06-04T11:59:00",
+    "exit_ts": "2025-06-04T15:35:00",
+    "entry_price": 31759.524999999998,
+    "exit_price": 31590.52,
+    "pnl": -241.68854674999602,
+    "pnl_pct": -0.007608813384493637,
+    "exit_reason": "forced_close",
+    "ticker": "009830"
+  },
+  {
+    "entry_ts": "2025-06-04T11:53:00",
+    "exit_ts": "2025-06-04T14:39:00",
+    "entry_price": 152245.66,
+    "exit_price": 152513.2323,
+    "pnl": -83.16799844501656,
+    "pnl_pct": -0.0005461930745102956,
+    "exit_reason": "stop_loss",
+    "ticker": "001040"
+  },
+  {
+    "entry_ts": "2025-06-04T10:49:00",
+    "exit_ts": "2025-06-04T13:51:00",
+    "entry_price": 174352.29,
+    "exit_price": 173162.78557500002,
+    "pnl": -1587.9572574862395,
+    "pnl_pct": -0.009106385121877643,
+    "exit_reason": "stop_loss",
+    "ticker": "006260"
+  },
+  {
+    "entry_ts": "2025-06-04T10:31:00",
+    "exit_ts": "2025-06-04T15:35:00",
+    "entry_price": 285585.64999999997,
+    "exit_price": 285914.2,
+    "pnl": -329.00337749993196,
+    "pnl_pct": -0.0011518577155216756,
+    "exit_reason": "forced_close",
+    "ticker": "277810"
+  },
+  {
+    "entry_ts": "2025-06-04T10:12:00",
+    "exit_ts": "2025-06-04T15:35:00",
+    "entry_price": 9292.787,
+    "exit_price": 9317.204,
+    "pnl": 2.9910933499995735,
+    "pnl_pct": 0.00032182430882001065,
+    "exit_reason": "forced_close",
+    "ticker": "003380"
+  },
+  {
+    "entry_ts": "2025-06-04T11:02:00",
+    "exit_ts": "2025-06-04T13:11:00",
+    "entry_price": 76422.92,
+    "exit_price": 75734.77275,
+    "pnl": -862.4404494125047,
+    "pnl_pct": -0.011283409515719794,
+    "exit_reason": "stop_loss",
+    "ticker": "010060"
+  },
+  {
+    "entry_ts": "2025-06-05T11:30:00",
+    "exit_ts": "2025-06-05T13:32:00",
+    "entry_price": 68520.55,
+    "exit_price": 71374.831125,
+    "pnl": 2690.5471555812546,
+    "pnl_pct": 0.03926039172242706,
+    "exit_reason": "breakeven_stop",
+    "ticker": "052690"
+  },
+  {
+    "entry_ts": "2025-06-05T10:31:00",
+    "exit_ts": "2025-06-05T12:38:00",
+    "entry_price": 19935.979,
+    "exit_price": 20528.089725,
+    "pnl": 544.984935241253,
+    "pnl_pct": 0.027332653177518335,
+    "exit_reason": "breakeven_stop",
+    "ticker": "222800"
+  },
+  {
+    "entry_ts": "2025-06-09T09:36:00",
+    "exit_ts": "2025-06-09T11:08:00",
+    "entry_price": 23056.915,
+    "exit_price": 23892.83,
+    "pnl": 781.0868782500002,
+    "pnl_pct": 0.03387138881286077,
+    "exit_reason": "momentum_fade",
+    "ticker": "060370"
+  },
+  {
+    "entry_ts": "2025-06-11T11:46:00",
+    "exit_ts": "2025-06-11T12:23:00",
+    "entry_price": 57717.31,
+    "exit_price": 59030.535525,
+    "pnl": 1177.6522771212476,
+    "pnl_pct": 0.020400736898044655,
+    "exit_reason": "trailing_stop",
+    "ticker": "257720"
+  },
+  {
+    "entry_ts": "2025-06-11T09:44:00",
+    "exit_ts": "2025-06-11T10:06:00",
+    "entry_price": 34360.305,
+    "exit_price": 35439.365,
+    "pnl": 997.7113194999984,
+    "pnl_pct": 0.02903238737977475,
+    "exit_reason": "momentum_fade",
+    "ticker": "009830"
+  },
+  {
+    "entry_ts": "2025-06-11T10:26:00",
+    "exit_ts": "2025-06-11T11:24:00",
+    "entry_price": 44813.439999999995,
+    "exit_price": 44495.397375,
+    "pnl": -420.4297453562467,
+    "pnl_pct": -0.009380370941233118,
+    "exit_reason": "stop_loss",
+    "ticker": "007660"
+  },
+  {
+    "entry_ts": "2025-06-11T10:59:00",
+    "exit_ts": "2025-06-11T13:55:00",
+    "entry_price": 40562.165,
+    "exit_price": 40955.496314005,
+    "pnl": 299.1926721798882,
+    "pnl_pct": 0.00737504519322099,
+    "exit_reason": "breakeven_stop",
+    "ticker": "083650"
+  },
+  {
+    "entry_ts": "2025-06-11T11:04:00",
+    "exit_ts": "2025-06-11T11:07:00",
+    "entry_price": 96528.95,
+    "exit_price": 96496.0425,
+    "pnl": -254.8533338749985,
+    "pnl_pct": -0.002639779170997481,
+    "exit_reason": "trailing_stop",
+    "ticker": "347850"
+  },
+  {
+    "entry_ts": "2025-06-11T11:04:00",
+    "exit_ts": "2025-06-11T15:35:00",
+    "entry_price": 162148.63,
+    "exit_price": 163850.83000000002,
+    "pnl": 1325.5984210000315,
+    "pnl_pct": 0.008173979706509842,
+    "exit_reason": "forced_close",
+    "ticker": "000250"
+  },
+  {
+    "entry_ts": "2025-06-12T09:34:00",
+    "exit_ts": "2025-06-12T10:19:00",
+    "entry_price": 81024.3,
+    "exit_price": 86261.61375,
+    "pnl": 5039.697635437507,
+    "pnl_pct": 0.06219050080245534,
+    "exit_reason": "breakeven_stop",
+    "ticker": "052690"
+  },
+  {
+    "entry_ts": "2025-06-12T10:52:00",
+    "exit_ts": "2025-06-12T11:17:00",
+    "entry_price": 2575.7725,
+    "exit_price": 2754.1735,
+    "pnl": 172.09316109999963,
+    "pnl_pct": 0.06680223156251183,
+    "exit_reason": "momentum_fade",
+    "ticker": "032820"
+  },
+  {
+    "entry_ts": "2025-06-12T10:28:00",
+    "exit_ts": "2025-06-12T12:14:00",
+    "entry_price": 22756.825,
+    "exit_price": 22418.2725,
+    "pnl": -390.16530962500474,
+    "pnl_pct": -0.017142408644701703,
+    "exit_reason": "stop_loss",
+    "ticker": "017960"
+  },
+  {
+    "entry_ts": "2025-06-13T11:04:00",
+    "exit_ts": "2025-06-13T15:35:00",
+    "entry_price": 46814.04,
+    "exit_price": 45986.200000000004,
+    "pnl": -933.7324359999911,
+    "pnl_pct": -0.01994257272263663,
+    "exit_reason": "forced_close",
+    "ticker": "071970"
+  },
+  {
+    "entry_ts": "2025-06-17T10:12:00",
+    "exit_ts": "2025-06-17T12:19:00",
+    "entry_price": 55416.619999999995,
+    "exit_price": 55691.037675,
+    "pnl": 146.36945099875447,
+    "pnl_pct": 0.0026408593464185186,
+    "exit_reason": "stop_loss",
+    "ticker": "489790"
+  },
+  {
+    "entry_ts": "2025-06-17T11:25:00",
+    "exit_ts": "2025-06-17T12:18:00",
+    "entry_price": 6752.025,
+    "exit_price": 6598.769775000001,
+    "pnl": -168.45538376624881,
+    "pnl_pct": -0.02494512672100023,
+    "exit_reason": "stop_loss",
+    "ticker": "003530"
+  },
+  {
+    "entry_ts": "2025-06-17T09:50:00",
+    "exit_ts": "2025-06-17T10:03:00",
+    "entry_price": 101830.54,
+    "exit_price": 102831.64125,
+    "pnl": 764.7386403124983,
+    "pnl_pct": 0.007508788097563759,
+    "exit_reason": "breakeven_stop",
+    "ticker": "011790"
+  },
+  {
+    "entry_ts": "2025-06-19T09:33:00",
+    "exit_ts": "2025-06-19T10:00:00",
+    "entry_price": 162948.87,
+    "exit_price": 164530.62600000002,
+    "pnl": 1203.5728236000286,
+    "pnl_pct": 0.0073850914998846925,
+    "exit_reason": "breakeven_stop",
+    "ticker": "001040"
+  },
+  {
+    "entry_ts": "2025-06-20T09:35:00",
+    "exit_ts": "2025-06-20T12:32:00",
+    "entry_price": 29958.985,
+    "exit_price": 29777.314125,
+    "pnl": -250.18594811874937,
+    "pnl_pct": -0.008349696288271152,
+    "exit_reason": "stop_loss",
+    "ticker": "323410"
+  },
+  {
+    "entry_ts": "2025-06-20T11:41:00",
+    "exit_ts": "2025-06-20T15:35:00",
+    "entry_price": 98429.51999999999,
+    "exit_price": 101969.40000000001,
+    "pnl": 3305.881362000029,
+    "pnl_pct": 0.03358124223471683,
+    "exit_reason": "forced_close",
+    "ticker": "247540"
+  },
+  {
+    "entry_ts": "2025-06-20T09:37:00",
+    "exit_ts": "2025-06-20T15:35:00",
+    "entry_price": 16604.98,
+    "exit_price": 16525.041,
+    "pnl": -117.95858514999782,
+    "pnl_pct": -0.007102742310794438,
+    "exit_reason": "forced_close",
+    "ticker": "001440"
+  },
+  {
+    "entry_ts": "2025-06-20T11:10:00",
+    "exit_ts": "2025-06-20T13:17:00",
+    "entry_price": 108132.43,
+    "exit_price": 110006.988,
+    "pnl": 1621.8231113000074,
+    "pnl_pct": 0.014996240020860158,
+    "exit_reason": "breakeven_stop",
+    "ticker": "310210"
+  },
+  {
+    "entry_ts": "2025-06-20T09:37:00",
+    "exit_ts": "2025-06-20T09:53:00",
+    "entry_price": 22256.675,
+    "exit_price": 22856.890875,
+    "pnl": 547.7350583687512,
+    "pnl_pct": 0.02460623208238366,
+    "exit_reason": "breakeven_stop",
+    "ticker": "336260"
+  },
+  {
+    "entry_ts": "2025-06-24T10:48:00",
+    "exit_ts": "2025-06-24T12:33:00",
+    "entry_price": 306091.8,
+    "exit_price": 309059.9721846,
+    "pnl": 2257.779474403127,
+    "pnl_pct": 0.007375045193221073,
+    "exit_reason": "breakeven_stop",
+    "ticker": "010120"
+  },
+  {
+    "entry_ts": "2025-06-24T10:06:00",
+    "exit_ts": "2025-06-24T10:33:00",
+    "entry_price": 47214.159999999996,
+    "exit_price": 47671.99570952,
+    "pnl": 348.2587947445354,
+    "pnl_pct": 0.0073750451932210895,
+    "exit_reason": "breakeven_stop",
+    "ticker": "450080"
+  },
+  {
+    "entry_ts": "2025-06-25T09:35:00",
+    "exit_ts": "2025-06-25T09:44:00",
+    "entry_price": 54516.35,
+    "exit_price": 53803.854,
+    "pnl": -836.3517386000021,
+    "pnl_pct": -0.0153390002201964,
+    "exit_reason": "stop_loss",
+    "ticker": "375500"
+  },
+  {
+    "entry_ts": "2025-06-26T11:10:00",
+    "exit_ts": "2025-06-26T13:09:00",
+    "entry_price": 52415.72,
+    "exit_price": 53726.627175,
+    "pnl": 1187.5325685737553,
+    "pnl_pct": 0.02265264057049955,
+    "exit_reason": "breakeven_stop",
+    "ticker": "489790"
+  },
+  {
+    "entry_ts": "2025-06-26T09:33:00",
+    "exit_ts": "2025-06-26T09:46:00",
+    "entry_price": 46113.83,
+    "exit_price": 45372.634125000004,
+    "pnl": -845.6641128687479,
+    "pnl_pct": -0.018335871955905775,
+    "exit_reason": "stop_loss",
+    "ticker": "457190"
+  },
+  {
+    "entry_ts": "2025-06-26T11:46:00",
+    "exit_ts": "2025-06-26T13:15:00",
+    "entry_price": 45063.515,
+    "exit_price": 44739.4491375,
+    "pnl": -427.015205395619,
+    "pnl_pct": -0.009474430983051606,
+    "exit_reason": "stop_loss",
+    "ticker": "457190"
+  },
+  {
+    "entry_ts": "2025-06-27T10:46:00",
+    "exit_ts": "2025-06-27T12:11:00",
+    "entry_price": 83625.08,
+    "exit_price": 83487.44625000001,
+    "pnl": -329.6755214375007,
+    "pnl_pct": -0.003941713150239998,
+    "exit_reason": "stop_loss",
+    "ticker": "064400"
+  },
+  {
+    "entry_ts": "2025-06-27T09:51:00",
+    "exit_ts": "2025-06-27T10:24:00",
+    "entry_price": 35710.71,
+    "exit_price": 36988.9,
+    "pnl": 1193.3072585000045,
+    "pnl_pct": 0.03341093720221794,
+    "exit_reason": "momentum_fade",
+    "ticker": "103590"
+  },
+  {
+    "entry_ts": "2025-06-30T09:33:00",
+    "exit_ts": "2025-06-30T11:02:00",
+    "entry_price": 112033.59999999999,
+    "exit_price": 112383.77475,
+    "pnl": 91.7445942875056,
+    "pnl_pct": 0.0008187796755822026,
+    "exit_reason": "stop_loss",
+    "ticker": "096770"
+  },
+  {
+    "entry_ts": "2025-06-30T10:08:00",
+    "exit_ts": "2025-06-30T12:03:00",
+    "entry_price": 208562.55,
+    "exit_price": 207612.6975,
+    "pnl": -1427.504182124976,
+    "pnl_pct": -0.0068434629736339745,
+    "exit_reason": "stop_loss",
+    "ticker": "036570"
+  },
+  {
+    "entry_ts": "2025-06-30T09:55:00",
+    "exit_ts": "2025-06-30T15:35:00",
+    "entry_price": 60118.03,
+    "exit_price": 59882.03,
+    "pnl": -373.7640690000044,
+    "pnl_pct": -0.006216238502793333,
+    "exit_reason": "forced_close",
+    "ticker": "010950"
+  },
+  {
+    "entry_ts": "2025-07-01T10:47:00",
+    "exit_ts": "2025-07-01T15:35:00",
+    "entry_price": 234570.35,
+    "exit_price": 223932.80000000002,
+    "pnl": -11154.19107249999,
+    "pnl_pct": -0.047544449649202354,
+    "exit_reason": "forced_close",
+    "ticker": "034730"
+  },
+  {
+    "entry_ts": "2025-07-01T10:22:00",
+    "exit_ts": "2025-07-01T11:43:00",
+    "entry_price": 33610.08,
+    "exit_price": 33935.99694576,
+    "pnl": 247.91304032660992,
+    "pnl_pct": 0.0073750451932208345,
+    "exit_reason": "breakeven_stop",
+    "ticker": "009830"
+  },
+  {
+    "entry_ts": "2025-07-03T10:14:00",
+    "exit_ts": "2025-07-03T10:57:00",
+    "entry_price": 50715.21,
+    "exit_price": 49612.611750000004,
+    "pnl": -1216.8726467624947,
+    "pnl_pct": -0.023990636009217126,
+    "exit_reason": "stop_loss",
+    "ticker": "112610"
+  },
+  {
+    "entry_ts": "2025-07-03T09:48:00",
+    "exit_ts": "2025-07-03T10:52:00",
+    "entry_price": 36861.055,
+    "exit_price": 36746.47275,
+    "pnl": -199.11632466250012,
+    "pnl_pct": -0.0054009973858112886,
+    "exit_reason": "stop_loss",
+    "ticker": "005070"
+  },
+  {
+    "entry_ts": "2025-07-08T10:25:00",
+    "exit_ts": "2025-07-08T15:35:00",
+    "entry_price": 17345.202,
+    "exit_price": 17314.804,
+    "pnl": -70.22660890000043,
+    "pnl_pct": -0.004048155593029539,
+    "exit_reason": "forced_close",
+    "ticker": "010140"
+  },
+  {
+    "entry_ts": "2025-07-08T11:08:00",
+    "exit_ts": "2025-07-08T13:37:00",
+    "entry_price": 559167.7,
+    "exit_price": 585411.82375,
+    "pnl": 24901.61317393754,
+    "pnl_pct": 0.04452667507827029,
+    "exit_reason": "breakeven_stop",
+    "ticker": "214450"
+  },
+  {
+    "entry_ts": "2025-07-08T10:42:00",
+    "exit_ts": "2025-07-08T14:13:00",
+    "entry_price": 132739.81,
+    "exit_price": 135444.35450000002,
+    "pnl": 2393.4281663250003,
+    "pnl_pct": 0.01802827053876383,
+    "exit_reason": "breakeven_stop",
+    "ticker": "267250"
+  },
+  {
+    "entry_ts": "2025-07-09T11:03:00",
+    "exit_ts": "2025-07-09T13:16:00",
+    "entry_price": 30109.03,
+    "exit_price": 30104.5909125,
+    "pnl": -73.68031246187456,
+    "pnl_pct": -0.002446749764856712,
+    "exit_reason": "stop_loss",
+    "ticker": "003540"
+  },
+  {
+    "entry_ts": "2025-07-10T11:50:00",
+    "exit_ts": "2025-07-10T15:01:00",
+    "entry_price": 131939.57,
+    "exit_price": 140830.02873336108,
+    "pnl": 8567.883236084337,
+    "pnl_pct": 0.06492819588806743,
+    "exit_reason": "breakeven_stop",
+    "ticker": "141080"
+  },
+  {
+    "entry_ts": "2025-07-10T09:46:00",
+    "exit_ts": "2025-07-10T13:40:00",
+    "entry_price": 40162.045,
+    "exit_price": 40551.496350365,
+    "pnl": 296.24132646172075,
+    "pnl_pct": 0.0073750451932211546,
+    "exit_reason": "breakeven_stop",
+    "ticker": "226950"
+  },
+  {
+    "entry_ts": "2025-07-10T09:40:00",
+    "exit_ts": "2025-07-10T11:48:00",
+    "entry_price": 3310.993,
+    "exit_price": 3099.220117621283,
+    "pnl": -218.93285458160244,
+    "pnl_pct": -0.06611310249785055,
+    "exit_reason": "stop_loss",
+    "ticker": "090710"
+  },
+  {
+    "entry_ts": "2025-07-11T10:13:00",
+    "exit_ts": "2025-07-11T15:35:00",
+    "entry_price": 36010.799999999996,
+    "exit_price": 35389.380000000005,
+    "pnl": -702.9087869999858,
+    "pnl_pct": -0.019516460797733226,
+    "exit_reason": "forced_close",
+    "ticker": "009830"
+  },
+  {
+    "entry_ts": "2025-07-11T10:32:00",
+    "exit_ts": "2025-07-11T12:01:00",
+    "entry_price": 35760.725,
+    "exit_price": 35284.4115,
+    "pnl": -557.5390934749958,
+    "pnl_pct": -0.015588483599080351,
+    "exit_reason": "stop_loss",
+    "ticker": "004020"
+  },
+  {
+    "entry_ts": "2025-07-14T11:38:00",
+    "exit_ts": "2025-07-14T14:00:00",
+    "entry_price": 172651.78,
+    "exit_price": 174735.06375,
+    "pnl": 1681.7055959375284,
+    "pnl_pct": 0.00973898663501088,
+    "exit_reason": "stop_loss",
+    "ticker": "001040"
+  },
+  {
+    "entry_ts": "2025-07-14T10:16:00",
+    "exit_ts": "2025-07-14T15:35:00",
+    "entry_price": 144443.32,
+    "exit_price": 140657.79,
+    "pnl": -4109.610746499995,
+    "pnl_pct": -0.028447105739056632,
+    "exit_reason": "forced_close",
+    "ticker": "032830"
+  },
+  {
+    "entry_ts": "2025-07-15T11:30:00",
+    "exit_ts": "2025-07-15T11:52:00",
+    "entry_price": 210563.15,
+    "exit_price": 220283.89500000002,
+    "pnl": 9215.55015325002,
+    "pnl_pct": 0.04375964183688273,
+    "exit_reason": "breakeven_stop",
+    "ticker": "087010"
+  },
+  {
+    "entry_ts": "2025-07-15T10:57:00",
+    "exit_ts": "2025-07-15T13:15:00",
+    "entry_price": 40362.104999999996,
+    "exit_price": 40859.7384,
+    "pnl": 403.7306466900045,
+    "pnl_pct": 0.010001215154055474,
+    "exit_reason": "breakeven_stop",
+    "ticker": "103590"
+  },
+  {
+    "entry_ts": "2025-07-18T09:49:00",
+    "exit_ts": "2025-07-18T10:15:00",
+    "entry_price": 53916.17,
+    "exit_price": 53121.558750000004,
+    "pnl": -916.9100268124967,
+    "pnl_pct": -0.0170036653370567,
+    "exit_reason": "stop_loss",
+    "ticker": "450080"
+  },
+  {
+    "entry_ts": "2025-07-18T09:57:00",
+    "exit_ts": "2025-07-18T10:39:00",
+    "entry_price": 143042.9,
+    "exit_price": 142599.70725,
+    "pnl": -771.2385555874789,
+    "pnl_pct": -0.005390850487192345,
+    "exit_reason": "stop_loss",
+    "ticker": "310210"
+  },
+  {
+    "entry_ts": "2025-07-18T09:50:00",
+    "exit_ts": "2025-07-18T10:15:00",
+    "entry_price": 61618.479999999996,
+    "exit_price": 62215.99440056,
+    "pnl": 454.50724059880304,
+    "pnl_pct": 0.007375045193221132,
+    "exit_reason": "breakeven_stop",
+    "ticker": "066970"
+  },
+  {
+    "entry_ts": "2025-07-18T10:39:00",
+    "exit_ts": "2025-07-18T15:35:00",
+    "entry_price": 40512.15,
+    "exit_price": 41987.4,
+    "pnl": 1378.900267500001,
+    "pnl_pct": 0.03403160443176872,
+    "exit_reason": "forced_close",
+    "ticker": "226950"
+  },
+  {
+    "entry_ts": "2025-07-21T09:36:00",
+    "exit_ts": "2025-07-21T09:43:00",
+    "entry_price": 6361.907999999999,
+    "exit_price": 6277.116300000001,
+    "pnl": -99.24178624499837,
+    "pnl_pct": -0.015597035073387878,
+    "exit_reason": "stop_loss",
+    "ticker": "030530"
+  },
+  {
+    "entry_ts": "2025-07-21T11:44:00",
+    "exit_ts": "2025-07-21T15:35:00",
+    "entry_price": 6351.905,
+    "exit_price": 6348.095,
+    "pnl": -18.411189999998896,
+    "pnl_pct": -0.0028980957265085897,
+    "exit_reason": "forced_close",
+    "ticker": "030530"
+  },
+  {
+    "entry_ts": "2025-07-22T10:50:00",
+    "exit_ts": "2025-07-22T15:35:00",
+    "entry_price": 33710.11,
+    "exit_price": 32090.370000000003,
+    "pnl": -1693.7908119999993,
+    "pnl_pct": -0.05023824548430061,
+    "exit_reason": "forced_close",
+    "ticker": "290650"
+  },
+  {
+    "entry_ts": "2025-07-22T11:20:00",
+    "exit_ts": "2025-07-22T15:35:00",
+    "entry_price": 44313.29,
+    "exit_price": 43087.07,
+    "pnl": -1325.504194000001,
+    "pnl_pct": -0.029907628122178977,
+    "exit_reason": "forced_close",
+    "ticker": "226950"
+  },
+  {
+    "entry_ts": "2025-07-23T09:35:00",
+    "exit_ts": "2025-07-23T14:10:00",
+    "entry_price": 95728.70999999999,
+    "exit_price": 96656.99130087,
+    "pnl": 706.1094630731241,
+    "pnl_pct": 0.00737504519322096,
+    "exit_reason": "breakeven_stop",
+    "ticker": "010060"
+  },
+  {
+    "entry_ts": "2025-07-24T10:31:00",
+    "exit_ts": "2025-07-24T11:57:00",
+    "entry_price": 86425.92,
+    "exit_price": 89373.18000000001,
+    "pnl": 2742.143775000004,
+    "pnl_pct": 0.0317234981718764,
+    "exit_reason": "momentum_fade",
+    "ticker": "298380"
+  },
+  {
+    "entry_ts": "2025-07-24T11:30:00",
+    "exit_ts": "2025-07-24T14:02:00",
+    "entry_price": 296588.95,
+    "exit_price": 289975.48125,
+    "pnl": -7281.404377187486,
+    "pnl_pct": -0.02454680907814649,
+    "exit_reason": "stop_loss",
+    "ticker": "010120"
+  },
+  {
+    "entry_ts": "2025-07-24T09:48:00",
+    "exit_ts": "2025-07-24T15:35:00",
+    "entry_price": 58417.52,
+    "exit_price": 59682.090000000004,
+    "pnl": 1127.490878500008,
+    "pnl_pct": 0.0192976658412232,
+    "exit_reason": "forced_close",
+    "ticker": "489790"
+  },
+  {
+    "entry_ts": "2025-07-24T10:10:00",
+    "exit_ts": "2025-07-24T11:58:00",
+    "entry_price": 67220.16,
+    "exit_price": 67871.99389152,
+    "pnl": 495.82608065321983,
+    "pnl_pct": 0.0073750451932208345,
+    "exit_reason": "breakeven_stop",
+    "ticker": "066970"
+  },
+  {
+    "entry_ts": "2025-07-24T09:35:00",
+    "exit_ts": "2025-07-24T10:48:00",
+    "entry_price": 40612.18,
+    "exit_price": 38439.24302624157,
+    "pnl": -2261.6731732648404,
+    "pnl_pct": -0.05568117675950578,
+    "exit_reason": "stop_loss",
+    "ticker": "083650"
+  },
+  {
+    "entry_ts": "2025-07-24T09:35:00",
+    "exit_ts": "2025-07-24T09:51:00",
+    "entry_price": 32409.719999999998,
+    "exit_price": 31726.729125,
+    "pnl": -756.0648006187439,
+    "pnl_pct": -0.023324836126555795,
+    "exit_reason": "stop_loss",
+    "ticker": "323280"
+  },
+  {
+    "entry_ts": "2025-07-25T10:01:00",
+    "exit_ts": "2025-07-25T11:00:00",
+    "entry_price": 61418.42,
+    "exit_price": 63281.01,
+    "pnl": 1717.3230655000007,
+    "pnl_pct": 0.02795684919400645,
+    "exit_reason": "momentum_fade",
+    "ticker": "377300"
+  },
+  {
+    "entry_ts": "2025-07-25T10:47:00",
+    "exit_ts": "2025-07-25T15:35:00",
+    "entry_price": 50915.27,
+    "exit_price": 50784.76,
+    "pnl": -247.3345244999946,
+    "pnl_pct": -0.004857038563981135,
+    "exit_reason": "forced_close",
+    "ticker": "086520"
+  },
+  {
+    "entry_ts": "2025-07-25T10:26:00",
+    "exit_ts": "2025-07-25T13:35:00",
+    "entry_price": 23407.02,
+    "exit_price": 23643.5298125,
+    "pnl": 182.1651704031283,
+    "pnl_pct": 0.007781334391377862,
+    "exit_reason": "stop_loss",
+    "ticker": "336260"
+  },
+  {
+    "entry_ts": "2025-07-28T11:04:00",
+    "exit_ts": "2025-07-28T15:35:00",
+    "entry_price": 1279383.7,
+    "exit_price": 1285614.2,
+    "pnl": 3274.521915000165,
+    "pnl_pct": 0.0025590687222125843,
+    "exit_reason": "forced_close",
+    "ticker": "298040"
+  },
+  {
+    "entry_ts": "2025-07-28T09:34:00",
+    "exit_ts": "2025-07-28T09:38:00",
+    "entry_price": 111633.48,
+    "exit_price": 110141.94750000001,
+    "pnl": -1745.0827091249957,
+    "pnl_pct": -0.015629907676237443,
+    "exit_reason": "stop_loss",
+    "ticker": "062040"
+  },
+  {
+    "entry_ts": "2025-07-28T11:39:00",
+    "exit_ts": "2025-07-28T13:49:00",
+    "entry_price": 111333.39,
+    "exit_price": 110726.772,
+    "pnl": -861.38056830001,
+    "pnl_pct": -0.007735786906272423,
+    "exit_reason": "stop_loss",
+    "ticker": "062040"
+  },
+  {
+    "entry_ts": "2025-07-28T10:50:00",
+    "exit_ts": "2025-07-28T12:38:00",
+    "entry_price": 36310.89,
+    "exit_price": 35771.765250000004,
+    "pnl": -621.4806787874986,
+    "pnl_pct": -0.017112978246110147,
+    "exit_reason": "stop_loss",
+    "ticker": "323280"
+  },
+  {
+    "entry_ts": "2025-07-28T09:36:00",
+    "exit_ts": "2025-07-28T10:06:00",
+    "entry_price": 9422.826,
+    "exit_price": 9318.2037,
+    "pnl": -126.06986185499773,
+    "pnl_pct": -0.013377192172694896,
+    "exit_reason": "stop_loss",
+    "ticker": "097230"
+  },
+  {
+    "entry_ts": "2025-07-28T09:33:00",
+    "exit_ts": "2025-07-28T10:25:00",
+    "entry_price": 41462.435,
+    "exit_price": 40742.7735,
+    "pnl": -813.4778282749903,
+    "pnl_pct": -0.019616692191407843,
+    "exit_reason": "stop_loss",
+    "ticker": "103590"
+  },
+  {
+    "entry_ts": "2025-07-28T11:07:00",
+    "exit_ts": "2025-07-28T15:35:00",
+    "entry_price": 39211.76,
+    "exit_price": 38338.495,
+    "pnl": -961.5745282499993,
+    "pnl_pct": -0.024518927834479856,
+    "exit_reason": "forced_close",
+    "ticker": "229640"
+  },
+  {
+    "entry_ts": "2025-07-28T09:57:00",
+    "exit_ts": "2025-07-28T15:35:00",
+    "entry_price": 48364.505,
+    "exit_price": 51184.64,
+    "pnl": 2702.833348250002,
+    "pnl_pct": 0.055876266779788075,
+    "exit_reason": "forced_close",
+    "ticker": "101490"
+  },
+  {
+    "entry_ts": "2025-07-29T11:17:00",
+    "exit_ts": "2025-07-29T12:33:00",
+    "entry_price": 66019.8,
+    "exit_price": 69147.2496,
+    "pnl": 2968.880043359997,
+    "pnl_pct": 0.04496279567861877,
+    "exit_reason": "breakeven_stop",
+    "ticker": "489790"
+  },
+  {
+    "entry_ts": "2025-07-29T10:41:00",
+    "exit_ts": "2025-07-29T11:51:00",
+    "entry_price": 297089.1,
+    "exit_price": 299969.9730027,
+    "pnl": 2191.3741957442253,
+    "pnl_pct": 0.007375045193221119,
+    "exit_reason": "breakeven_stop",
+    "ticker": "087010"
+  },
+  {
+    "entry_ts": "2025-07-31T10:05:00",
+    "exit_ts": "2025-07-31T10:17:00",
+    "entry_price": 61118.329999999994,
+    "exit_price": 59749.56975,
+    "pnl": -1506.3895744624897,
+    "pnl_pct": -0.0246434032133241,
+    "exit_reason": "stop_loss",
+    "ticker": "272210"
+  },
+  {
+    "entry_ts": "2025-07-31T10:39:00",
+    "exit_ts": "2025-07-31T14:20:00",
+    "entry_price": 601180.2999999999,
+    "exit_price": 602194.2875,
+    "pnl": -370.9072631249437,
+    "pnl_pct": -0.0006168725678130783,
+    "exit_reason": "stop_loss",
+    "ticker": "000150"
+  },
+  {
+    "entry_ts": "2025-08-04T11:11:00",
+    "exit_ts": "2025-08-04T15:35:00",
+    "entry_price": 17975.391,
+    "exit_price": 18084.573,
+    "pnl": 67.60385940000197,
+    "pnl_pct": 0.003760347707704977,
+    "exit_reason": "forced_close",
+    "ticker": "032350"
+  },
+  {
+    "entry_ts": "2025-08-05T09:36:00",
+    "exit_ts": "2025-08-05T11:23:00",
+    "entry_price": 219565.85,
+    "exit_price": 211933.73614593974,
+    "pnl": -8120.706264274049,
+    "pnl_pct": -0.036979741344215854,
+    "exit_reason": "stop_loss",
+    "ticker": "006400"
+  },
+  {
+    "entry_ts": "2025-08-05T09:35:00",
+    "exit_ts": "2025-08-05T11:40:00",
+    "entry_price": 124037.2,
+    "exit_price": 118977.64176641105,
+    "pnl": -5333.96574338674,
+    "pnl_pct": -0.04299650240832155,
+    "exit_reason": "stop_loss",
+    "ticker": "247540"
+  },
+  {
+    "entry_ts": "2025-08-05T10:39:00",
+    "exit_ts": "2025-08-05T15:35:00",
+    "entry_price": 146643.97999999998,
+    "exit_price": 148355.48,
+    "pnl": 1370.539121000038,
+    "pnl_pct": 0.009344628882579385,
+    "exit_reason": "forced_close",
+    "ticker": "003670"
+  },
+  {
+    "entry_ts": "2025-08-05T09:34:00",
+    "exit_ts": "2025-08-05T15:35:00",
+    "entry_price": 52415.72,
+    "exit_price": 52084.37,
+    "pnl": -451.1937534999961,
+    "pnl_pct": -0.00860669441509738,
+    "exit_reason": "forced_close",
+    "ticker": "086520"
+  },
+  {
+    "entry_ts": "2025-08-05T09:52:00",
+    "exit_ts": "2025-08-05T15:35:00",
+    "entry_price": 71521.45,
+    "exit_price": 71378.58,
+    "pnl": -307.0621644999919,
+    "pnl_pct": -0.004292643844373673,
+    "exit_reason": "forced_close",
+    "ticker": "066970"
+  },
+  {
+    "entry_ts": "2025-08-05T09:33:00",
+    "exit_ts": "2025-08-05T15:35:00",
+    "entry_price": 53015.9,
+    "exit_price": 54483.65,
+    "pnl": 1342.6577675000008,
+    "pnl_pct": 0.02532176948877874,
+    "exit_reason": "forced_close",
+    "ticker": "450080"
+  },
+  {
+    "entry_ts": "2025-08-06T10:00:00",
+    "exit_ts": "2025-08-06T10:03:00",
+    "entry_price": 214564.35,
+    "exit_price": 215410.3575,
+    "pnl": 350.6905788750155,
+    "pnl_pct": 0.0016341856565526326,
+    "exit_reason": "trailing_stop",
+    "ticker": "278470"
+  },
+  {
+    "entry_ts": "2025-08-06T10:29:00",
+    "exit_ts": "2025-08-06T10:56:00",
+    "entry_price": 53716.11,
+    "exit_price": 49403.99555364001,
+    "pnl": -4426.390453300315,
+    "pnl_pct": -0.08239104794280838,
+    "exit_reason": "stop_loss",
+    "ticker": "257720"
+  },
+  {
+    "entry_ts": "2025-08-06T11:33:00",
+    "exit_ts": "2025-08-06T13:26:00",
+    "entry_price": 49864.955,
+    "exit_price": 50976.452475,
+    "pnl": 994.4183589287495,
+    "pnl_pct": 0.01993923825953453,
+    "exit_reason": "breakeven_stop",
+    "ticker": "457190"
+  },
+  {
+    "entry_ts": "2025-08-06T10:28:00",
+    "exit_ts": "2025-08-06T13:44:00",
+    "entry_price": 95028.5,
+    "exit_price": 96548.52675,
+    "pnl": 1298.1931424875074,
+    "pnl_pct": 0.013659043789190604,
+    "exit_reason": "stop_loss",
+    "ticker": "052690"
+  },
+  {
+    "entry_ts": "2025-08-07T09:35:00",
+    "exit_ts": "2025-08-07T15:35:00",
+    "entry_price": 33860.155,
+    "exit_price": 33889.83,
+    "pnl": -48.26715775000048,
+    "pnl_pct": -0.0014252716433869293,
+    "exit_reason": "forced_close",
+    "ticker": "131970"
+  },
+  {
+    "entry_ts": "2025-08-08T09:56:00",
+    "exit_ts": "2025-08-08T10:34:00",
+    "entry_price": 22206.66,
+    "exit_price": 21882.183375,
+    "pnl": -374.8543182562498,
+    "pnl_pct": -0.016877733911424258,
+    "exit_reason": "stop_loss",
+    "ticker": "034230"
+  },
+  {
+    "entry_ts": "2025-08-11T10:17:00",
+    "exit_ts": "2025-08-11T15:35:00",
+    "entry_price": 69420.81999999999,
+    "exit_price": 69379.18000000001,
+    "pnl": -201.2183599999844,
+    "pnl_pct": -0.0028980957265085385,
+    "exit_reason": "forced_close",
+    "ticker": "034020"
+  },
+  {
+    "entry_ts": "2025-08-11T10:59:00",
+    "exit_ts": "2025-08-11T15:35:00",
+    "entry_price": 130239.06,
+    "exit_price": 133959.80000000002,
+    "pnl": 3413.1905710000137,
+    "pnl_pct": 0.026203188730014128,
+    "exit_reason": "forced_close",
+    "ticker": "247540"
+  },
+  {
+    "entry_ts": "2025-08-11T10:30:00",
+    "exit_ts": "2025-08-11T15:35:00",
+    "entry_price": 159747.91,
+    "exit_price": 162851.13,
+    "pnl": 2729.127884000016,
+    "pnl_pct": 0.017081403920799865,
+    "exit_reason": "forced_close",
+    "ticker": "003670"
+  },
+  {
+    "entry_ts": "2025-08-11T09:33:00",
+    "exit_ts": "2025-08-11T09:46:00",
+    "entry_price": 46939.0775,
+    "exit_price": 47394.2457345175,
+    "pnl": 346.22974456328666,
+    "pnl_pct": 0.007375045193221002,
+    "exit_reason": "breakeven_stop",
+    "ticker": "005070"
+  },
+  {
+    "entry_ts": "2025-08-11T11:46:00",
+    "exit_ts": "2025-08-11T12:58:00",
+    "entry_price": 47414.22,
+    "exit_price": 47096.7417375,
+    "pnl": -425.8483902356311,
+    "pnl_pct": -0.008980101803999887,
+    "exit_reason": "stop_loss",
+    "ticker": "005070"
+  },
+  {
+    "entry_ts": "2025-08-13T10:24:00",
+    "exit_ts": "2025-08-13T15:35:00",
+    "entry_price": 62418.72,
+    "exit_price": 64380.68,
+    "pnl": 1814.1787299999996,
+    "pnl_pct": 0.029060298641231334,
+    "exit_reason": "forced_close",
+    "ticker": "095340"
+  },
+  {
+    "entry_ts": "2025-08-14T09:52:00",
+    "exit_ts": "2025-08-14T15:35:00",
+    "entry_price": 27808.34,
+    "exit_price": 26142.155000000002,
+    "pnl": -1726.561884249997,
+    "pnl_pct": -0.062078604433388536,
+    "exit_reason": "forced_close",
+    "ticker": "336260"
+  },
+  {
+    "entry_ts": "2025-08-14T11:49:00",
+    "exit_ts": "2025-08-14T13:16:00",
+    "entry_price": 54616.38,
+    "exit_price": 54610.6119,
+    "pnl": -131.37337258498883,
+    "pnl_pct": -0.002405023356263426,
+    "exit_reason": "stop_loss",
+    "ticker": "445680"
+  },
+  {
+    "entry_ts": "2025-08-19T10:54:00",
+    "exit_ts": "2025-08-19T15:35:00",
+    "entry_price": 31659.495,
+    "exit_price": 31790.460000000003,
+    "pnl": 57.86658675000217,
+    "pnl_pct": 0.001827505715545766,
+    "exit_reason": "forced_close",
+    "ticker": "263750"
+  },
+  {
+    "entry_ts": "2025-08-22T11:31:00",
+    "exit_ts": "2025-08-22T14:37:00",
+    "entry_price": 161048.3,
+    "exit_price": 161309.09275,
+    "pnl": -110.1790444124781,
+    "pnl_pct": -0.000684034044659105,
+    "exit_reason": "stop_loss",
+    "ticker": "006260"
+  },
+  {
+    "entry_ts": "2025-08-22T10:08:00",
+    "exit_ts": "2025-08-22T10:59:00",
+    "entry_price": 27458.235,
+    "exit_price": 27096.8685,
+    "pnl": -423.7435025249979,
+    "pnl_pct": -0.015429977583497921,
+    "exit_reason": "stop_loss",
+    "ticker": "336260"
+  },
+  {
+    "entry_ts": "2025-08-25T09:33:00",
+    "exit_ts": "2025-08-25T15:35:00",
+    "entry_price": 2610.783,
+    "exit_price": 2589.223,
+    "pnl": -27.51844690000007,
+    "pnl_pct": -0.010538723345462747,
+    "exit_reason": "forced_close",
+    "ticker": "090710"
+  },
+  {
+    "entry_ts": "2025-08-25T10:49:00",
+    "exit_ts": "2025-08-25T15:35:00",
+    "entry_price": 120636.18,
+    "exit_price": 119164.24,
+    "pnl": -1746.238542999985,
+    "pnl_pct": -0.014473076373132917,
+    "exit_reason": "forced_close",
+    "ticker": "310210"
+  },
+  {
+    "entry_ts": "2025-08-25T09:33:00",
+    "exit_ts": "2025-08-25T15:35:00",
+    "entry_price": 5891.767,
+    "exit_price": 5738.278,
+    "pnl": -166.71006274999945,
+    "pnl_pct": -0.028291183271673983,
+    "exit_reason": "forced_close",
+    "ticker": "003530"
+  },
+  {
+    "entry_ts": "2025-08-26T11:14:00",
+    "exit_ts": "2025-08-26T15:35:00",
+    "entry_price": 83525.05,
+    "exit_price": 83175.04000000001,
+    "pnl": -541.3650934999896,
+    "pnl_pct": -0.0064804977777906435,
+    "exit_reason": "forced_close",
+    "ticker": "183300"
+  },
+  {
+    "entry_ts": "2025-08-27T09:34:00",
+    "exit_ts": "2025-08-27T13:51:00",
+    "entry_price": 29358.805,
+    "exit_price": 27001.997569820003,
+    "pnl": -2419.2655457051114,
+    "pnl_pct": -0.08239104794280852,
+    "exit_reason": "stop_loss",
+    "ticker": "336260"
+  },
+  {
+    "entry_ts": "2025-08-28T11:34:00",
+    "exit_ts": "2025-08-28T12:45:00",
+    "entry_price": 14794.437,
+    "exit_price": 14835.04815,
+    "pnl": 6.496630927502338,
+    "pnl_pct": 0.00043906074824040184,
+    "exit_reason": "stop_loss",
+    "ticker": "097230"
+  },
+  {
+    "entry_ts": "2025-08-28T09:55:00",
+    "exit_ts": "2025-08-28T10:03:00",
+    "entry_price": 14334.298999999999,
+    "exit_price": 14133.25875,
+    "pnl": -233.57690116249796,
+    "pnl_pct": -0.016292521167726143,
+    "exit_reason": "stop_loss",
+    "ticker": "437730"
+  },
+  {
+    "entry_ts": "2025-08-29T09:41:00",
+    "exit_ts": "2025-08-29T09:58:00",
+    "entry_price": 153746.11,
+    "exit_price": 152931.60675,
+    "pnl": -1166.3681210124923,
+    "pnl_pct": -0.007585188282381175,
+    "exit_reason": "stop_loss",
+    "ticker": "347850"
+  },
+  {
+    "entry_ts": "2025-08-29T11:58:00",
+    "exit_ts": "2025-08-29T13:51:00",
+    "entry_price": 153846.13999999998,
+    "exit_price": 153813.34215,
+    "pnl": -386.57345662248554,
+    "pnl_pct": -0.0025123508415654137,
+    "exit_reason": "stop_loss",
+    "ticker": "347850"
+  },
+  {
+    "entry_ts": "2025-08-29T09:33:00",
+    "exit_ts": "2025-08-29T13:40:00",
+    "entry_price": 44163.244999999995,
+    "exit_price": 45855.6141875,
+    "pnl": 1587.155130246887,
+    "pnl_pct": 0.03593298211404041,
+    "exit_reason": "trailing_stop",
+    "ticker": "082740"
+  },
+  {
+    "entry_ts": "2025-09-01T09:43:00",
+    "exit_ts": "2025-09-01T10:26:00",
+    "entry_price": 23857.155,
+    "exit_price": 23539.186125,
+    "pnl": -372.1566984187484,
+    "pnl_pct": -0.015597035073388067,
+    "exit_reason": "stop_loss",
+    "ticker": "397030"
+  },
+  {
+    "entry_ts": "2025-09-02T09:53:00",
+    "exit_ts": "2025-09-02T10:05:00",
+    "entry_price": 55416.619999999995,
+    "exit_price": 54486.14925,
+    "pnl": -1055.9284638874888,
+    "pnl_pct": -0.019051506540325502,
+    "exit_reason": "stop_loss",
+    "ticker": "272210"
+  },
+  {
+    "entry_ts": "2025-09-02T11:26:00",
+    "exit_ts": "2025-09-02T12:29:00",
+    "entry_price": 15344.601999999999,
+    "exit_price": 14971.5072,
+    "pnl": -407.5852307799996,
+    "pnl_pct": -0.02655814091265938,
+    "exit_reason": "stop_loss",
+    "ticker": "437730"
+  },
+  {
+    "entry_ts": "2025-09-03T10:57:00",
+    "exit_ts": "2025-09-03T14:11:00",
+    "entry_price": 33760.125,
+    "exit_price": 33296.757975,
+    "pnl": -540.0190733962518,
+    "pnl_pct": -0.015993367402634,
+    "exit_reason": "stop_loss",
+    "ticker": "017960"
+  },
+  {
+    "entry_ts": "2025-09-04T09:34:00",
+    "exit_ts": "2025-09-04T15:35:00",
+    "entry_price": 33059.915,
+    "exit_price": 32440.265,
+    "pnl": -694.3555570000026,
+    "pnl_pct": -0.02099979444251776,
+    "exit_reason": "forced_close",
+    "ticker": "290650"
+  },
+  {
+    "entry_ts": "2025-09-05T09:41:00",
+    "exit_ts": "2025-09-05T12:09:00",
+    "entry_price": 48964.685,
+    "exit_price": 45033.99594694,
+    "pnl": -4034.8568470959217,
+    "pnl_pct": -0.08239104794280859,
+    "exit_reason": "stop_loss",
+    "ticker": "077970"
+  },
+  {
+    "entry_ts": "2025-09-05T10:37:00",
+    "exit_ts": "2025-09-05T11:04:00",
+    "entry_price": 36911.07,
+    "exit_price": 36454.0605,
+    "pnl": -540.9223905750041,
+    "pnl_pct": -0.014652549069570356,
+    "exit_reason": "stop_loss",
+    "ticker": "290650"
+  },
+  {
+    "entry_ts": "2025-09-05T10:54:00",
+    "exit_ts": "2025-09-05T15:35:00",
+    "entry_price": 42362.705,
+    "exit_price": 40537.835,
+    "pnl": -1918.380750999997,
+    "pnl_pct": -0.045277869697991205,
+    "exit_reason": "forced_close",
+    "ticker": "028300"
+  },
+  {
+    "entry_ts": "2025-09-09T09:57:00",
+    "exit_ts": "2025-09-09T10:00:00",
+    "entry_price": 10763.228,
+    "exit_price": 10936.21815,
+    "pnl": 147.8627967775028,
+    "pnl_pct": 0.013735713921920094,
+    "exit_reason": "breakeven_stop",
+    "ticker": "030530"
+  },
+  {
+    "entry_ts": "2025-09-09T09:47:00",
+    "exit_ts": "2025-09-09T13:05:00",
+    "entry_price": 82624.78,
+    "exit_price": 80754.516375,
+    "pnl": -2056.279552206237,
+    "pnl_pct": -0.024883226999609043,
+    "exit_reason": "stop_loss",
+    "ticker": "439260"
+  },
+  {
+    "entry_ts": "2025-09-09T09:37:00",
+    "exit_ts": "2025-09-09T09:47:00",
+    "entry_price": 26708.01,
+    "exit_price": 26463.308625,
+    "pnl": -305.6036900437466,
+    "pnl_pct": -0.011440682265930402,
+    "exit_reason": "stop_loss",
+    "ticker": "222800"
+  },
+  {
+    "entry_ts": "2025-09-09T11:47:00",
+    "exit_ts": "2025-09-09T13:17:00",
+    "entry_price": 27158.145,
+    "exit_price": 27501.747,
+    "pnl": 280.39952220000123,
+    "pnl_pct": 0.010323144993139785,
+    "exit_reason": "breakeven_stop",
+    "ticker": "222800"
+  },
+  {
+    "entry_ts": "2025-09-09T11:36:00",
+    "exit_ts": "2025-09-09T14:07:00",
+    "entry_price": 66619.98,
+    "exit_price": 65807.75175,
+    "pnl": -963.7079132624931,
+    "pnl_pct": -0.014463579526077311,
+    "exit_reason": "stop_loss",
+    "ticker": "011170"
+  },
+  {
+    "entry_ts": "2025-09-10T11:00:00",
+    "exit_ts": "2025-09-10T15:35:00",
+    "entry_price": 113033.9,
+    "exit_price": 112566.22,
+    "pnl": -726.6524579999823,
+    "pnl_pct": -0.006427659989423621,
+    "exit_reason": "forced_close",
+    "ticker": "062040"
+  },
+  {
+    "entry_ts": "2025-09-10T09:33:00",
+    "exit_ts": "2025-09-10T10:10:00",
+    "entry_price": 2895.8685,
+    "exit_price": 3039.088,
+    "pnl": 136.25108052500036,
+    "pnl_pct": 0.04704310500566968,
+    "exit_reason": "momentum_fade",
+    "ticker": "090710"
+  },
+  {
+    "entry_ts": "2025-09-11T09:52:00",
+    "exit_ts": "2025-09-11T10:04:00",
+    "entry_price": 29258.774999999998,
+    "exit_price": 29192.489625000002,
+    "pnl": -133.4380439437482,
+    "pnl_pct": -0.004559932233631187,
+    "exit_reason": "stop_loss",
+    "ticker": "336260"
+  },
+  {
+    "entry_ts": "2025-09-11T11:38:00",
+    "exit_ts": "2025-09-11T12:06:00",
+    "entry_price": 8592.577,
+    "exit_price": 8401.978650000001,
+    "pnl": -209.95149064749967,
+    "pnl_pct": -0.024430389468386795,
+    "exit_reason": "stop_loss",
+    "ticker": "319400"
+  },
+  {
+    "entry_ts": "2025-09-11T09:42:00",
+    "exit_ts": "2025-09-11T10:03:00",
+    "entry_price": 86325.89,
+    "exit_price": 85286.90625,
+    "pnl": -1235.2994819374871,
+    "pnl_pct": -0.014307575801480487,
+    "exit_reason": "stop_loss",
+    "ticker": "439260"
+  },
+  {
+    "entry_ts": "2025-09-11T11:03:00",
+    "exit_ts": "2025-09-11T15:35:00",
+    "entry_price": 51115.33,
+    "exit_price": 48235.525,
+    "pnl": -2991.1786782499985,
+    "pnl_pct": -0.05850945437972693,
+    "exit_reason": "forced_close",
+    "ticker": "445680"
+  },
+  {
+    "entry_ts": "2025-09-12T10:09:00",
+    "exit_ts": "2025-09-12T11:43:00",
+    "entry_price": 48114.43,
+    "exit_price": 50284.91,
+    "pnl": 2055.1502790000086,
+    "pnl_pct": 0.04270739677664486,
+    "exit_reason": "momentum_fade",
+    "ticker": "950160"
+  },
+  {
+    "entry_ts": "2025-09-16T11:10:00",
+    "exit_ts": "2025-09-16T11:30:00",
+    "entry_price": 35110.53,
+    "exit_price": 34602.11625,
+    "pnl": -588.0748794374958,
+    "pnl_pct": -0.01674673328586269,
+    "exit_reason": "stop_loss",
+    "ticker": "017960"
+  },
+  {
+    "entry_ts": "2025-09-17T09:51:00",
+    "exit_ts": "2025-09-17T13:00:00",
+    "entry_price": 22356.704999999998,
+    "exit_price": 22983.60285,
+    "pnl": 574.1295981225012,
+    "pnl_pct": 0.02567656958387926,
+    "exit_reason": "breakeven_stop",
+    "ticker": "034230"
+  },
+  {
+    "entry_ts": "2025-09-17T09:49:00",
+    "exit_ts": "2025-09-17T09:52:00",
+    "entry_price": 16274.881,
+    "exit_price": 16501.797975,
+    "pnl": 188.99687720375005,
+    "pnl_pct": 0.011611054601502859,
+    "exit_reason": "breakeven_stop",
+    "ticker": "089970"
+  },
+  {
+    "entry_ts": "2025-09-17T11:52:00",
+    "exit_ts": "2025-09-17T13:28:00",
+    "entry_price": 16835.049,
+    "exit_price": 17031.439035,
+    "pnl": 157.24718372475036,
+    "pnl_pct": 0.009339064007756833,
+    "exit_reason": "stop_loss",
+    "ticker": "089970"
+  },
+  {
+    "entry_ts": "2025-09-18T11:54:00",
+    "exit_ts": "2025-09-18T13:29:00",
+    "entry_price": 21906.57,
+    "exit_price": 20909.1699700834,
+    "pnl": -1045.6407308522794,
+    "pnl_pct": -0.047724673842871775,
+    "exit_reason": "stop_loss",
+    "ticker": "440110"
+  },
+  {
+    "entry_ts": "2025-09-19T11:54:00",
+    "exit_ts": "2025-09-19T13:06:00",
+    "entry_price": 91727.51,
+    "exit_price": 102169.34,
+    "pnl": 10208.406792500013,
+    "pnl_pct": 0.1112738780452652,
+    "exit_reason": "momentum_fade",
+    "ticker": "226950"
+  },
+  {
+    "entry_ts": "2025-09-19T11:24:00",
+    "exit_ts": "2025-09-19T15:35:00",
+    "entry_price": 33460.034999999996,
+    "exit_price": 33140.055,
+    "pnl": -396.2501234999945,
+    "pnl_pct": -0.011840713702055609,
+    "exit_reason": "forced_close",
+    "ticker": "403870"
+  },
+  {
+    "entry_ts": "2025-09-22T11:32:00",
+    "exit_ts": "2025-09-22T13:23:00",
+    "entry_price": 36660.994999999995,
+    "exit_price": 36356.58975,
+    "pnl": -388.07106721249147,
+    "pnl_pct": -0.01058380617554704,
+    "exit_reason": "stop_loss",
+    "ticker": "222800"
+  },
+  {
+    "entry_ts": "2025-09-22T09:34:00",
+    "exit_ts": "2025-09-22T13:00:00",
+    "entry_price": 23507.05,
+    "exit_price": 23734.997863850003,
+    "pnl": 173.39156094272766,
+    "pnl_pct": 0.007375045193221237,
+    "exit_reason": "breakeven_stop",
+    "ticker": "440110"
+  },
+  {
+    "entry_ts": "2025-09-23T11:32:00",
+    "exit_ts": "2025-09-23T13:21:00",
+    "entry_price": 50015.0,
+    "exit_price": 50499.995455000004,
+    "pnl": 368.91821477175836,
+    "pnl_pct": 0.007375045193221184,
+    "exit_reason": "breakeven_stop",
+    "ticker": "950160"
+  },
+  {
+    "entry_ts": "2025-09-24T10:33:00",
+    "exit_ts": "2025-09-24T11:14:00",
+    "entry_price": 13704.109999999999,
+    "exit_price": 13382.733975000001,
+    "pnl": -352.20451954624696,
+    "pnl_pct": -0.025696794377141473,
+    "exit_reason": "stop_loss",
+    "ticker": "030530"
+  },
+  {
+    "entry_ts": "2025-09-29T09:59:00",
+    "exit_ts": "2025-09-29T11:02:00",
+    "entry_price": 29658.895,
+    "exit_price": 29436.1665,
+    "pnl": -290.46509222500026,
+    "pnl_pct": -0.009792054929748762,
+    "exit_reason": "stop_loss",
+    "ticker": "397030"
+  },
+  {
+    "entry_ts": "2025-09-30T10:58:00",
+    "exit_ts": "2025-09-30T14:12:00",
+    "entry_price": 28558.565,
+    "exit_price": 27974.10525,
+    "pnl": -648.8878610374995,
+    "pnl_pct": -0.022717897151209494,
+    "exit_reason": "stop_loss",
+    "ticker": "353200"
+  },
+  {
+    "entry_ts": "2025-09-30T10:26:00",
+    "exit_ts": "2025-09-30T10:55:00",
+    "entry_price": 18065.417999999998,
+    "exit_price": 17778.664800000002,
+    "pnl": -327.6871420199932,
+    "pnl_pct": -0.018136197918063406,
+    "exit_reason": "stop_loss",
+    "ticker": "007810"
+  },
+  {
+    "entry_ts": "2025-10-01T09:54:00",
+    "exit_ts": "2025-10-01T10:33:00",
+    "entry_price": 49914.97,
+    "exit_price": 49612.611750000004,
+    "pnl": -416.5126107624965,
+    "pnl_pct": -0.00834319129593808,
+    "exit_reason": "stop_loss",
+    "ticker": "082740"
+  },
+  {
+    "entry_ts": "2025-10-01T11:00:00",
+    "exit_ts": "2025-10-01T15:35:00",
+    "entry_price": 14244.271999999999,
+    "exit_price": 14395.68,
+    "pnl": 118.32064720000199,
+    "pnl_pct": 0.008305296456339593,
+    "exit_reason": "forced_close",
+    "ticker": "232140"
+  },
+  {
+    "entry_ts": "2025-10-01T09:35:00",
+    "exit_ts": "2025-10-01T14:16:00",
+    "entry_price": 34660.395,
+    "exit_price": 34700.2118125,
+    "pnl": -39.987702146871015,
+    "pnl_pct": -0.0011535270989017103,
+    "exit_reason": "stop_loss",
+    "ticker": "195870"
+  },
+  {
+    "entry_ts": "2025-10-02T10:50:00",
+    "exit_ts": "2025-10-02T14:21:00",
+    "entry_price": 228068.4,
+    "exit_price": 223695.37125,
+    "pnl": -4888.1840581875,
+    "pnl_pct": -0.021429759407907534,
+    "exit_reason": "stop_loss",
+    "ticker": "034730"
+  },
+  {
+    "entry_ts": "2025-10-02T09:43:00",
+    "exit_ts": "2025-10-02T10:43:00",
+    "entry_price": 20056.015,
+    "exit_price": 21043.685,
+    "pnl": 939.4176750000006,
+    "pnl_pct": 0.04683267256643347,
+    "exit_reason": "momentum_fade",
+    "ticker": "080220"
+  },
+  {
+    "entry_ts": "2025-10-02T10:30:00",
+    "exit_ts": "2025-10-02T15:01:00",
+    "entry_price": 24357.305,
+    "exit_price": 24396.17895,
+    "pnl": -17.231430492498475,
+    "pnl_pct": -0.0007073379491521595,
+    "exit_reason": "stop_loss",
+    "ticker": "060370"
+  },
+  {
+    "entry_ts": "2025-10-10T11:00:00",
+    "exit_ts": "2025-10-10T15:35:00",
+    "entry_price": 35360.604999999996,
+    "exit_price": 35389.380000000005,
+    "pnl": -52.616257749992656,
+    "pnl_pct": -0.001487767714806305,
+    "exit_reason": "forced_close",
+    "ticker": "353200"
+  },
+  {
+    "entry_ts": "2025-10-10T11:47:00",
+    "exit_ts": "2025-10-10T15:35:00",
+    "entry_price": 327598.25,
+    "exit_price": 329401.15,
+    "pnl": 1045.5477900000405,
+    "pnl_pct": 0.0031910762079859632,
+    "exit_reason": "forced_close",
+    "ticker": "277810"
+  },
+  {
+    "entry_ts": "2025-10-10T10:45:00",
+    "exit_ts": "2025-10-10T15:35:00",
+    "entry_price": 4311.293,
+    "exit_price": 4393.681500000001,
+    "pnl": 72.29539082500105,
+    "pnl_pct": 0.016766326979581216,
+    "exit_reason": "forced_close",
+    "ticker": "032820"
+  },
+  {
+    "entry_ts": "2025-10-10T10:44:00",
+    "exit_ts": "2025-10-10T15:35:00",
+    "entry_price": 3401.02,
+    "exit_price": 3478.956,
+    "pnl": 69.94609159999982,
+    "pnl_pct": 0.020563125550514507,
+    "exit_reason": "forced_close",
+    "ticker": "090710"
+  },
+  {
+    "entry_ts": "2025-10-10T11:16:00",
+    "exit_ts": "2025-10-10T14:21:00",
+    "entry_price": 28408.52,
+    "exit_price": 29912.273625,
+    "pnl": 1435.180958706249,
+    "pnl_pct": 0.05051180821278868,
+    "exit_reason": "trailing_stop",
+    "ticker": "058610"
+  },
+  {
+    "entry_ts": "2025-10-13T10:59:00",
+    "exit_ts": "2025-10-13T15:35:00",
+    "entry_price": 159847.94,
+    "exit_price": 157652.69,
+    "pnl": -2558.1804745000263,
+    "pnl_pct": -0.016001437397186846,
+    "exit_reason": "forced_close",
+    "ticker": "003670"
+  },
+  {
+    "entry_ts": "2025-10-14T10:04:00",
+    "exit_ts": "2025-10-14T12:09:00",
+    "entry_price": 46889.0625,
+    "exit_price": 46654.749375,
+    "pnl": -341.65419553124957,
+    "pnl_pct": -0.007285344105312116,
+    "exit_reason": "stop_loss",
+    "ticker": "005070"
+  },
+  {
+    "entry_ts": "2025-10-16T10:13:00",
+    "exit_ts": "2025-10-16T11:11:00",
+    "entry_price": 25857.754999999997,
+    "exit_price": 25342.395,
+    "pnl": -573.7248124999969,
+    "pnl_pct": -0.022184399484216407,
+    "exit_reason": "stop_loss",
+    "ticker": "097230"
+  },
+  {
+    "entry_ts": "2025-10-17T11:08:00",
+    "exit_ts": "2025-10-17T12:52:00",
+    "entry_price": 700210.0,
+    "exit_price": 691067.6175,
+    "pnl": -10733.209377625026,
+    "pnl_pct": -0.015326258747631959,
+    "exit_reason": "stop_loss",
+    "ticker": "000150"
+  },
+  {
+    "entry_ts": "2025-10-17T09:36:00",
+    "exit_ts": "2025-10-17T15:35:00",
+    "entry_price": 48164.445,
+    "exit_price": 45886.23,
+    "pnl": -2384.0950612499946,
+    "pnl_pct": -0.049491642655176464,
+    "exit_reason": "forced_close",
+    "ticker": "166090"
+  },
+  {
+    "entry_ts": "2025-10-20T11:08:00",
+    "exit_ts": "2025-10-20T15:35:00",
+    "entry_price": 46513.95,
+    "exit_price": 45536.335,
+    "pnl": -1082.4952127499928,
+    "pnl_pct": -0.023268994846074562,
+    "exit_reason": "forced_close",
+    "ticker": "103590"
+  },
+  {
+    "entry_ts": "2025-10-21T09:49:00",
+    "exit_ts": "2025-10-21T11:59:00",
+    "entry_price": 17655.295,
+    "exit_price": 17252.32275,
+    "pnl": -442.7130381624993,
+    "pnl_pct": -0.025071608328624605,
+    "exit_reason": "stop_loss",
+    "ticker": "098460"
+  },
+  {
+    "entry_ts": "2025-10-23T11:04:00",
+    "exit_ts": "2025-10-23T12:38:00",
+    "entry_price": 355606.64999999997,
+    "exit_price": 358504.91625,
+    "pnl": 2074.139682562556,
+    "pnl_pct": 0.0058318049121728055,
+    "exit_reason": "stop_loss",
+    "ticker": "010120"
+  },
+  {
+    "entry_ts": "2025-10-23T10:57:00",
+    "exit_ts": "2025-10-23T15:35:00",
+    "entry_price": 33960.185,
+    "exit_price": 35039.485,
+    "pnl": 998.8710795000079,
+    "pnl_pct": 0.02940859336629973,
+    "exit_reason": "forced_close",
+    "ticker": "353200"
+  },
+  {
+    "entry_ts": "2025-10-24T10:02:00",
+    "exit_ts": "2025-10-24T11:09:00",
+    "entry_price": 180354.09,
+    "exit_price": 182660.1855,
+    "pnl": 1886.3229876749974,
+    "pnl_pct": 0.01045742894803632,
+    "exit_reason": "breakeven_stop",
+    "ticker": "310210"
+  },
+  {
+    "entry_ts": "2025-10-24T10:44:00",
+    "exit_ts": "2025-10-24T15:35:00",
+    "entry_price": 60318.09,
+    "exit_price": 60281.91,
+    "pnl": -174.83381999999256,
+    "pnl_pct": -0.0028980957265086404,
+    "exit_reason": "forced_close",
+    "ticker": "000990"
+  },
+  {
+    "entry_ts": "2025-10-24T10:50:00",
+    "exit_ts": "2025-10-24T15:35:00",
+    "entry_price": 4501.349999999999,
+    "exit_price": 4418.674,
+    "pnl": -92.85135159999936,
+    "pnl_pct": -0.020624351802481802,
+    "exit_reason": "forced_close",
+    "ticker": "032820"
+  },
+  {
+    "entry_ts": "2025-10-27T09:35:00",
+    "exit_ts": "2025-10-27T09:43:00",
+    "entry_price": 32459.735,
+    "exit_price": 32116.612125,
+    "pnl": -417.04255131875107,
+    "pnl_pct": -0.012846069270685769,
+    "exit_reason": "stop_loss",
+    "ticker": "097230"
+  },
+  {
+    "entry_ts": "2025-10-27T11:43:00",
+    "exit_ts": "2025-10-27T12:07:00",
+    "entry_price": 31359.405,
+    "exit_price": 30703.28625,
+    "pnl": -726.8347261874951,
+    "pnl_pct": -0.023174091387572426,
+    "exit_reason": "stop_loss",
+    "ticker": "097230"
+  },
+  {
+    "entry_ts": "2025-10-27T11:48:00",
+    "exit_ts": "2025-10-27T15:35:00",
+    "entry_price": 92927.87,
+    "exit_price": 94371.68000000001,
+    "pnl": 1226.971707500008,
+    "pnl_pct": 0.013201504450135423,
+    "exit_reason": "forced_close",
+    "ticker": "298380"
+  },
+  {
+    "entry_ts": "2025-10-27T10:37:00",
+    "exit_ts": "2025-10-27T13:06:00",
+    "entry_price": 104731.41,
+    "exit_price": 103819.094925,
+    "pnl": -1151.2358405887644,
+    "pnl_pct": -0.010990620494000774,
+    "exit_reason": "stop_loss",
+    "ticker": "000880"
+  },
+  {
+    "entry_ts": "2025-10-28T09:33:00",
+    "exit_ts": "2025-10-28T09:40:00",
+    "entry_price": 124737.40999999999,
+    "exit_price": 124372.67700000001,
+    "pnl": -650.8448670499783,
+    "pnl_pct": -0.005216937364353918,
+    "exit_reason": "stop_loss",
+    "ticker": "011790"
+  },
+  {
+    "entry_ts": "2025-10-28T11:40:00",
+    "exit_ts": "2025-10-28T15:35:00",
+    "entry_price": 121036.3,
+    "exit_price": 121763.46,
+    "pnl": 447.21311600001354,
+    "pnl_pct": 0.0036943135579441833,
+    "exit_reason": "forced_close",
+    "ticker": "011790"
+  },
+  {
+    "entry_ts": "2025-10-28T10:41:00",
+    "exit_ts": "2025-10-28T10:47:00",
+    "entry_price": 27358.204999999998,
+    "exit_price": 27096.8685,
+    "pnl": -323.6984980249981,
+    "pnl_pct": -0.011830087190750207,
+    "exit_reason": "stop_loss",
+    "ticker": "060370"
+  },
+  {
+    "entry_ts": "2025-10-29T11:11:00",
+    "exit_ts": "2025-10-29T15:35:00",
+    "entry_price": 73121.93,
+    "exit_price": 73477.95,
+    "pnl": 187.0741180000041,
+    "pnl_pct": 0.0025580022448920656,
+    "exit_reason": "forced_close",
+    "ticker": "000720"
+  },
+  {
+    "entry_ts": "2025-10-30T09:34:00",
+    "exit_ts": "2025-10-30T09:41:00",
+    "entry_price": 63419.02,
+    "exit_price": 63258.51675,
+    "pnl": -306.0219140124973,
+    "pnl_pct": -0.004824672749750088,
+    "exit_reason": "stop_loss",
+    "ticker": "272210"
+  },
+  {
+    "entry_ts": "2025-10-30T11:42:00",
+    "exit_ts": "2025-10-30T13:07:00",
+    "entry_price": 63218.96,
+    "exit_price": 63646.900200000004,
+    "pnl": 281.616520570009,
+    "pnl_pct": 0.0044539531246218685,
+    "exit_reason": "stop_loss",
+    "ticker": "272210"
+  },
+  {
+    "entry_ts": "2025-10-31T09:48:00",
+    "exit_ts": "2025-10-31T14:00:00",
+    "entry_price": 379613.85,
+    "exit_price": 432793.7126053013,
+    "pnl": 52192.41404569993,
+    "pnl_pct": 0.13746755119115459,
+    "exit_reason": "trailing_stop",
+    "ticker": "277810"
+  },
+  {
+    "entry_ts": "2025-10-31T10:31:00",
+    "exit_ts": "2025-10-31T13:32:00",
+    "entry_price": 426127.8,
+    "exit_price": 427750.386375,
+    "pnl": 639.0038742937613,
+    "pnl_pct": 0.0014993343266692482,
+    "exit_reason": "stop_loss",
+    "ticker": "128940"
+  },
+  {
+    "entry_ts": "2025-10-31T10:24:00",
+    "exit_ts": "2025-10-31T11:36:00",
+    "entry_price": 33360.005,
+    "exit_price": 32993.848875,
+    "pnl": -442.0969008312459,
+    "pnl_pct": -0.013250315647189191,
+    "exit_reason": "stop_loss",
+    "ticker": "058610"
+  },
+  {
+    "entry_ts": "2025-11-03T11:27:00",
+    "exit_ts": "2025-11-03T15:35:00",
+    "entry_price": 130039.0,
+    "exit_price": 128561.42,
+    "pnl": -1773.4929030000058,
+    "pnl_pct": -0.013636116234069483,
+    "exit_reason": "forced_close",
+    "ticker": "010060"
+  },
+  {
+    "entry_ts": "2025-11-04T09:42:00",
+    "exit_ts": "2025-11-04T10:17:00",
+    "entry_price": 277083.1,
+    "exit_price": 287413.75,
+    "pnl": 9671.14797250001,
+    "pnl_pct": 0.03489818584342506,
+    "exit_reason": "momentum_fade",
+    "ticker": "039030"
+  },
+  {
+    "entry_ts": "2025-11-07T09:39:00",
+    "exit_ts": "2025-11-07T09:57:00",
+    "entry_price": 35410.619999999995,
+    "exit_price": 35284.4115,
+    "pnl": -207.38157772499108,
+    "pnl_pct": -0.005855601374777342,
+    "exit_reason": "stop_loss",
+    "ticker": "323280"
+  },
+  {
+    "entry_ts": "2025-11-07T11:57:00",
+    "exit_ts": "2025-11-07T12:49:00",
+    "entry_price": 33810.14,
+    "exit_price": 33738.7503375,
+    "pnl": -148.9994967256207,
+    "pnl_pct": -0.0044062861068631404,
+    "exit_reason": "stop_loss",
+    "ticker": "323280"
+  },
+  {
+    "entry_ts": "2025-11-11T10:48:00",
+    "exit_ts": "2025-11-11T15:35:00",
+    "entry_price": 96028.8,
+    "exit_price": 94071.77,
+    "pnl": -2173.688625499999,
+    "pnl_pct": -0.022632404248588266,
+    "exit_reason": "forced_close",
+    "ticker": "086520"
+  },
+  {
+    "entry_ts": "2025-11-12T11:07:00",
+    "exit_ts": "2025-11-12T11:21:00",
+    "entry_price": 163148.93,
+    "exit_price": 164730.98517421,
+    "pnl": 1203.4112165854604,
+    "pnl_pct": 0.0073750451932210895,
+    "exit_reason": "breakeven_stop",
+    "ticker": "141080"
+  },
+  {
+    "entry_ts": "2025-11-12T10:27:00",
+    "exit_ts": "2025-11-12T13:51:00",
+    "entry_price": 81824.54,
+    "exit_price": 82014.13837500001,
+    "pnl": 0.9942964937654324,
+    "pnl_pct": 1.214974592780703e-05,
+    "exit_reason": "stop_loss",
+    "ticker": "011170"
+  },
+  {
+    "entry_ts": "2025-11-14T10:33:00",
+    "exit_ts": "2025-11-14T15:35:00",
+    "entry_price": 70521.15,
+    "exit_price": 67779.66,
+    "pnl": -2897.7944414999947,
+    "pnl_pct": -0.04108497716677006,
+    "exit_reason": "forced_close",
+    "ticker": "439260"
+  },
+  {
+    "entry_ts": "2025-11-14T11:08:00",
+    "exit_ts": "2025-11-14T13:14:00",
+    "entry_price": 22606.78,
+    "exit_price": 22836.2720625,
+    "pnl": 177.00306056562476,
+    "pnl_pct": 0.007828470666256384,
+    "exit_reason": "stop_loss",
+    "ticker": "097230"
+  },
+  {
+    "entry_ts": "2025-11-17T10:56:00",
+    "exit_ts": "2025-11-17T13:21:00",
+    "entry_price": 55016.5,
+    "exit_price": 55298.155575000004,
+    "pnl": 154.5120655137507,
+    "pnl_pct": 0.002808046534765456,
+    "exit_reason": "trailing_stop",
+    "ticker": "290650"
+  },
+  {
+    "entry_ts": "2025-11-18T10:50:00",
+    "exit_ts": "2025-11-18T13:05:00",
+    "entry_price": 45563.665,
+    "exit_price": 42864.58396869188,
+    "pnl": -2798.0744365908104,
+    "pnl_pct": -0.061401004251360254,
+    "exit_reason": "stop_loss",
+    "ticker": "083650"
+  },
+  {
+    "entry_ts": "2025-11-19T10:20:00",
+    "exit_ts": "2025-11-19T15:35:00",
+    "entry_price": 38461.534999999996,
+    "exit_price": 38888.33,
+    "pnl": 337.4158602500029,
+    "pnl_pct": 0.008771497431438544,
+    "exit_reason": "forced_close",
+    "ticker": "204320"
+  },
+  {
+    "entry_ts": "2025-11-19T09:33:00",
+    "exit_ts": "2025-11-19T10:05:00",
+    "entry_price": 32009.6,
+    "exit_price": 33578.673375,
+    "pnl": 1492.0777872437502,
+    "pnl_pct": 0.046606455848944656,
+    "exit_reason": "breakeven_stop",
+    "ticker": "058610"
+  },
+  {
+    "entry_ts": "2025-11-20T09:53:00",
+    "exit_ts": "2025-11-20T10:29:00",
+    "entry_price": 1451435.3,
+    "exit_price": 1422585.59625,
+    "pnl": -32125.97807693761,
+    "pnl_pct": -0.022130617811866753,
+    "exit_reason": "stop_loss",
+    "ticker": "003230"
+  },
+  {
+    "entry_ts": "2025-11-20T11:32:00",
+    "exit_ts": "2025-11-20T15:35:00",
+    "entry_price": 489146.7,
+    "exit_price": 476856.9,
+    "pnl": -13388.414340000018,
+    "pnl_pct": -0.027366854113588336,
+    "exit_reason": "forced_close",
+    "ticker": "214450"
+  },
+  {
+    "entry_ts": "2025-11-20T11:54:00",
+    "exit_ts": "2025-11-20T13:24:00",
+    "entry_price": 81024.3,
+    "exit_price": 80147.94840000001,
+    "pnl": -1060.8233340599982,
+    "pnl_pct": -0.013090692970193317,
+    "exit_reason": "stop_loss",
+    "ticker": "445680"
+  },
+  {
+    "entry_ts": "2025-11-21T10:17:00",
+    "exit_ts": "2025-11-21T15:35:00",
+    "entry_price": 64119.229999999996,
+    "exit_price": 64980.5,
+    "pnl": 711.9440404999987,
+    "pnl_pct": 0.011101775004320266,
+    "exit_reason": "forced_close",
+    "ticker": "950160"
+  },
+  {
+    "entry_ts": "2025-11-24T10:50:00",
+    "exit_ts": "2025-11-24T13:03:00",
+    "entry_price": 18875.661,
+    "exit_price": 19202.112637500002,
+    "pnl": 282.33574617937484,
+    "pnl_pct": 0.01495541810000982,
+    "exit_reason": "breakeven_stop",
+    "ticker": "098460"
+  },
+  {
+    "entry_ts": "2025-11-25T09:35:00",
+    "exit_ts": "2025-11-25T15:35:00",
+    "entry_price": 100530.15,
+    "exit_price": 102569.22,
+    "pnl": 1803.4666545000073,
+    "pnl_pct": 0.017936869437415008,
+    "exit_reason": "forced_close",
+    "ticker": "095340"
+  },
+  {
+    "entry_ts": "2025-11-25T09:33:00",
+    "exit_ts": "2025-11-25T10:08:00",
+    "entry_price": 63318.99,
+    "exit_price": 61450.89037748284,
+    "pnl": -2009.716885328744,
+    "pnl_pct": -0.031734799828736886,
+    "exit_reason": "stop_loss",
+    "ticker": "058470"
+  },
+  {
+    "entry_ts": "2025-11-26T11:20:00",
+    "exit_ts": "2025-11-26T15:35:00",
+    "entry_price": 93428.02,
+    "exit_price": 94371.68000000001,
+    "pnl": 726.7466850000055,
+    "pnl_pct": 0.007777513526954799,
+    "exit_reason": "forced_close",
+    "ticker": "052690"
+  },
+  {
+    "entry_ts": "2025-11-26T10:56:00",
+    "exit_ts": "2025-11-26T13:55:00",
+    "entry_price": 79923.97,
+    "exit_price": 78853.83675,
+    "pnl": -1251.6575945125078,
+    "pnl_pct": -0.015658254639145216,
+    "exit_reason": "stop_loss",
+    "ticker": "011170"
+  },
+  {
+    "entry_ts": "2025-11-26T11:45:00",
+    "exit_ts": "2025-11-26T14:01:00",
+    "entry_price": 119135.73,
+    "exit_price": 118365.729625,
+    "pnl": -1042.3570531937294,
+    "pnl_pct": -0.008748011390749582,
+    "exit_reason": "stop_loss",
+    "ticker": "011780"
+  },
+  {
+    "entry_ts": "2025-11-28T11:00:00",
+    "exit_ts": "2025-11-28T13:30:00",
+    "entry_price": 182554.75,
+    "exit_price": 188043.57,
+    "pnl": 5057.14311200002,
+    "pnl_pct": 0.027697907911472447,
+    "exit_reason": "momentum_fade",
+    "ticker": "298380"
+  },
+  {
+    "entry_ts": "2025-11-28T09:47:00",
+    "exit_ts": "2025-11-28T10:45:00",
+    "entry_price": 20956.285,
+    "exit_price": 22710.68475,
+    "pnl": 1702.4283350375008,
+    "pnl_pct": 0.08122494082735265,
+    "exit_reason": "breakeven_stop",
+    "ticker": "098460"
+  },
+  {
+    "entry_ts": "2025-11-28T09:34:00",
+    "exit_ts": "2025-11-28T10:37:00",
+    "entry_price": 78123.43,
+    "exit_price": 84574.62000000001,
+    "pnl": 6257.63605250002,
+    "pnl_pct": 0.08008733804785377,
+    "exit_reason": "momentum_fade",
+    "ticker": "950160"
+  },
+  {
+    "entry_ts": "2025-11-28T10:20:00",
+    "exit_ts": "2025-11-28T14:14:00",
+    "entry_price": 199159.72999999998,
+    "exit_price": 199908.759375,
+    "pnl": 289.3515828437812,
+    "pnl_pct": 0.0014526439989439074,
+    "exit_reason": "stop_loss",
+    "ticker": "307950"
+  },
+  {
+    "entry_ts": "2025-11-28T10:41:00",
+    "exit_ts": "2025-11-28T15:35:00",
+    "entry_price": 218065.4,
+    "exit_price": 216435.05000000002,
+    "pnl": -2128.3951674999844,
+    "pnl_pct": -0.009758888645821705,
+    "exit_reason": "forced_close",
+    "ticker": "000250"
+  },
+  {
+    "entry_ts": "2025-12-01T10:59:00",
+    "exit_ts": "2025-12-01T15:35:00",
+    "entry_price": 92927.87,
+    "exit_price": 92972.1,
+    "pnl": -169.59919549999177,
+    "pnl_pct": -0.0018247890480657348,
+    "exit_reason": "forced_close",
+    "ticker": "086520"
+  },
+  {
+    "entry_ts": "2025-12-02T09:33:00",
+    "exit_ts": "2025-12-02T14:17:00",
+    "entry_price": 44963.485,
+    "exit_price": 45164.5715625,
+    "pnl": 97.23821089062403,
+    "pnl_pct": 0.0021622796219314864,
+    "exit_reason": "stop_loss",
+    "ticker": "323280"
+  },
+  {
+    "entry_ts": "2025-12-03T11:06:00",
+    "exit_ts": "2025-12-03T15:35:00",
+    "entry_price": 68820.64,
+    "exit_price": 70478.85,
+    "pnl": 1496.3573765000183,
+    "pnl_pct": 0.02173959667559812,
+    "exit_reason": "forced_close",
+    "ticker": "000720"
+  },
+  {
+    "entry_ts": "2025-12-03T11:01:00",
+    "exit_ts": "2025-12-03T14:55:00",
+    "entry_price": 248574.55,
+    "exit_price": 244822.1505917613,
+    "pnl": -4316.05321451099,
+    "pnl_pct": -0.017360610342552953,
+    "exit_reason": "stop_loss",
+    "ticker": "028260"
+  },
+  {
+    "entry_ts": "2025-12-04T10:53:00",
+    "exit_ts": "2025-12-04T11:52:00",
+    "entry_price": 288086.39999999997,
+    "exit_price": 297410.75,
+    "pnl": 8641.703927500057,
+    "pnl_pct": 0.029992418476957296,
+    "exit_reason": "momentum_fade",
+    "ticker": "108490"
+  },
+  {
+    "entry_ts": "2025-12-04T09:46:00",
+    "exit_ts": "2025-12-04T13:06:00",
+    "entry_price": 470141.0,
+    "exit_price": 485854.2,
+    "pnl": 14598.092320000054,
+    "pnl_pct": 0.03104579888705701,
+    "exit_reason": "momentum_fade",
+    "ticker": "277810"
+  },
+  {
+    "entry_ts": "2025-12-05T10:48:00",
+    "exit_ts": "2025-12-05T14:01:00",
+    "entry_price": 55316.59,
+    "exit_price": 59982.0,
+    "pnl": 4528.1512115000005,
+    "pnl_pct": 0.0818465507488151,
+    "exit_reason": "momentum_fade",
+    "ticker": "083650"
+  },
+  {
+    "entry_ts": "2025-12-05T09:41:00",
+    "exit_ts": "2025-12-05T10:50:00",
+    "entry_price": 33710.11,
+    "exit_price": 34212.23325,
+    "pnl": 423.5104320124956,
+    "pnl_pct": 0.012561421928770012,
+    "exit_reason": "breakeven_stop",
+    "ticker": "336260"
+  },
+  {
+    "entry_ts": "2025-12-05T11:14:00",
+    "exit_ts": "2025-12-05T14:32:00",
+    "entry_price": 15044.511999999999,
+    "exit_price": 14727.830325,
+    "pnl": -350.60318699874733,
+    "pnl_pct": -0.0233008956626899,
+    "exit_reason": "stop_loss",
+    "ticker": "232140"
+  },
+  {
+    "entry_ts": "2025-12-08T10:53:00",
+    "exit_ts": "2025-12-08T15:35:00",
+    "entry_price": 174152.22999999998,
+    "exit_price": 173248.01,
+    "pnl": -1302.8260559999908,
+    "pnl_pct": -0.007479839112027338,
+    "exit_reason": "forced_close",
+    "ticker": "247540"
+  },
+  {
+    "entry_ts": "2025-12-08T10:53:00",
+    "exit_ts": "2025-12-08T15:35:00",
+    "entry_price": 131539.44999999998,
+    "exit_price": 131960.4,
+    "pnl": 117.50422249999247,
+    "pnl_pct": 0.0008931662669265073,
+    "exit_reason": "forced_close",
+    "ticker": "066970"
+  },
+  {
+    "entry_ts": "2025-12-08T11:45:00",
+    "exit_ts": "2025-12-08T15:35:00",
+    "entry_price": 124837.44,
+    "exit_price": 124962.5,
+    "pnl": -162.33499099999608,
+    "pnl_pct": -0.0013001760081217267,
+    "exit_reason": "forced_close",
+    "ticker": "237690"
+  },
+  {
+    "entry_ts": "2025-12-08T11:26:00",
+    "exit_ts": "2025-12-08T15:35:00",
+    "entry_price": 63318.99,
+    "exit_price": 63081.07,
+    "pnl": -383.0421490000008,
+    "pnl_pct": -0.006048496687878416,
+    "exit_reason": "forced_close",
+    "ticker": "450080"
+  },
+  {
+    "entry_ts": "2025-12-09T10:54:00",
+    "exit_ts": "2025-12-09T11:09:00",
+    "entry_price": 29808.94,
+    "exit_price": 29533.63725,
+    "pnl": -343.27141108749856,
+    "pnl_pct": -0.011513993053704152,
+    "exit_reason": "stop_loss",
+    "ticker": "098460"
+  },
+  {
+    "entry_ts": "2025-12-09T11:16:00",
+    "exit_ts": "2025-12-09T14:11:00",
+    "entry_price": 46363.905,
+    "exit_price": 46398.57625,
+    "pnl": -72.040274687497,
+    "pnl_pct": -0.001553567808124811,
+    "exit_reason": "stop_loss",
+    "ticker": "082740"
+  },
+  {
+    "entry_ts": "2025-12-11T10:23:00",
+    "exit_ts": "2025-12-11T12:10:00",
+    "entry_price": 300590.14999999997,
+    "exit_price": 297285.78750000003,
+    "pnl": -3988.6154656249564,
+    "pnl_pct": -0.013267291902397671,
+    "exit_reason": "stop_loss",
+    "ticker": "108490"
+  },
+  {
+    "entry_ts": "2025-12-11T09:34:00",
+    "exit_ts": "2025-12-11T09:59:00",
+    "entry_price": 61318.39,
+    "exit_price": 60919.21875,
+    "pnl": -539.3453288124947,
+    "pnl_pct": -0.008794497688974265,
+    "exit_reason": "stop_loss",
+    "ticker": "103590"
+  },
+  {
+    "entry_ts": "2025-12-11T11:59:00",
+    "exit_ts": "2025-12-11T14:14:00",
+    "entry_price": 58517.549999999996,
+    "exit_price": 57312.801,
+    "pnl": -1336.749154649995,
+    "pnl_pct": -0.022840133811978504,
+    "exit_reason": "stop_loss",
+    "ticker": "103590"
+  },
+  {
+    "entry_ts": "2025-12-12T11:40:00",
+    "exit_ts": "2025-12-12T14:43:00",
+    "entry_price": 61018.299999999996,
+    "exit_price": 64638.79409433623,
+    "pnl": 3472.3679420334083,
+    "pnl_pct": 0.05689845775707722,
+    "exit_reason": "breakeven_stop",
+    "ticker": "083650"
+  },
+  {
+    "entry_ts": "2025-12-12T11:16:00",
+    "exit_ts": "2025-12-12T14:06:00",
+    "entry_price": 115834.73999999999,
+    "exit_price": 116490.04250000001,
+    "pnl": 387.4736976250133,
+    "pnl_pct": 0.0033445543650136413,
+    "exit_reason": "stop_loss",
+    "ticker": "047810"
+  },
+  {
+    "entry_ts": "2025-12-12T10:10:00",
+    "exit_ts": "2025-12-12T12:48:00",
+    "entry_price": 12943.882,
+    "exit_price": 12758.846197500001,
+    "pnl": -214.4089041246243,
+    "pnl_pct": -0.016562013437118977,
+    "exit_reason": "trailing_stop",
+    "ticker": "003380"
+  },
+  {
+    "entry_ts": "2025-12-12T09:34:00",
+    "exit_ts": "2025-12-12T10:04:00",
+    "entry_price": 57017.1,
+    "exit_price": 56922.918000000005,
+    "pnl": -225.11883869999292,
+    "pnl_pct": -0.003947676678375472,
+    "exit_reason": "stop_loss",
+    "ticker": "099320"
+  },
+  {
+    "entry_ts": "2025-12-15T09:37:00",
+    "exit_ts": "2025-12-15T11:28:00",
+    "entry_price": 1642492.5999999999,
+    "exit_price": 1692492.1,
+    "pnl": 46114.268095000414,
+    "pnl_pct": 0.028071573651048162,
+    "exit_reason": "momentum_fade",
+    "ticker": "010130"
+  },
+  {
+    "entry_ts": "2025-12-15T10:13:00",
+    "exit_ts": "2025-12-15T15:35:00",
+    "entry_price": 30109.03,
+    "exit_price": 28941.315000000002,
+    "pnl": -1234.455181749996,
+    "pnl_pct": -0.04099335120539617,
+    "exit_reason": "forced_close",
+    "ticker": "022100"
+  },
+  {
+    "entry_ts": "2025-12-15T11:02:00",
+    "exit_ts": "2025-12-15T11:46:00",
+    "entry_price": 11763.528,
+    "exit_price": 11877.598931016,
+    "pnl": 86.76956411431638,
+    "pnl_pct": 0.0073750451932210834,
+    "exit_reason": "breakeven_stop",
+    "ticker": "100790"
+  },
+  {
+    "entry_ts": "2025-12-17T11:59:00",
+    "exit_ts": "2025-12-17T15:35:00",
+    "entry_price": 6461.938,
+    "exit_price": 6448.0650000000005,
+    "pnl": -28.705630449999262,
+    "pnl_pct": -0.0044415971263128155,
+    "exit_reason": "forced_close",
+    "ticker": "043260"
+  },
+  {
+    "entry_ts": "2025-12-17T11:07:00",
+    "exit_ts": "2025-12-17T13:20:00",
+    "entry_price": 55016.5,
+    "exit_price": 56967.904500000004,
+    "pnl": 1820.6710303250002,
+    "pnl_pct": 0.03308821845499815,
+    "exit_reason": "breakeven_stop",
+    "ticker": "195870"
+  },
+  {
+    "entry_ts": "2025-12-18T09:50:00",
+    "exit_ts": "2025-12-18T10:23:00",
+    "entry_price": 12703.81,
+    "exit_price": 12826.99884557,
+    "pnl": 93.70522655202512,
+    "pnl_pct": 0.007375045193221067,
+    "exit_reason": "breakeven_stop",
+    "ticker": "100790"
+  },
+  {
+    "entry_ts": "2025-12-19T10:53:00",
+    "exit_ts": "2025-12-19T15:35:00",
+    "entry_price": 238071.4,
+    "exit_price": 238928.30000000002,
+    "pnl": 307.49344500000007,
+    "pnl_pct": 0.0012914080729596875,
+    "exit_reason": "forced_close",
+    "ticker": "000250"
+  },
+  {
+    "entry_ts": "2025-12-19T11:26:00",
+    "exit_ts": "2025-12-19T14:04:00",
+    "entry_price": 114534.34999999999,
+    "exit_price": 114416.914625,
+    "pnl": -380.6118939437438,
+    "pnl_pct": -0.0033226260132627064,
+    "exit_reason": "stop_loss",
+    "ticker": "010060"
+  },
+  {
+    "entry_ts": "2025-12-19T11:44:00",
+    "exit_ts": "2025-12-19T13:55:00",
+    "entry_price": 63318.99,
+    "exit_price": 62861.136,
+    "pnl": -602.5032909000001,
+    "pnl_pct": -0.00951393774538501,
+    "exit_reason": "stop_loss",
+    "ticker": "322000"
+  },
+  {
+    "entry_ts": "2025-12-22T10:00:00",
+    "exit_ts": "2025-12-22T15:35:00",
+    "entry_price": 94228.26,
+    "exit_price": 91172.64,
+    "pnl": -3265.7754149999964,
+    "pnl_pct": -0.034652933442225003,
+    "exit_reason": "forced_close",
+    "ticker": "071970"
+  },
+  {
+    "entry_ts": "2025-12-22T10:43:00",
+    "exit_ts": "2025-12-22T13:27:00",
+    "entry_price": 57717.31,
+    "exit_price": 59718.0792,
+    "pnl": 1863.7177332200008,
+    "pnl_pct": 0.03228560404993541,
+    "exit_reason": "breakeven_stop",
+    "ticker": "189300"
+  },
+  {
+    "entry_ts": "2025-12-23T10:19:00",
+    "exit_ts": "2025-12-23T12:42:00",
+    "entry_price": 495648.64999999997,
+    "exit_price": 500454.95495905,
+    "pnl": 3655.979508388089,
+    "pnl_pct": 0.007375045193221111,
+    "exit_reason": "breakeven_stop",
+    "ticker": "277810"
+  },
+  {
+    "entry_ts": "2025-12-23T09:36:00",
+    "exit_ts": "2025-12-23T10:42:00",
+    "entry_price": 6301.889999999999,
+    "exit_price": 6362.99942733,
+    "pnl": 46.483695061240724,
+    "pnl_pct": 0.007375045193221053,
+    "exit_reason": "breakeven_stop",
+    "ticker": "090710"
+  },
+  {
+    "entry_ts": "2025-12-23T09:55:00",
+    "exit_ts": "2025-12-23T10:11:00",
+    "entry_price": 23106.93,
+    "exit_price": 22661.949375,
+    "pnl": -497.1698556562478,
+    "pnl_pct": -0.021512822835510537,
+    "exit_reason": "stop_loss",
+    "ticker": "097230"
+  },
+  {
+    "entry_ts": "2025-12-23T09:35:00",
+    "exit_ts": "2025-12-23T10:33:00",
+    "entry_price": 28208.46,
+    "exit_price": 29874.784875,
+    "pnl": 1597.8628185187517,
+    "pnl_pct": 0.056636313185565446,
+    "exit_reason": "trailing_stop",
+    "ticker": "022100"
+  },
+  {
+    "entry_ts": "2025-12-23T09:47:00",
+    "exit_ts": "2025-12-23T14:51:00",
+    "entry_price": 123236.95999999999,
+    "exit_price": 123005.58725,
+    "pnl": -514.3203065874841,
+    "pnl_pct": -0.004172799865494632,
+    "exit_reason": "stop_loss",
+    "ticker": "010060"
+  },
+  {
+    "entry_ts": "2025-12-24T10:19:00",
+    "exit_ts": "2025-12-24T12:35:00",
+    "entry_price": 43463.034999999996,
+    "exit_price": 43884.496050395,
+    "pnl": 320.5899286366475,
+    "pnl_pct": 0.007375045193220943,
+    "exit_reason": "breakeven_stop",
+    "ticker": "489790"
+  },
+  {
+    "entry_ts": "2025-12-24T11:29:00",
+    "exit_ts": "2025-12-24T15:35:00",
+    "entry_price": 135440.62,
+    "exit_price": 131160.64,
+    "pnl": -4582.291468999989,
+    "pnl_pct": -0.033827401472067496,
+    "exit_reason": "forced_close",
+    "ticker": "180640"
+  },
+  {
+    "entry_ts": "2025-12-26T10:49:00",
+    "exit_ts": "2025-12-26T15:35:00",
+    "entry_price": 67420.22,
+    "exit_price": 67879.63,
+    "pnl": 303.35576249999576,
+    "pnl_pct": 0.004498802673146153,
+    "exit_reason": "forced_close",
+    "ticker": "240810"
+  },
+  {
+    "entry_ts": "2025-12-29T11:11:00",
+    "exit_ts": "2025-12-29T15:35:00",
+    "entry_price": 947284.1,
+    "exit_price": 948715.3,
+    "pnl": -750.6305099999299,
+    "pnl_pct": -0.000792283890661823,
+    "exit_reason": "forced_close",
+    "ticker": "012450"
+  },
+  {
+    "entry_ts": "2025-12-30T10:26:00",
+    "exit_ts": "2025-12-30T15:35:00",
+    "entry_price": 26457.934999999998,
+    "exit_price": 25742.275,
+    "pnl": -774.9745814999951,
+    "pnl_pct": -0.029286425896317424,
+    "exit_reason": "forced_close",
+    "ticker": "067310"
+  },
+  {
+    "entry_ts": "2025-12-30T11:52:00",
+    "exit_ts": "2025-12-30T14:08:00",
+    "entry_price": 45363.604999999996,
+    "exit_price": 44837.669662500004,
+    "pnl": -629.1408680243694,
+    "pnl_pct": -0.013866766343806059,
+    "exit_reason": "stop_loss",
+    "ticker": "489790"
+  },
+  {
+    "entry_ts": "2026-01-02T11:03:00",
+    "exit_ts": "2026-01-02T15:35:00",
+    "entry_price": 426627.95,
+    "exit_price": 433869.8,
+    "pnl": 6245.035737499944,
+    "pnl_pct": 0.0146359354154634,
+    "exit_reason": "forced_close",
+    "ticker": "214450"
+  },
+  {
+    "entry_ts": "2026-01-02T11:07:00",
+    "exit_ts": "2026-01-02T12:38:00",
+    "entry_price": 65819.73999999999,
+    "exit_price": 65402.873250000004,
+    "pnl": -567.3558884874874,
+    "pnl_pct": -0.00861855118035725,
+    "exit_reason": "stop_loss",
+    "ticker": "189300"
+  },
+  {
+    "entry_ts": "2026-01-05T11:19:00",
+    "exit_ts": "2026-01-05T15:35:00",
+    "entry_price": 55716.71,
+    "exit_price": 56882.93,
+    "pnl": 1035.564194000006,
+    "pnl_pct": 0.018583453378126703,
+    "exit_reason": "forced_close",
+    "ticker": "083650"
+  },
+  {
+    "entry_ts": "2026-01-06T10:49:00",
+    "exit_ts": "2026-01-06T13:39:00",
+    "entry_price": 28358.504999999997,
+    "exit_price": 28217.782125,
+    "pnl": -205.64488231874566,
+    "pnl_pct": -0.007250524673734168,
+    "exit_reason": "stop_loss",
+    "ticker": "006800"
+  },
+  {
+    "entry_ts": "2026-01-07T10:23:00",
+    "exit_ts": "2026-01-07T10:40:00",
+    "entry_price": 24707.41,
+    "exit_price": 24172.746,
+    "pnl": -590.3415153999995,
+    "pnl_pct": -0.0238897147638454,
+    "exit_reason": "stop_loss",
+    "ticker": "097230"
+  },
+  {
+    "entry_ts": "2026-01-07T10:04:00",
+    "exit_ts": "2026-01-07T10:47:00",
+    "entry_price": 51815.54,
+    "exit_price": 51074.673,
+    "pnl": -858.4498779499991,
+    "pnl_pct": -0.01656493649936934,
+    "exit_reason": "stop_loss",
+    "ticker": "166090"
+  },
+  {
+    "entry_ts": "2026-01-09T09:34:00",
+    "exit_ts": "2026-01-09T10:22:00",
+    "entry_price": 67720.31,
+    "exit_price": 70078.97,
+    "pnl": 2197.832168000008,
+    "pnl_pct": 0.032449682268415714,
+    "exit_reason": "momentum_fade",
+    "ticker": "272210"
+  },
+  {
+    "entry_ts": "2026-01-12T10:03:00",
+    "exit_ts": "2026-01-12T11:46:00",
+    "entry_price": 264079.2,
+    "exit_price": 253000.08330173558,
+    "pnl": -11662.678757363145,
+    "pnl_pct": -0.04415694086440907,
+    "exit_reason": "stop_loss",
+    "ticker": "000250"
+  },
+  {
+    "entry_ts": "2026-01-12T10:09:00",
+    "exit_ts": "2026-01-12T14:49:00",
+    "entry_price": 46864.055,
+    "exit_price": 46054.929375,
+    "pnl": -915.1733314062512,
+    "pnl_pct": -0.019525328655295663,
+    "exit_reason": "stop_loss",
+    "ticker": "222800"
+  },
+  {
+    "entry_ts": "2026-01-12T11:42:00",
+    "exit_ts": "2026-01-12T14:38:00",
+    "entry_price": 56616.979999999996,
+    "exit_price": 55545.72340949641,
+    "pnl": -1199.1724428340094,
+    "pnl_pct": -0.021177261555542483,
+    "exit_reason": "stop_loss",
+    "ticker": "083650"
+  },
+  {
+    "entry_ts": "2026-01-13T09:35:00",
+    "exit_ts": "2026-01-13T09:42:00",
+    "entry_price": 29958.985,
+    "exit_price": 30069.726375000002,
+    "pnl": 41.59761554375291,
+    "pnl_pct": 0.0013882772342663585,
+    "exit_reason": "trailing_stop",
+    "ticker": "098460"
+  },
+  {
+    "entry_ts": "2026-01-13T11:42:00",
+    "exit_ts": "2026-01-13T13:04:00",
+    "entry_price": 28308.489999999998,
+    "exit_price": 28680.3933,
+    "pnl": 305.99418090499967,
+    "pnl_pct": 0.010807651296897165,
+    "exit_reason": "breakeven_stop",
+    "ticker": "098460"
+  },
+  {
+    "entry_ts": "2026-01-13T10:19:00",
+    "exit_ts": "2026-01-13T10:51:00",
+    "entry_price": 9302.789999999999,
+    "exit_price": 9617.114,
+    "pnl": 292.2517864000001,
+    "pnl_pct": 0.03141078700118127,
+    "exit_reason": "momentum_fade",
+    "ticker": "090710"
+  },
+  {
+    "entry_ts": "2026-01-13T10:17:00",
+    "exit_ts": "2026-01-13T15:35:00",
+    "entry_price": 62718.81,
+    "exit_price": 60381.880000000005,
+    "pnl": -2476.1588634999935,
+    "pnl_pct": -0.03947440162489829,
+    "exit_reason": "forced_close",
+    "ticker": "204320"
+  },
+  {
+    "entry_ts": "2026-01-13T11:07:00",
+    "exit_ts": "2026-01-13T15:35:00",
+    "entry_price": 29808.94,
+    "exit_price": 29141.255,
+    "pnl": -734.8100392499982,
+    "pnl_pct": -0.024646962766031164,
+    "exit_reason": "forced_close",
+    "ticker": "022100"
+  },
+  {
+    "entry_ts": "2026-01-14T10:55:00",
+    "exit_ts": "2026-01-14T14:45:00",
+    "entry_price": 525157.5,
+    "exit_price": 536545.238125,
+    "pnl": 10155.392238031258,
+    "pnl_pct": 0.019334902686637075,
+    "exit_reason": "breakeven_stop",
+    "ticker": "010120"
+  },
+  {
+    "entry_ts": "2026-01-14T11:23:00",
+    "exit_ts": "2026-01-14T15:35:00",
+    "entry_price": 833249.9,
+    "exit_price": 849745.0,
+    "pnl": 14543.16076499992,
+    "pnl_pct": 0.017450922728052185,
+    "exit_reason": "forced_close",
+    "ticker": "000150"
+  },
+  {
+    "entry_ts": "2026-01-15T10:48:00",
+    "exit_ts": "2026-01-15T10:54:00",
+    "entry_price": 27808.34,
+    "exit_price": 28077.99747298,
+    "pnl": 205.11852741309485,
+    "pnl_pct": 0.0073750451932210834,
+    "exit_reason": "breakeven_stop",
+    "ticker": "319400"
+  },
+  {
+    "entry_ts": "2026-01-15T10:22:00",
+    "exit_ts": "2026-01-15T11:21:00",
+    "entry_price": 495648.64999999997,
+    "exit_price": 515845.2,
+    "pnl": 19013.13552250003,
+    "pnl_pct": 0.03835435439984159,
+    "exit_reason": "momentum_fade",
+    "ticker": "277810"
+  },
+  {
+    "entry_ts": "2026-01-15T11:28:00",
+    "exit_ts": "2026-01-15T15:35:00",
+    "entry_price": 93728.11,
+    "exit_price": 91272.61,
+    "pnl": -2665.795327999993,
+    "pnl_pct": -0.028437525505125325,
+    "exit_reason": "forced_close",
+    "ticker": "454910"
+  },
+  {
+    "entry_ts": "2026-01-15T11:02:00",
+    "exit_ts": "2026-01-15T15:35:00",
+    "entry_price": 51215.36,
+    "exit_price": 51984.4,
+    "pnl": 649.5912360000002,
+    "pnl_pct": 0.012681621527764541,
+    "exit_reason": "forced_close",
+    "ticker": "222800"
+  },
+  {
+    "entry_ts": "2026-01-15T09:34:00",
+    "exit_ts": "2026-01-15T10:07:00",
+    "entry_price": 50815.24,
+    "exit_price": 49807.553250000004,
+    "pnl": -1122.3952754874917,
+    "pnl_pct": -0.022084456187676668,
+    "exit_reason": "stop_loss",
+    "ticker": "353200"
+  },
+  {
+    "entry_ts": "2026-01-15T11:08:00",
+    "exit_ts": "2026-01-15T13:12:00",
+    "entry_price": 57317.189999999995,
+    "exit_price": 59816.299725000004,
+    "pnl": 2361.9071020912597,
+    "pnl_pct": 0.041201476715116106,
+    "exit_reason": "trailing_stop",
+    "ticker": "007810"
+  },
+  {
+    "entry_ts": "2026-01-16T11:17:00",
+    "exit_ts": "2026-01-16T13:30:00",
+    "entry_price": 59317.79,
+    "exit_price": 58356.66131385746,
+    "pnl": -1095.4931764673383,
+    "pnl_pct": -0.018465436374749768,
+    "exit_reason": "stop_loss",
+    "ticker": "083650"
+  },
+  {
+    "entry_ts": "2026-01-16T09:42:00",
+    "exit_ts": "2026-01-16T10:02:00",
+    "entry_price": 74022.2,
+    "exit_price": 73590.41625000001,
+    "pnl": -601.1064749374927,
+    "pnl_pct": -0.008119406373886745,
+    "exit_reason": "stop_loss",
+    "ticker": "437730"
+  },
+  {
+    "entry_ts": "2026-01-19T09:36:00",
+    "exit_ts": "2026-01-19T10:23:00",
+    "entry_price": 65019.5,
+    "exit_price": 64915.5195,
+    "pnl": -253.30179192499781,
+    "pnl_pct": -0.003895197630782221,
+    "exit_reason": "stop_loss",
+    "ticker": "457190"
+  },
+  {
+    "entry_ts": "2026-01-22T09:58:00",
+    "exit_ts": "2026-01-22T12:35:00",
+    "entry_price": 365109.5,
+    "exit_price": 368649.96682150004,
+    "pnl": 2693.102967833809,
+    "pnl_pct": 0.00737504519322111,
+    "exit_reason": "breakeven_stop",
+    "ticker": "006400"
+  },
+  {
+    "entry_ts": "2026-01-22T10:17:00",
+    "exit_ts": "2026-01-22T15:35:00",
+    "entry_price": 106031.8,
+    "exit_price": 104968.5,
+    "pnl": -1304.8870449999959,
+    "pnl_pct": -0.012304717464937887,
+    "exit_reason": "forced_close",
+    "ticker": "086520"
+  },
+  {
+    "entry_ts": "2026-01-22T11:54:00",
+    "exit_ts": "2026-01-22T14:20:00",
+    "entry_price": 908272.4,
+    "exit_price": 897368.20875,
+    "pnl": -12969.773758812575,
+    "pnl_pct": -0.014277466302537537,
+    "exit_reason": "stop_loss",
+    "ticker": "000150"
+  },
+  {
+    "entry_ts": "2026-01-22T11:06:00",
+    "exit_ts": "2026-01-22T11:11:00",
+    "entry_price": 3476.0425,
+    "exit_price": 3445.5910125,
+    "pnl": -38.380914551874866,
+    "pnl_pct": -0.01103989904557644,
+    "exit_reason": "stop_loss",
+    "ticker": "018880"
+  },
+  {
+    "entry_ts": "2026-01-22T10:05:00",
+    "exit_ts": "2026-01-22T15:35:00",
+    "entry_price": 122136.62999999999,
+    "exit_price": 125862.23000000001,
+    "pnl": 3436.675711000018,
+    "pnl_pct": 0.028133740770127477,
+    "exit_reason": "forced_close",
+    "ticker": "066970"
+  },
+  {
+    "entry_ts": "2026-01-23T10:57:00",
+    "exit_ts": "2026-01-23T15:35:00",
+    "entry_price": 268080.39999999997,
+    "exit_price": 265920.2,
+    "pnl": -2772.1404899999616,
+    "pnl_pct": -0.010339154713624229,
+    "exit_reason": "forced_close",
+    "ticker": "035420"
+  },
+  {
+    "entry_ts": "2026-01-23T09:59:00",
+    "exit_ts": "2026-01-23T10:25:00",
+    "entry_price": 57317.189999999995,
+    "exit_price": 62186.338500000005,
+    "pnl": 4726.850293725016,
+    "pnl_pct": 0.08245591545082966,
+    "exit_reason": "trailing_stop",
+    "ticker": "377300"
+  },
+  {
+    "entry_ts": "2026-01-23T11:25:00",
+    "exit_ts": "2026-01-23T15:35:00",
+    "entry_price": 29808.94,
+    "exit_price": 29691.09,
+    "pnl": -186.15718449999986,
+    "pnl_pct": -0.006244075271050676,
+    "exit_reason": "forced_close",
+    "ticker": "009830"
+  },
+  {
+    "entry_ts": "2026-01-26T10:43:00",
+    "exit_ts": "2026-01-26T13:47:00",
+    "entry_price": 197859.34,
+    "exit_price": 200467.33701559005,
+    "pnl": 2147.3133400065126,
+    "pnl_pct": 0.010851099024755746,
+    "exit_reason": "breakeven_stop",
+    "ticker": "247540"
+  },
+  {
+    "entry_ts": "2026-01-26T11:24:00",
+    "exit_ts": "2026-01-26T11:50:00",
+    "entry_price": 31709.51,
+    "exit_price": 30995.698500000002,
+    "pnl": -785.2086782749975,
+    "pnl_pct": -0.02475884725553318,
+    "exit_reason": "stop_loss",
+    "ticker": "098460"
+  },
+  {
+    "entry_ts": "2026-01-27T11:23:00",
+    "exit_ts": "2026-01-27T15:35:00",
+    "entry_price": 553165.9,
+    "exit_price": 536838.9,
+    "pnl": -17564.178520000074,
+    "pnl_pct": -0.03174733707981063,
+    "exit_reason": "forced_close",
+    "ticker": "010120"
+  },
+  {
+    "entry_ts": "2026-01-27T10:15:00",
+    "exit_ts": "2026-01-27T11:52:00",
+    "entry_price": 30509.149999999998,
+    "exit_price": 32067.87675,
+    "pnl": 1485.204442487502,
+    "pnl_pct": 0.04867332243714483,
+    "exit_reason": "breakeven_stop",
+    "ticker": "067310"
+  },
+  {
+    "entry_ts": "2026-01-27T10:49:00",
+    "exit_ts": "2026-01-27T11:23:00",
+    "entry_price": 6141.842,
+    "exit_price": 6082.1748,
+    "pnl": -73.66515211999922,
+    "pnl_pct": -0.011992184755713118,
+    "exit_reason": "stop_loss",
+    "ticker": "003530"
+  },
+  {
+    "entry_ts": "2026-01-28T10:13:00",
+    "exit_ts": "2026-01-28T15:35:00",
+    "entry_price": 36310.89,
+    "exit_price": 36489.05,
+    "pnl": 94.26190900000074,
+    "pnl_pct": 0.0025955786772019524,
+    "exit_reason": "forced_close",
+    "ticker": "080220"
+  },
+  {
+    "entry_ts": "2026-01-28T11:13:00",
+    "exit_ts": "2026-01-28T15:35:00",
+    "entry_price": 545163.5,
+    "exit_price": 518844.3,
+    "pnl": -27516.489770000044,
+    "pnl_pct": -0.05046625996707907,
+    "exit_reason": "forced_close",
+    "ticker": "128940"
+  },
+  {
+    "entry_ts": "2026-01-28T11:48:00",
+    "exit_ts": "2026-01-28T11:54:00",
+    "entry_price": 73522.05,
+    "exit_price": 72615.70875,
+    "pnl": -1073.4933313125075,
+    "pnl_pct": -0.014598781337881466,
+    "exit_reason": "stop_loss",
+    "ticker": "450080"
+  },
+  {
+    "entry_ts": "2026-01-28T09:59:00",
+    "exit_ts": "2026-01-28T10:15:00",
+    "entry_price": 56216.86,
+    "exit_price": 56761.99489142,
+    "pnl": 414.6640734034445,
+    "pnl_pct": 0.007375045193220972,
+    "exit_reason": "breakeven_stop",
+    "ticker": "222800"
+  },
+  {
+    "entry_ts": "2026-01-28T11:13:00",
+    "exit_ts": "2026-01-28T14:18:00",
+    "entry_price": 54116.229999999996,
+    "exit_price": 54197.485875,
+    "pnl": -43.386154131250805,
+    "pnl_pct": -0.0008016014268579534,
+    "exit_reason": "stop_loss",
+    "ticker": "353200"
+  },
+  {
+    "entry_ts": "2026-01-29T11:06:00",
+    "exit_ts": "2026-01-29T13:02:00",
+    "entry_price": 203060.9,
+    "exit_price": 201572.69361096135,
+    "pnl": -1952.046815302223,
+    "pnl_pct": -0.009611668480708959,
+    "exit_reason": "stop_loss",
+    "ticker": "042700"
+  },
+  {
+    "entry_ts": "2026-01-29T09:39:00",
+    "exit_ts": "2026-01-29T15:07:00",
+    "entry_price": 486645.95,
+    "exit_price": 484954.47000000003,
+    "pnl": -2807.129003000038,
+    "pnl_pct": -0.005767453724418168,
+    "exit_reason": "stop_loss",
+    "ticker": "307950"
+  },
+  {
+    "entry_ts": "2026-01-29T11:41:00",
+    "exit_ts": "2026-01-29T13:04:00",
+    "entry_price": 43413.02,
+    "exit_price": 42497.247,
+    "pnl": -1013.6540340499923,
+    "pnl_pct": -0.023345577173591703,
+    "exit_reason": "stop_loss",
+    "ticker": "030530"
+  },
+  {
+    "entry_ts": "2026-02-06T10:33:00",
+    "exit_ts": "2026-02-06T11:32:00",
+    "entry_price": 33410.02,
+    "exit_price": 37338.795,
+    "pnl": 3843.4850877499994,
+    "pnl_pct": 0.11502263846152387,
+    "exit_reason": "limit_up_exit",
+    "ticker": "347700"
+  },
+  {
+    "entry_ts": "2026-02-11T11:55:00",
+    "exit_ts": "2026-02-11T12:33:00",
+    "entry_price": 549164.7,
+    "exit_price": 548070.5295000001,
+    "pnl": -2354.896843424882,
+    "pnl_pct": -0.0042875000193486595,
+    "exit_reason": "stop_loss",
+    "ticker": "002380"
+  },
+  {
+    "entry_ts": "2026-02-12T10:44:00",
+    "exit_ts": "2026-02-12T11:29:00",
+    "entry_price": 394118.2,
+    "exit_price": 385496.81625000003,
+    "pnl": -9509.319634937448,
+    "pnl_pct": -0.02412447192471652,
+    "exit_reason": "stop_loss",
+    "ticker": "005490"
+  },
+  {
+    "entry_ts": "2026-02-12T09:33:00",
+    "exit_ts": "2026-02-12T09:44:00",
+    "entry_price": 216064.8,
+    "exit_price": 218159.9803656,
+    "pnl": 1593.7266878139635,
+    "pnl_pct": 0.007375045193221034,
+    "exit_reason": "breakeven_stop",
+    "ticker": "042700"
+  },
+  {
+    "entry_ts": "2026-02-12T11:44:00",
+    "exit_ts": "2026-02-12T15:35:00",
+    "entry_price": 211063.3,
+    "exit_price": 209437.15,
+    "pnl": -2108.099367499992,
+    "pnl_pct": -0.009986497889590416,
+    "exit_reason": "forced_close",
+    "ticker": "042700"
+  },
+  {
+    "entry_ts": "2026-02-12T09:57:00",
+    "exit_ts": "2026-02-12T10:05:00",
+    "entry_price": 4626.3875,
+    "exit_price": 4671.249579587499,
+    "pnl": 34.124934866386866,
+    "pnl_pct": 0.007375045193221016,
+    "exit_reason": "breakeven_stop",
+    "ticker": "088350"
+  },
+  {
+    "entry_ts": "2026-02-13T11:08:00",
+    "exit_ts": "2026-02-13T12:48:00",
+    "entry_price": 61118.329999999994,
+    "exit_price": 61780.710225,
+    "pnl": 520.3839485162607,
+    "pnl_pct": 0.008513090960287465,
+    "exit_reason": "stop_loss",
+    "ticker": "006800"
+  },
+  {
+    "entry_ts": "2026-02-13T11:26:00",
+    "exit_ts": "2026-02-13T15:35:00",
+    "entry_price": 177853.34,
+    "exit_price": 176646.99000000002,
+    "pnl": -1612.8190294999804,
+    "pnl_pct": -0.009066892659584247,
+    "exit_reason": "forced_close",
+    "ticker": "047810"
+  },
+  {
+    "entry_ts": "2026-02-13T11:42:00",
+    "exit_ts": "2026-02-13T14:44:00",
+    "entry_price": 85225.56,
+    "exit_price": 85648.2978,
+    "pnl": 225.81012573000044,
+    "pnl_pct": 0.0026491613465620734,
+    "exit_reason": "stop_loss",
+    "ticker": "017670"
+  },
+  {
+    "entry_ts": "2026-02-19T11:04:00",
+    "exit_ts": "2026-02-19T15:35:00",
+    "entry_price": 172751.81,
+    "exit_price": 172248.31,
+    "pnl": -899.7466380000114,
+    "pnl_pct": -0.0052075384694700135,
+    "exit_reason": "forced_close",
+    "ticker": "086520"
+  },
+  {
+    "entry_ts": "2026-02-19T10:49:00",
+    "exit_ts": "2026-02-19T15:35:00",
+    "entry_price": 141042.3,
+    "exit_price": 140557.82,
+    "pnl": -807.8356579999672,
+    "pnl_pct": -0.005726753610972336,
+    "exit_reason": "forced_close",
+    "ticker": "042660"
+  },
+  {
+    "entry_ts": "2026-02-19T11:13:00",
+    "exit_ts": "2026-02-19T15:35:00",
+    "entry_price": 406121.8,
+    "exit_price": 411376.55,
+    "pnl": 4309.372147499991,
+    "pnl_pct": 0.010609442385570529,
+    "exit_reason": "forced_close",
+    "ticker": "196170"
+  },
+  {
+    "entry_ts": "2026-02-19T10:05:00",
+    "exit_ts": "2026-02-19T14:05:00",
+    "entry_price": 25557.665,
+    "exit_price": 25617.937312500002,
+    "pnl": 1.3600975281260617,
+    "pnl_pct": 5.320883359627914e-05,
+    "exit_reason": "stop_loss",
+    "ticker": "097230"
+  },
+  {
+    "entry_ts": "2026-02-20T11:35:00",
+    "exit_ts": "2026-02-20T13:42:00",
+    "entry_price": 116835.04,
+    "exit_price": 118365.729625,
+    "pnl": 1258.6780503062764,
+    "pnl_pct": 0.010771505508233997,
+    "exit_reason": "stop_loss",
+    "ticker": "272210"
+  },
+  {
+    "entry_ts": "2026-02-20T09:35:00",
+    "exit_ts": "2026-02-20T15:35:00",
+    "entry_price": 171651.47999999998,
+    "exit_price": 163251.01,
+    "pnl": -8777.207393499964,
+    "pnl_pct": -0.05112621813600726,
+    "exit_reason": "forced_close",
+    "ticker": "052690"
+  },
+  {
+    "entry_ts": "2026-02-23T10:59:00",
+    "exit_ts": "2026-02-23T15:35:00",
+    "entry_price": 136240.86,
+    "exit_price": 132560.22,
+    "pnl": -3986.080602000002,
+    "pnl_pct": -0.029253212139023963,
+    "exit_reason": "forced_close",
+    "ticker": "066570"
+  },
+  {
+    "entry_ts": "2026-02-23T10:13:00",
+    "exit_ts": "2026-02-23T10:25:00",
+    "entry_price": 34910.47,
+    "exit_price": 34748.322375,
+    "pnl": -242.09308860624878,
+    "pnl_pct": -0.006933644264578375,
+    "exit_reason": "stop_loss",
+    "ticker": "001440"
+  },
+  {
+    "entry_ts": "2026-02-23T10:21:00",
+    "exit_ts": "2026-02-23T11:06:00",
+    "entry_price": 1267380.0999999999,
+    "exit_price": 1240802.6475,
+    "pnl": -29435.285207124893,
+    "pnl_pct": -0.02322181843989693,
+    "exit_reason": "stop_loss",
+    "ticker": "003230"
+  },
+  {
+    "entry_ts": "2026-02-23T09:45:00",
+    "exit_ts": "2026-02-23T12:51:00",
+    "entry_price": 164649.38,
+    "exit_price": 163263.50625,
+    "pnl": -1761.5876954375126,
+    "pnl_pct": -0.010697419552463396,
+    "exit_reason": "stop_loss",
+    "ticker": "062040"
+  },
+  {
+    "entry_ts": "2026-02-23T10:15:00",
+    "exit_ts": "2026-02-23T11:13:00",
+    "entry_price": 82324.69,
+    "exit_price": 81583.01775,
+    "pnl": -929.4244416625006,
+    "pnl_pct": -0.011288047958700663,
+    "exit_reason": "stop_loss",
+    "ticker": "103590"
+  },
+  {
+    "entry_ts": "2026-02-25T09:58:00",
+    "exit_ts": "2026-02-25T15:35:00",
+    "entry_price": 90927.27,
+    "exit_price": 84574.62000000001,
+    "pnl": -6548.124523499995,
+    "pnl_pct": -0.07200416829991899,
+    "exit_reason": "forced_close",
+    "ticker": "103590"
+  },
+  {
+    "entry_ts": "2026-02-25T11:03:00",
+    "exit_ts": "2026-02-25T12:01:00",
+    "entry_price": 145343.59,
+    "exit_price": 148155.54,
+    "pnl": 2471.6140505000076,
+    "pnl_pct": 0.017002768157821122,
+    "exit_reason": "breakeven_stop",
+    "ticker": "058610"
+  },
+  {
+    "entry_ts": "2026-02-26T10:57:00",
+    "exit_ts": "2026-02-26T13:58:00",
+    "entry_price": 243573.05,
+    "exit_price": 273917.8,
+    "pnl": 29719.290772499982,
+    "pnl_pct": 0.12199557195456502,
+    "exit_reason": "momentum_fade",
+    "ticker": "042700"
+  },
+  {
+    "entry_ts": "2026-02-26T10:32:00",
+    "exit_ts": "2026-02-26T11:39:00",
+    "entry_price": 144743.41,
+    "exit_price": 146146.98684677,
+    "pnl": 1067.649313549453,
+    "pnl_pct": 0.007375045193221075,
+    "exit_reason": "breakeven_stop",
+    "ticker": "066570"
+  },
+  {
+    "entry_ts": "2026-02-26T09:35:00",
+    "exit_ts": "2026-02-26T12:03:00",
+    "entry_price": 69020.7,
+    "exit_price": 69691.58625000001,
+    "pnl": 510.696234562507,
+    "pnl_pct": 0.007398065241532824,
+    "exit_reason": "breakeven_stop",
+    "ticker": "377300"
+  },
+  {
+    "entry_ts": "2026-03-03T09:49:00",
+    "exit_ts": "2026-03-03T11:02:00",
+    "entry_price": 128138.43,
+    "exit_price": 127491.74100000001,
+    "pnl": -940.0170076499926,
+    "pnl_pct": -0.00733484893053595,
+    "exit_reason": "stop_loss",
+    "ticker": "010950"
+  },
+  {
+    "entry_ts": "2026-03-09T11:59:00",
+    "exit_ts": "2026-03-09T12:29:00",
+    "entry_price": 79323.79,
+    "exit_price": 78085.317375,
+    "pnl": -1418.254625856236,
+    "pnl_pct": -0.017876628430995304,
+    "exit_reason": "stop_loss",
+    "ticker": "047050"
+  },
+  {
+    "entry_ts": "2026-03-11T09:35:00",
+    "exit_ts": "2026-03-11T10:39:00",
+    "entry_price": 369610.85,
+    "exit_price": 366490.02,
+    "pnl": -3964.225170499936,
+    "pnl_pct": -0.010723794027978482,
+    "exit_reason": "stop_loss",
+    "ticker": "034730"
+  },
+  {
+    "entry_ts": "2026-03-12T11:24:00",
+    "exit_ts": "2026-03-12T11:52:00",
+    "entry_price": 20156.045,
+    "exit_price": 20127.709875,
+    "pnl": -74.63310798124803,
+    "pnl_pct": -0.0037022101654389013,
+    "exit_reason": "stop_loss",
+    "ticker": "038500"
+  },
+  {
+    "entry_ts": "2026-03-12T11:06:00",
+    "exit_ts": "2026-03-12T15:35:00",
+    "entry_price": 25857.754999999997,
+    "exit_price": 25892.23,
+    "pnl": -25.071957749998546,
+    "pnl_pct": -0.0009694653507379311,
+    "exit_reason": "forced_close",
+    "ticker": "097230"
+  },
+  {
+    "entry_ts": "2026-03-12T10:58:00",
+    "exit_ts": "2026-03-12T13:22:00",
+    "entry_price": 162548.75,
+    "exit_price": 168644.641425,
+    "pnl": 5708.923133436241,
+    "pnl_pct": 0.03511603087318562,
+    "exit_reason": "breakeven_stop",
+    "ticker": "010060"
+  },
+  {
+    "entry_ts": "2026-03-12T10:16:00",
+    "exit_ts": "2026-03-12T10:35:00",
+    "entry_price": 48114.43,
+    "exit_price": 47175.843,
+    "pnl": -1047.23222695,
+    "pnl_pct": -0.0217621858073586,
+    "exit_reason": "stop_loss",
+    "ticker": "229640"
+  },
+  {
+    "entry_ts": "2026-03-13T10:12:00",
+    "exit_ts": "2026-03-13T10:35:00",
+    "entry_price": 21506.45,
+    "exit_price": 22223.331000000002,
+    "pnl": 665.8748708500025,
+    "pnl_pct": 0.03095699218603315,
+    "exit_reason": "breakeven_stop",
+    "ticker": "417200"
+  },
+  {
+    "entry_ts": "2026-03-17T09:42:00",
+    "exit_ts": "2026-03-17T15:35:00",
+    "entry_price": 448634.55,
+    "exit_price": 422373.25,
+    "pnl": -27236.697669999965,
+    "pnl_pct": -0.06070110466989949,
+    "exit_reason": "forced_close",
+    "ticker": "307950"
+  },
+  {
+    "entry_ts": "2026-03-17T11:29:00",
+    "exit_ts": "2026-03-17T14:40:00",
+    "entry_price": 34660.395,
+    "exit_price": 34328.0734875,
+    "pnl": -411.32592974812724,
+    "pnl_pct": -0.011865538177280163,
+    "exit_reason": "stop_loss",
+    "ticker": "030530"
+  },
+  {
+    "entry_ts": "2026-03-18T11:01:00",
+    "exit_ts": "2026-03-18T15:30:00",
+    "entry_price": 245073.5,
+    "exit_price": 234929.5,
+    "pnl": -10685.859450000018,
+    "pnl_pct": -0.043596132635630926,
+    "exit_reason": "forced_close",
+    "ticker": "032830"
+  },
+  {
+    "entry_ts": "2026-03-19T11:12:00",
+    "exit_ts": "2026-03-19T11:30:00",
+    "entry_price": 47814.34,
+    "exit_price": 48277.99565498,
+    "pnl": 352.68581332179747,
+    "pnl_pct": 0.007375045193221111,
+    "exit_reason": "breakeven_stop",
+    "ticker": "475150"
+  },
+  {
+    "entry_ts": "2026-03-20T09:38:00",
+    "exit_ts": "2026-03-20T10:30:00",
+    "entry_price": 71021.3,
+    "exit_price": 75777.26000000001,
+    "pnl": 4582.385695999998,
+    "pnl_pct": 0.06451161047789623,
+    "exit_reason": "momentum_fade",
+    "ticker": "036930"
+  },
+  {
+    "entry_ts": "2026-03-26T10:50:00",
+    "exit_ts": "2026-03-26T11:10:00",
+    "entry_price": 29408.82,
+    "exit_price": 29693.997327540004,
+    "pnl": 216.92391028579368,
+    "pnl_pct": 0.007375045193221176,
+    "exit_reason": "breakeven_stop",
+    "ticker": "100790"
+  },
+  {
+    "entry_ts": "2026-03-26T10:15:00",
+    "exit_ts": "2026-03-26T15:35:00",
+    "entry_price": 393117.89999999997,
+    "exit_price": 380885.7,
+    "pnl": -13110.071939999936,
+    "pnl_pct": -0.03334395539898162,
+    "exit_reason": "forced_close",
+    "ticker": "196170"
+  },
+  {
+    "entry_ts": "2026-04-02T10:33:00",
+    "exit_ts": "2026-04-02T11:33:00",
+    "entry_price": 10373.110999999999,
+    "exit_price": 9767.46888,
+    "pnl": -628.1981447419985,
+    "pnl_pct": -0.06055116243840692,
+    "exit_reason": "stop_loss",
+    "ticker": "010170"
+  },
+  {
+    "entry_ts": "2026-04-02T10:10:00",
+    "exit_ts": "2026-04-02T10:19:00",
+    "entry_price": 75922.77,
+    "exit_price": 74175.24075,
+    "pnl": -1918.3944331125094,
+    "pnl_pct": -0.025263919073354985,
+    "exit_reason": "stop_loss",
+    "ticker": "450080"
+  },
+  {
+    "entry_ts": "2026-04-06T11:45:00",
+    "exit_ts": "2026-04-06T15:35:00",
+    "entry_price": 55316.59,
+    "exit_price": 54483.65,
+    "pnl": -958.3773359999977,
+    "pnl_pct": -0.01732271640315959,
+    "exit_reason": "forced_close",
+    "ticker": "222800"
+  },
+  {
+    "entry_ts": "2026-04-08T11:28:00",
+    "exit_ts": "2026-04-08T14:23:00",
+    "entry_price": 253075.9,
+    "exit_price": 248063.05875,
+    "pnl": -5584.1382113125,
+    "pnl_pct": -0.022061763748365885,
+    "exit_reason": "stop_loss",
+    "ticker": "145020"
+  },
+  {
+    "entry_ts": "2026-04-10T09:33:00",
+    "exit_ts": "2026-04-10T15:35:00",
+    "entry_price": 18575.571,
+    "exit_price": 17094.87,
+    "pnl": -1520.241306150001,
+    "pnl_pct": -0.08182861803571896,
+    "exit_reason": "forced_close",
+    "ticker": "038500"
+  },
+  {
+    "entry_ts": "2026-04-10T11:43:00",
+    "exit_ts": "2026-04-10T15:35:00",
+    "entry_price": 12713.813,
+    "exit_price": 12656.202000000001,
+    "pnl": -86.72890624999854,
+    "pnl_pct": -0.006820605184704917,
+    "exit_reason": "forced_close",
+    "ticker": "034220"
+  },
+  {
+    "entry_ts": "2026-04-14T09:33:00",
+    "exit_ts": "2026-04-14T10:08:00",
+    "entry_price": 71521.45,
+    "exit_price": 72225.82575,
+    "pnl": 538.3620071375044,
+    "pnl_pct": 0.007526151454532343,
+    "exit_reason": "breakeven_stop",
+    "ticker": "006800"
+  },
+  {
+    "entry_ts": "2026-04-14T10:55:00",
+    "exit_ts": "2026-04-14T11:30:00",
+    "entry_price": 42062.615,
+    "exit_price": 42470.496177655004,
+    "pnl": 310.2602186230506,
+    "pnl_pct": 0.007375045193221228,
+    "exit_reason": "breakeven_stop",
+    "ticker": "009830"
+  },
+  {
+    "entry_ts": "2026-04-14T10:38:00",
+    "exit_ts": "2026-04-14T13:06:00",
+    "entry_price": 46313.89,
+    "exit_price": 46556.52885,
+    "pnl": 135.59522947249934,
+    "pnl_pct": 0.00292730524770244,
+    "exit_reason": "stop_loss",
+    "ticker": "347700"
+  },
+  {
+    "entry_ts": "2026-04-15T11:16:00",
+    "exit_ts": "2026-04-15T15:35:00",
+    "entry_price": 104431.31999999999,
+    "exit_price": 104168.74,
+    "pnl": -502.2074889999785,
+    "pnl_pct": -0.0048082526312470475,
+    "exit_reason": "forced_close",
+    "ticker": "034020"
+  },
+  {
+    "entry_ts": "2026-04-15T10:25:00",
+    "exit_ts": "2026-04-15T11:11:00",
+    "entry_price": 40712.21,
+    "exit_price": 39963.0075,
+    "pnl": -841.2297976249974,
+    "pnl_pct": -0.020659738984451725,
+    "exit_reason": "stop_loss",
+    "ticker": "006360"
+  },
+  {
+    "entry_ts": "2026-04-15T09:36:00",
+    "exit_ts": "2026-04-15T10:37:00",
+    "entry_price": 36610.979999999996,
+    "exit_price": 39638.105,
+    "pnl": 2936.4114272500083,
+    "pnl_pct": 0.08019372962961574,
+    "exit_reason": "momentum_fade",
+    "ticker": "001440"
+  },
+  {
+    "entry_ts": "2026-04-15T11:11:00",
+    "exit_ts": "2026-04-15T14:37:00",
+    "entry_price": 59417.82,
+    "exit_price": 56433.557126835025,
+    "pnl": -3114.507693987667,
+    "pnl_pct": -0.05240920296132511,
+    "exit_reason": "stop_loss",
+    "ticker": "089030"
+  },
+  {
+    "entry_ts": "2026-04-15T10:01:00",
+    "exit_ts": "2026-04-15T15:35:00",
+    "entry_price": 71821.54,
+    "exit_price": 70578.82,
+    "pnl": -1405.2376939999813,
+    "pnl_pct": -0.019562751508238163,
+    "exit_reason": "forced_close",
+    "ticker": "036930"
+  },
+  {
+    "entry_ts": "2026-04-17T11:35:00",
+    "exit_ts": "2026-04-17T15:35:00",
+    "entry_price": 505151.5,
+    "exit_price": 512846.10000000003,
+    "pnl": 6516.208160000038,
+    "pnl_pct": 0.01289757800455652,
+    "exit_reason": "forced_close",
+    "ticker": "006400"
+  },
+  {
+    "entry_ts": "2026-04-17T11:30:00",
+    "exit_ts": "2026-04-17T15:35:00",
+    "entry_price": 181854.54,
+    "exit_price": 185544.32,
+    "pnl": 3263.5815310000035,
+    "pnl_pct": 0.01794341822420229,
+    "exit_reason": "forced_close",
+    "ticker": "066970"
+  },
+  {
+    "entry_ts": "2026-04-20T09:36:00",
+    "exit_ts": "2026-04-20T11:50:00",
+    "entry_price": 128638.58,
+    "exit_price": 134759.56,
+    "pnl": 5811.951158999989,
+    "pnl_pct": 0.04517369126023801,
+    "exit_reason": "momentum_fade",
+    "ticker": "007660"
+  },
+  {
+    "entry_ts": "2026-04-20T11:54:00",
+    "exit_ts": "2026-04-20T14:40:00",
+    "entry_price": 290587.14999999997,
+    "exit_price": 286803.933,
+    "pnl": -4443.433528449968,
+    "pnl_pct": -0.015288931783057033,
+    "exit_reason": "stop_loss",
+    "ticker": "108490"
+  },
+  {
+    "entry_ts": "2026-04-21T09:37:00",
+    "exit_ts": "2026-04-21T11:58:00",
+    "entry_price": 32609.78,
+    "exit_price": 34039.785,
+    "pnl": 1351.92799525,
+    "pnl_pct": 0.0414515288500729,
+    "exit_reason": "momentum_fade",
+    "ticker": "047040"
+  },
+  {
+    "entry_ts": "2026-04-21T09:33:00",
+    "exit_ts": "2026-04-21T11:56:00",
+    "entry_price": 41687.502499999995,
+    "exit_price": 43586.92,
+    "pnl": 1799.4524966250028,
+    "pnl_pct": 0.043158800871606985,
+    "exit_reason": "momentum_fade",
+    "ticker": "006360"
+  },
+  {
+    "entry_ts": "2026-04-21T09:43:00",
+    "exit_ts": "2026-04-21T10:24:00",
+    "entry_price": 47014.1,
+    "exit_price": 47469.99572770001,
+    "pnl": 346.78312188545533,
+    "pnl_pct": 0.007375045193221237,
+    "exit_reason": "breakeven_stop",
+    "ticker": "080220"
+  },
+  {
+    "entry_ts": "2026-04-22T11:42:00",
+    "exit_ts": "2026-04-22T13:02:00",
+    "entry_price": 151045.3,
+    "exit_price": 155853.23,
+    "pnl": 4450.188760500023,
+    "pnl_pct": 0.029458191233359653,
+    "exit_reason": "momentum_fade",
+    "ticker": "007660"
+  },
+  {
+    "entry_ts": "2026-04-22T10:55:00",
+    "exit_ts": "2026-04-22T11:13:00",
+    "entry_price": 185455.62,
+    "exit_price": 183537.42225,
+    "pnl": -2340.6215508374735,
+    "pnl_pct": -0.012619032576424131,
+    "exit_reason": "stop_loss",
+    "ticker": "322000"
+  },
+  {
+    "entry_ts": "2026-04-22T10:08:00",
+    "exit_ts": "2026-04-22T15:35:00",
+    "entry_price": 1043312.9,
+    "exit_price": 1019694.0,
+    "pnl": -25967.739034999977,
+    "pnl_pct": -0.024885961304927054,
+    "exit_reason": "forced_close",
+    "ticker": "079550"
+  },
+  {
+    "entry_ts": "2026-04-22T10:09:00",
+    "exit_ts": "2026-04-22T10:31:00",
+    "entry_price": 30059.015,
+    "exit_price": 29631.108,
+    "pnl": -496.1227344500003,
+    "pnl_pct": -0.01650248110927521,
+    "exit_reason": "stop_loss",
+    "ticker": "097230"
+  },
+  {
+    "entry_ts": "2026-04-23T09:44:00",
+    "exit_ts": "2026-04-23T12:39:00",
+    "entry_price": 23907.17,
+    "exit_price": 22625.2104,
+    "pnl": -1334.189877859997,
+    "pnl_pct": -0.05579873232143697,
+    "exit_reason": "stop_loss",
+    "ticker": "032820"
+  },
+  {
+    "entry_ts": "2026-04-24T10:43:00",
+    "exit_ts": "2026-04-24T15:35:00",
+    "entry_price": 60718.21,
+    "exit_price": 61781.46,
+    "pnl": 921.3121295000019,
+    "pnl_pct": 0.015171296278447452,
+    "exit_reason": "forced_close",
+    "ticker": "089030"
+  },
+  {
+    "entry_ts": "2026-04-24T09:44:00",
+    "exit_ts": "2026-04-24T09:49:00",
+    "entry_price": 109832.94,
+    "exit_price": 110897.99001918001,
+    "pnl": 810.1443996387825,
+    "pnl_pct": 0.0073750451932211945,
+    "exit_reason": "breakeven_stop",
+    "ticker": "071970"
+  },
+  {
+    "entry_ts": "2026-04-24T10:45:00",
+    "exit_ts": "2026-04-24T12:29:00",
+    "entry_price": 22956.885,
+    "exit_price": 23179.497913845,
+    "pnl": 169.3334605802338,
+    "pnl_pct": 0.007375045193221042,
+    "exit_reason": "breakeven_stop",
+    "ticker": "232140"
+  },
+  {
+    "entry_ts": "2026-04-27T09:34:00",
+    "exit_ts": "2026-04-27T12:43:00",
+    "entry_price": 335100.5,
+    "exit_price": 372388.25,
+    "pnl": 36436.85018750001,
+    "pnl_pct": 0.10871778908022535,
+    "exit_reason": "momentum_fade",
+    "ticker": "042700"
+  },
+  {
+    "entry_ts": "2026-04-28T10:02:00",
+    "exit_ts": "2026-04-28T15:35:00",
+    "entry_price": 38561.565,
+    "exit_price": 37138.855,
+    "pnl": -1508.3427729999967,
+    "pnl_pct": -0.0391093192280103,
+    "exit_reason": "forced_close",
+    "ticker": "047040"
+  },
+  {
+    "entry_ts": "2026-04-28T11:36:00",
+    "exit_ts": "2026-04-28T15:35:00",
+    "entry_price": 563168.9,
+    "exit_price": 554833.5,
+    "pnl": -9612.76735999994,
+    "pnl_pct": -0.017066506444426827,
+    "exit_reason": "forced_close",
+    "ticker": "005380"
+  },
+  {
+    "entry_ts": "2026-04-28T10:34:00",
+    "exit_ts": "2026-04-28T11:09:00",
+    "entry_price": 208062.4,
+    "exit_price": 205663.2825,
+    "pnl": -2872.502917375008,
+    "pnl_pct": -0.013803897804500113,
+    "exit_reason": "stop_loss",
+    "ticker": "322000"
+  },
+  {
+    "entry_ts": "2026-04-28T09:33:00",
+    "exit_ts": "2026-04-28T15:35:00",
+    "entry_price": 143943.16999999998,
+    "exit_price": 139958.0,
+    "pnl": -4307.671175499971,
+    "pnl_pct": -0.029921705362829728,
+    "exit_reason": "forced_close",
+    "ticker": "066570"
+  },
+  {
+    "entry_ts": "2026-04-28T09:44:00",
+    "exit_ts": "2026-04-28T10:01:00",
+    "entry_price": 44213.26,
+    "exit_price": 43715.631375000004,
+    "pnl": -598.2492214562517,
+    "pnl_pct": -0.013528961617659993,
+    "exit_reason": "stop_loss",
+    "ticker": "006360"
+  },
+  {
+    "entry_ts": "2026-04-28T10:13:00",
+    "exit_ts": "2026-04-28T10:24:00",
+    "entry_price": 494398.27499999997,
+    "exit_price": 485404.335,
+    "pnl": -10111.719061499927,
+    "pnl_pct": -0.020449510126466886,
+    "exit_reason": "stop_loss",
+    "ticker": "307950"
+  },
+  {
+    "entry_ts": "2026-04-29T11:55:00",
+    "exit_ts": "2026-04-29T15:35:00",
+    "entry_price": 56717.009999999995,
+    "exit_price": 56682.990000000005,
+    "pnl": -164.3959799999866,
+    "pnl_pct": -0.0028980957265085272,
+    "exit_reason": "forced_close",
+    "ticker": "178320"
+  },
+  {
+    "entry_ts": "2026-04-29T09:33:00",
+    "exit_ts": "2026-04-29T15:35:00",
+    "entry_price": 58917.67,
+    "exit_price": 58982.3,
+    "pnl": -71.01959549999447,
+    "pnl_pct": -0.0012052232234976488,
+    "exit_reason": "forced_close",
+    "ticker": "475150"
+  },
+  {
+    "entry_ts": "2026-04-29T10:12:00",
+    "exit_ts": "2026-04-29T10:15:00",
+    "entry_price": 17105.13,
+    "exit_price": 16998.8988,
+    "pnl": -145.34460192000188,
+    "pnl_pct": -0.00849586080313198,
+    "exit_reason": "stop_loss",
+    "ticker": "038500"
+  },
+  {
+    "entry_ts": "2026-04-29T09:50:00",
+    "exit_ts": "2026-04-29T09:59:00",
+    "entry_price": 108732.61,
+    "exit_price": 107217.825,
+    "pnl": -1761.6132152500068,
+    "pnl_pct": -0.01619890309722237,
+    "exit_reason": "stop_loss",
+    "ticker": "011170"
+  },
+  {
+    "entry_ts": "2026-04-30T10:56:00",
+    "exit_ts": "2026-04-30T15:35:00",
+    "entry_price": 380114.0,
+    "exit_price": 367889.60000000003,
+    "pnl": -13072.379739999946,
+    "pnl_pct": -0.03438552428251361,
+    "exit_reason": "forced_close",
+    "ticker": "042700"
+  },
+  {
+    "entry_ts": "2026-05-04T11:36:00",
+    "exit_ts": "2026-05-04T13:57:00",
+    "entry_price": 42662.795,
+    "exit_price": 42399.77625,
+    "pnl": -360.577688187499,
+    "pnl_pct": -0.008450538921466634,
+    "exit_reason": "stop_loss",
+    "ticker": "067310"
+  },
+  {
+    "entry_ts": "2026-05-06T10:28:00",
+    "exit_ts": "2026-05-06T12:43:00",
+    "entry_price": 632189.6,
+    "exit_price": 637451.20725,
+    "pnl": 3796.258714412572,
+    "pnl_pct": 0.006004036385616627,
+    "exit_reason": "stop_loss",
+    "ticker": "002380"
+  },
+  {
+    "entry_ts": "2026-05-08T11:21:00",
+    "exit_ts": "2026-05-08T11:35:00",
+    "entry_price": 265579.64999999997,
+    "exit_price": 261708.96375,
+    "pnl": -4473.197469562467,
+    "pnl_pct": -0.016840622354061696,
+    "exit_reason": "stop_loss",
+    "ticker": "086280"
+  },
+  {
+    "entry_ts": "2026-05-08T10:52:00",
+    "exit_ts": "2026-05-08T11:19:00",
+    "entry_price": 92927.87,
+    "exit_price": 95521.335,
+    "pnl": 2374.1549492500053,
+    "pnl_pct": 0.0255445312522292,
+    "exit_reason": "breakeven_stop",
+    "ticker": "011210"
+  },
+  {
+    "entry_ts": "2026-05-08T10:35:00",
+    "exit_ts": "2026-05-08T12:00:00",
+    "entry_price": 62018.6,
+    "exit_price": 61114.16025,
+    "pnl": -1045.1379845374977,
+    "pnl_pct": -0.0168494812419483,
+    "exit_reason": "stop_loss",
+    "ticker": "204320"
+  },
+  {
+    "entry_ts": "2026-05-11T10:53:00",
+    "exit_ts": "2026-05-11T11:16:00",
+    "entry_price": 17825.345999999998,
+    "exit_price": 17998.198380161997,
+    "pnl": 131.48245174465046,
+    "pnl_pct": 0.007375045193220948,
+    "exit_reason": "breakeven_stop",
+    "ticker": "027360"
+  },
+  {
+    "entry_ts": "2026-05-11T10:12:00",
+    "exit_ts": "2026-05-11T11:02:00",
+    "entry_price": 46013.799999999996,
+    "exit_price": 46932.166125,
+    "pnl": 810.5598978312628,
+    "pnl_pct": 0.017612940728247845,
+    "exit_reason": "breakeven_stop",
+    "ticker": "347700"
+  },
+  {
+    "entry_ts": "2026-05-12T10:33:00",
+    "exit_ts": "2026-05-12T10:56:00",
+    "entry_price": 179353.79,
+    "exit_price": 178566.41400000002,
+    "pnl": -1198.1968585999857,
+    "pnl_pct": -0.006679631113602795,
+    "exit_reason": "stop_loss",
+    "ticker": "066570"
+  },
+  {
+    "entry_ts": "2026-05-12T10:37:00",
+    "exit_ts": "2026-05-12T10:52:00",
+    "entry_price": 111533.45,
+    "exit_price": 110434.35975,
+    "pnl": -1353.2541409624973,
+    "pnl_pct": -0.012131348786261023,
+    "exit_reason": "stop_loss",
+    "ticker": "218410"
+  },
+  {
+    "entry_ts": "2026-05-12T11:40:00",
+    "exit_ts": "2026-05-12T12:53:00",
+    "entry_price": 250575.15,
+    "exit_price": 252426.74925000002,
+    "pnl": 1271.2954666125297,
+    "pnl_pct": 0.005072748837593816,
+    "exit_reason": "stop_loss",
+    "ticker": "483650"
+  }
+]
