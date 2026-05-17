@@ -64,6 +64,7 @@ class UIEmitter:
             "positions_count": positions_count,
             "max_positions": self._config.trading.max_positions if self._config else 3,
             "active_count": len(self._state.active_strategies),
+            "intraday_count": self._state.intraday_add_count,
             "watched_tickers": list(self._state.active_strategies.keys())[:5],
             "ws_connected": self._ws_client.connected if self._ws_client else False,
             "daily_pnl": daily_pnl,
@@ -173,6 +174,7 @@ class UIEmitter:
                     "current_price": current, "change_pct": change_pct,
                     "prev_high": prev_high, "breakout_pct": breakout_pct,
                     "has_position": ticker in open_pos_tickers,
+                    "source": self._state.ticker_sources.get(ticker, "day_momentum"),
                 })
             items.sort(key=lambda x: x["breakout_pct"], reverse=True)
             self._signals.watchlist_updated.emit(items)

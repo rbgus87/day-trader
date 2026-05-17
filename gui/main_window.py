@@ -623,6 +623,7 @@ class MainWindow(QMainWindow):
 
         strategy = status.get("strategy", "—")
         active = status.get("active_count", 0)
+        intraday_count = status.get("intraday_count", 0)
         pos_count = status.get("positions_count", 0)
         max_pos = status.get("max_positions", 3)
         self._max_positions = max_pos
@@ -630,9 +631,14 @@ class MainWindow(QMainWindow):
         mode = self.sidebar.get_mode().upper()
         combo_text = self.sidebar.get_strategy()
         force_tag = f" [{combo_text}]" if combo_text not in ("Auto", "") else ""
+        if intraday_count > 0:
+            base_count = active - intraday_count
+            watch_text = f"{base_count}+{intraday_count}"
+        else:
+            watch_text = str(active)
         self._lbl_status_left.setText(
             f"Mode: {mode}{force_tag} | Strategy: {strategy} | "
-            f"감시: {active}종목 | 포지션: {pos_count}/{max_pos} | 가용: {available:,}원"
+            f"감시: {watch_text}종목 | 포지션: {pos_count}/{max_pos} | 가용: {available:,}원"
         )
 
     def _on_positions_updated(self, positions: list):

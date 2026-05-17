@@ -299,6 +299,16 @@ class EngineWorker(QThread):
         self._scheduler.add_job(_sa(_sm.refresh_market_filter, "market_filter_mid"), "cron", day_of_week="mon-fri", hour=10, minute=0, misfire_grace_time=300, id="market_filter_refresh_mid", replace_existing=True)
         if getattr(self._config.trading, "intraday_market_filter_enabled", False):
             self._scheduler.add_job(_sa(_sm.refresh_intraday_filter, "intraday_filter"), "interval", minutes=self._config.trading.intraday_check_interval_min, id="intraday_filter_refresh", replace_existing=True)
+        _is_cfg = getattr(self._config, "intraday_search", None)
+        if _is_cfg and _is_cfg.enabled:
+            for _time_str in _is_cfg.schedule:
+                _h, _m = map(int, _time_str.split(":"))
+                _job_id = f"intraday_search_{_time_str.replace(':', '')}"
+                self._scheduler.add_job(
+                    _sa(lambda: _ss.run_intraday_search(_sm.refresh_ohlcv), "intraday_search"),
+                    "cron", day_of_week="mon-fri", hour=_h, minute=_m,
+                    misfire_grace_time=60, id=_job_id, replace_existing=True,
+                )
         self._scheduler.add_job(
             lambda: self._vi_handler.log_summary() if self._vi_handler else None,
             "interval", minutes=5, id="vi_summary",

@@ -111,6 +111,9 @@ class ScreenerScheduler:
 
         self._state.active_strategies = {}
         self._state.gap_strategies = {}
+        self._state.intraday_added_tickers.clear()
+        self._state.intraday_add_count = 0
+        self._state.ticker_sources = {}
         for s in stocks:
             ticker = s["ticker"]
             strat = MomentumStrategy(self._config.trading)
@@ -129,6 +132,7 @@ class ScreenerScheduler:
             if "market" in s:
                 self._state.ticker_markets[ticker] = s["market"]
             self._state.ticker_names[ticker] = s.get("name", ticker)
+            self._state.ticker_sources[ticker] = "day_momentum"
 
             # 갭 전략 등록 (enabled 시)
             if gap_enabled:
@@ -397,3 +401,215 @@ class ScreenerScheduler:
                 self._notifier.send_urgent(f"스크리닝 오류: {exc}")
             except Exception:
                 pass
+
+    # ── 장중 조건검색 ──
+
+    async def run_intraday_search(self, refresh_ohlcv_fn=None) -> list[dict]:
+        """장중 intraday_leader 조건검색 → 신규 종목 동적 추가.
+
+        조건검색 WS와 메인 WS 순차 실행 (동시 연결 금지).
+        enrichment 실패 종목은 스킵 — 전체 중단 없음.
+        Returns: 추가된 종목 list[dict]
+        """
+        is_cfg = getattr(self._config, "intraday_search", None)
+        if not is_cfg or not is_cfg.enabled:
+            return []
+
+        if self._state.intraday_add_count >= is_cfg.max_total_added:
+            logger.info(
+                f"[INTRADAY] 장중 추가 한도 도달 ({is_cfg.max_total_added}) — 검색 스킵"
+            )
+            return []
+
+        logger.info(f"[INTRADAY] 조건검색 시작: {is_cfg.condition_name}")
+        try:
+            from core.condition_search import run_condition_search
+            token = await self._token_manager.get_token()
+            cs_results = await run_condition_search(
+                ws_url=self._config.kiwoom.ws_url,
+                access_token=token,
+                condition_name=is_cfg.condition_name,
+            )
+        except Exception as e:
+            logger.error(f"[INTRADAY] 조건검색 실패: {e}")
+            return []
+
+        if not cs_results:
+            logger.info("[INTRADAY] 조건검색 결과 없음")
+            return []
+
+        # 기존 감시 종목 제외
+        existing = set(self._state.active_strategies.keys())
+        new_codes = [s for s in cs_results if s.get("code", "").strip() not in existing]
+        if not new_codes:
+            logger.info("[INTRADAY] 신규 종목 없음 — 모두 감시 중")
+            return []
+
+        remaining = is_cfg.max_total_added - self._state.intraday_add_count
+        limit = min(is_cfg.max_add_per_search, remaining)
+
+        market_codes = await self.ensure_market_codes_cache()
+        added = await self._enrich_intraday_additions(new_codes, limit, market_codes)
+        if not added:
+            logger.info("[INTRADAY] enrichment 후 추가 가능한 종목 없음")
+            return []
+
+        # 전략 등록
+        from strategy.momentum_strategy import MomentumStrategy
+        for s in added:
+            ticker = s["ticker"]
+            strat = MomentumStrategy(self._config.trading)
+            strat.configure_multi_trade(
+                max_trades=self._config.trading.max_trades_per_day,
+                cooldown_minutes=self._config.trading.cooldown_minutes,
+            )
+            if hasattr(strat, "set_ticker"):
+                strat.set_ticker(ticker)
+            self._state.active_strategies[ticker] = {
+                "strategy": strat, "name": s.get("name", ticker), "score": 0,
+            }
+            self._state.ticker_markets[ticker] = s.get("market", "unknown")
+            self._state.ticker_names[ticker] = s.get("name", ticker)
+            self._state.intraday_added_tickers.add(ticker)
+            self._state.ticker_sources[ticker] = "intraday_leader"
+
+        self._state.intraday_add_count += len(added)
+
+        # OHLCV + 분봉 시드 주입 (daily_ohlcv_cache에 사전 적재 → 재조회 없음)
+        if refresh_ohlcv_fn:
+            try:
+                await refresh_ohlcv_fn([{"ticker": s["ticker"]} for s in added])
+            except Exception as e:
+                logger.warning(f"[INTRADAY] 신규 종목 OHLCV 주입 실패: {e}")
+
+        # WS 구독 추가
+        new_tickers = [s["ticker"] for s in added]
+        await self._manage_ws_subscriptions(new_tickers)
+
+        logger.bind(
+            event="intraday_search",
+            added=len(added),
+            total_watched=len(self._state.active_strategies),
+            total_intraday=self._state.intraday_add_count,
+        ).info(
+            f"[INTRADAY] 장중 종목 추가: +{len(added)}"
+            f" → 감시 총 {len(self._state.active_strategies)}종목"
+            f" (누적 {self._state.intraday_add_count}/{is_cfg.max_total_added})"
+        )
+        try:
+            names = ", ".join(s.get("name", s["ticker"]) for s in added)
+            self._notifier.send(
+                f"[INTRADAY] 장중 종목 추가 +{len(added)}\n{names}"
+            )
+        except Exception:
+            pass
+
+        return added
+
+    async def _enrich_intraday_additions(
+        self,
+        candidates: list[dict],
+        limit: int,
+        market_codes: dict | None,
+    ) -> list[dict]:
+        """신규 intraday 종목 enrichment — daily_ohlcv_cache에 적재."""
+        base_dt = datetime.now().strftime("%Y%m%d")
+        semaphore = asyncio.Semaphore(5)
+
+        async def enrich_one(stock: dict) -> dict | None:
+            ticker = stock.get("code", "").strip()
+            if not ticker:
+                return None
+            try:
+                async with semaphore:
+                    daily = await self._rest_client.get_daily_ohlcv(ticker, base_dt=base_dt)
+                items = (
+                    daily.get("stk_dt_pole_chart_qry")
+                    or daily.get("output2")
+                    or daily.get("output")
+                    or []
+                )
+                if len(items) < 2:
+                    return None
+                self._state.daily_ohlcv_cache[ticker] = items
+
+                if len(items) >= 15:
+                    try:
+                        from core.indicators import calculate_atr, calculate_atr_pct
+                        import pandas as pd
+                        rows = []
+                        for it in items[:30]:
+                            h = abs(float(it.get("high_pric", it.get("stck_hgpr", 0)) or 0))
+                            l = abs(float(it.get("low_pric", it.get("stck_lwpr", 0)) or 0))
+                            c = abs(float(it.get("cur_prc", it.get("stck_clpr", 0)) or 0))
+                            if h > 0 and l > 0 and c > 0:
+                                rows.append((h, l, c))
+                        if len(rows) >= 15:
+                            rows.reverse()
+                            df = pd.DataFrame(rows, columns=["high", "low", "close"])
+                            atr = calculate_atr(df, length=14)
+                            atr_pct_series = calculate_atr_pct(atr, df["close"])
+                            latest = atr_pct_series.dropna()
+                            if len(latest) > 0:
+                                self._state.ticker_atr_pct[ticker] = float(latest.iloc[-1])
+                    except Exception:
+                        pass
+
+                return {
+                    "ticker": ticker,
+                    "name": stock.get("name", ticker),
+                    "market": self.resolve_market(ticker, market_codes),
+                }
+            except Exception as e:
+                logger.debug(f"[INTRADAY] {ticker} enrichment 실패: {e}")
+                return None
+
+        results = await asyncio.gather(*[enrich_one(s) for s in candidates])
+        added: list[dict] = []
+        for r in results:
+            if r is not None and len(added) < limit:
+                added.append(r)
+        return added
+
+    async def _manage_ws_subscriptions(self, new_tickers: list[str]) -> None:
+        """WS 구독 추가. 한도(100) 초과 시 기존 intraday 종목 교체."""
+        WS_LIMIT = 100
+        WS_TYPE = "0B"
+        current_subs = set(self._ws_client._subscriptions.get(WS_TYPE, []))
+        available = WS_LIMIT - len(current_subs)
+
+        if len(new_tickers) <= available:
+            try:
+                await self._ws_client.subscribe(new_tickers, WS_TYPE)
+            except Exception as e:
+                logger.warning(f"[INTRADAY] WS 구독 실패: {e}")
+            return
+
+        # 한도 초과 — intraday 추가 종목 중 교체 후보 선정
+        needed = len(new_tickers) - available
+        to_remove = [
+            t for t in list(self._state.intraday_added_tickers)
+            if t not in new_tickers
+        ][:needed]
+
+        if to_remove:
+            try:
+                await self._ws_client.unsubscribe(to_remove, WS_TYPE)
+            except Exception as e:
+                logger.warning(f"[INTRADAY] WS 구독 해제 실패: {e}")
+            for t in to_remove:
+                self._state.active_strategies.pop(t, None)
+                self._state.ticker_markets.pop(t, None)
+                self._state.ticker_names.pop(t, None)
+                self._state.intraday_added_tickers.discard(t)
+                self._state.ticker_sources.pop(t, None)
+
+        try:
+            await self._ws_client.subscribe(new_tickers, WS_TYPE)
+        except Exception as e:
+            logger.warning(f"[INTRADAY] WS 구독 실패: {e}")
+
+        logger.info(
+            f"[INTRADAY] WS 구독 갱신: +{len(new_tickers)} 제거 {len(to_remove)}"
+            f" / 현재 구독 {len(self._ws_client._subscriptions.get(WS_TYPE, []))}종목"
+        )

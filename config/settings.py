@@ -280,7 +280,17 @@ class ConditionSearchConfig:
     """조건검색 (영웅문 저장 조건식) 연동 설정."""
     enabled: bool = True
     condition_name: str = "day_momentum"
-    max_watch_stocks: int = 80
+    max_watch_stocks: int = 50
+
+
+@dataclass(frozen=True)
+class IntradaySearchConfig:
+    """장중 조건검색 — 동적 유니버스 확장 설정."""
+    enabled: bool = False
+    condition_name: str = "intraday_leader"
+    schedule: tuple = ("09:05", "09:15", "09:30", "10:00", "10:30", "11:00", "11:30")
+    max_add_per_search: int = 10
+    max_total_added: int = 30
 
 
 @dataclass(frozen=True)
@@ -304,6 +314,7 @@ class AppConfig:
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
     notifications: NotificationConfig = field(default_factory=NotificationConfig)
     condition_search: ConditionSearchConfig = field(default_factory=ConditionSearchConfig)
+    intraday_search: IntradaySearchConfig = field(default_factory=IntradaySearchConfig)
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
     debug: bool = field(default_factory=lambda: os.getenv("DEBUG", "false").lower() == "true")
     db_path: str = "daytrader.db"
@@ -483,7 +494,17 @@ class AppConfig:
         condition_search = ConditionSearchConfig(
             enabled=cs.get("enabled", True),
             condition_name=cs.get("condition_name", "day_momentum"),
-            max_watch_stocks=cs.get("max_watch_stocks", 80),
+            max_watch_stocks=cs.get("max_watch_stocks", 50),
+        )
+
+        # intraday_search 섹션 (장중 동적 유니버스 확장)
+        is_raw = s.get("intraday_search", {})
+        intraday_search = IntradaySearchConfig(
+            enabled=is_raw.get("enabled", False),
+            condition_name=is_raw.get("condition_name", "intraday_leader"),
+            schedule=tuple(is_raw.get("schedule", ["09:05", "09:15", "09:30", "10:00", "10:30", "11:00", "11:30"])),
+            max_add_per_search=is_raw.get("max_add_per_search", 10),
+            max_total_added=is_raw.get("max_total_added", 30),
         )
 
         # notifications 섹션 (Phase 3-B / ADR-008)
@@ -511,6 +532,7 @@ class AppConfig:
             backtest=backtest,
             notifications=notifications,
             condition_search=condition_search,
+            intraday_search=intraday_search,
             log_level=os.getenv("LOG_LEVEL", "INFO"),
             debug=os.getenv("DEBUG", "false").lower() == "true",
             paper_mode=cfg.get("paper_mode", True),

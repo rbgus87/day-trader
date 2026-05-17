@@ -189,6 +189,9 @@ class SessionManager:
         self._state.candle_history.clear()
         self._state.breakout_detected.clear()
         self._state.tick_signaled.clear()
+        self._state.intraday_added_tickers.clear()
+        self._state.intraday_add_count = 0
+        self._state.ticker_sources.clear()
         if self._shadow_tracker is not None:
             self._shadow_tracker.reset()
 

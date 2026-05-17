@@ -65,3 +65,8 @@ class TradingState:
 
     # 스크리너 결과 (UI emit용)
     screener_results: list = field(default_factory=list)
+
+    # 장중 조건검색 (intraday_search) 상태
+    intraday_added_tickers: set = field(default_factory=set)  # 당일 intraday_leader가 추가한 ticker
+    intraday_add_count: int = 0                               # 당일 장중 추가 총 건수
+    ticker_sources: dict = field(default_factory=dict)        # {ticker: "day_momentum" | "intraday_leader"}

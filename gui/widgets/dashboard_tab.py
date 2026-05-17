@@ -837,6 +837,13 @@ class DashboardTab(QWidget):
         table.setRowCount(0)
         self._watchlist_card.setTitle(f"감시 종목  {len(items)}종목")
 
+        intraday_count = sum(1 for it in items if it.get("source") == "intraday_leader")
+        base_count = len(items) - intraday_count
+        if intraday_count > 0:
+            self._watchlist_card.setTitle(f"감시 종목  {base_count}+{intraday_count}종목")
+        else:
+            self._watchlist_card.setTitle(f"감시 종목  {len(items)}종목")
+
         for item in items:
             row = table.rowCount()
             table.insertRow(row)
@@ -848,6 +855,7 @@ class DashboardTab(QWidget):
             prev_high = item.get("prev_high", 0)
             breakout_pct = item.get("breakout_pct", -999)
             has_pos = item.get("has_position", False)
+            source = item.get("source", "day_momentum")
 
             # 등락% 색상
             change_color = QColor("#a6e3a1") if change_pct >= 0 else QColor("#f38ba8")
@@ -866,8 +874,13 @@ class DashboardTab(QWidget):
                 breakout_color = QColor("#6c7086")
                 breakout_text = f"{breakout_pct:.2f}%" if breakout_pct > -100 else "—"
 
-            # 종목명 (포지션 보유 시 별표)
-            ticker_text = f"⭐ {name}" if has_pos else name
+            # 종목명 (포지션 보유 시 별표, 장중 추가 시 [I] 접두사)
+            if has_pos:
+                ticker_text = f"⭐ {name}"
+            elif source == "intraday_leader":
+                ticker_text = f"[I] {name}"
+            else:
+                ticker_text = name
             ticker_color = QColor("#f9e2af") if has_pos else QColor("#89b4fa")
 
             # Phase 3 Day 12+ Level 1: 시장 구분 + ATR%
