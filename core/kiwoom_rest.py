@@ -225,11 +225,14 @@ class KiwoomRestClient:
 
         Args:
             ticker: 종목코드
-            base_dt: 기준일자 YYYYMMDD (해당일 이전 데이터 반환)
+            base_dt: 기준일자 YYYYMMDD (해당일 이전 데이터 반환). 필수 — 생략 시 오늘 날짜 사용.
         """
-        body = {"stk_cd": ticker, "upd_stkpc_tp": "0"}
-        if base_dt:
-            body["base_dt"] = base_dt
+        from datetime import date as _date
+        body = {
+            "stk_cd": ticker,
+            "upd_stkpc_tp": "0",
+            "base_dt": base_dt if base_dt else _date.today().strftime("%Y%m%d"),
+        }
         return await self.request("POST", EP_CHART, API_STOCK_DAILY, data=body)
 
     async def get_stock_info(self, ticker: str) -> dict:
