@@ -13,6 +13,24 @@ from loguru import logger
 
 from pipeline.trading_state import TradingState
 
+# 키움 WS "00" 주문체결 메시지 필드 코드 (공식 문서 확정)
+_WS00_ORDER_NO       = "9203"  # 주문번호
+_WS00_ORDER_STATUS   = "913"   # 주문상태 (접수/체결/확인/취소/거부)
+_WS00_TICKER         = "9001"  # 종목코드
+_WS00_ORDER_QTY      = "900"   # 주문수량
+_WS00_ORDER_PRICE    = "901"   # 주문가격
+_WS00_UNFILLED_QTY   = "902"   # 미체결수량
+_WS00_FILL_AMOUNT    = "903"   # 체결누계금액
+_WS00_FILL_PRICE     = "910"   # 체결가
+_WS00_FILL_QTY       = "911"   # 체결량 (단위 체결)
+_WS00_UNIT_FILL_PRICE = "914"  # 단위체결가
+_WS00_UNIT_FILL_QTY  = "915"   # 단위체결량
+_WS00_ORDER_TYPE     = "905"   # 주문구분 (+매수/-매도)
+_WS00_TRADE_TYPE     = "906"   # 매매구분 (보통/시장가/조건부 등)
+_WS00_BUY_SELL       = "907"   # 매도수구분 (1:매도, 2:매수)
+_WS00_TIME           = "908"   # 주문/체결시간
+_WS00_REJECT_REASON  = "919"   # 거부사유
+
 
 class OrderExecutor:
     """시그널 → 주문 실행. 체결 확인(WS 00 + REST 폴백)도 담당."""
@@ -338,9 +356,9 @@ class OrderExecutor:
                     logger.debug(f"[ORDER-TRACK] tracker 미초기화 — skip: {exec_data}")
                     continue
                 values = exec_data.get("values", {})
-                order_no = str(values.get("9001", ""))
-                filled_qty = abs(int(values.get("900", 0) or 0))
-                filled_price = abs(float(values.get("10", 0) or 0))
+                order_no = str(values.get(_WS00_ORDER_NO, ""))
+                filled_qty = abs(int(values.get(_WS00_FILL_QTY, 0) or 0))
+                filled_price = abs(float(values.get(_WS00_UNIT_FILL_PRICE, 0) or 0))
                 if not order_no or filled_qty == 0:
                     logger.warning(f"[ORDER-TRACK] 무효 체결: order_no={order_no} qty={filled_qty}")
                     continue

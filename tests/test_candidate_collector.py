@@ -67,10 +67,10 @@ def _make_universe_yaml(tmp_path: Path, stocks: list[dict] | None = None) -> Pat
 # ---------------------------------------------------------------------------
 
 def _make_investor_trading_response(inst_qty: int = 5000, frgn_qty: int = 3000) -> dict:
-    """ka10079 투자자별 매매동향 mock 응답 (TODO 필드명 추정값)."""
+    """ka10009 기관/외국인 매매동향 mock 응답 (EP_FRGN_ISTT)."""
     return {
-        "orgn_ntby_qty": str(inst_qty),   # 기관 순매수 수량
-        "frgn_ntby_qty": str(frgn_qty),   # 외국인 순매수 수량
+        "orgn_daly_nettrde": str(inst_qty),   # 기관 일별 순매수
+        "frgnr_daly_nettrde": str(frgn_qty),  # 외국인 일별 순매수
         "return_code": 0,
     }
 
@@ -348,7 +348,7 @@ class TestInvestorParsing:
 
     def test_parse_institutional_negative(self, collector):
         """기관 순매도(음수)도 정수로 파싱한다."""
-        data = {"orgn_ntby_qty": "-2000"}
+        data = {"orgn_daly_nettrde": "-2000"}
         assert collector._parse_institutional(data) == -2000
 
     def test_parse_returns_zero_for_missing_field(self, collector):
@@ -358,13 +358,13 @@ class TestInvestorParsing:
 
     def test_parse_handles_comma_separated(self, collector):
         """쉼표 포함 숫자 문자열도 파싱 (예: '1,500')."""
-        data = {"orgn_ntby_qty": "1,500", "frgn_ntby_qty": "2,000"}
+        data = {"orgn_daly_nettrde": "1,500", "frgnr_daly_nettrde": "2,000"}
         assert collector._parse_institutional(data) == 1500
         assert collector._parse_foreign(data) == 2000
 
     def test_parse_handles_invalid_value(self, collector):
         """파싱 불가 값이면 0 반환."""
-        data = {"orgn_ntby_qty": "N/A", "frgn_ntby_qty": ""}
+        data = {"orgn_daly_nettrde": "N/A", "frgnr_daly_nettrde": ""}
         assert collector._parse_institutional(data) == 0
         assert collector._parse_foreign(data) == 0
 

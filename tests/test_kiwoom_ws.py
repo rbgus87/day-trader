@@ -5,7 +5,7 @@ import json
 import pytest
 from unittest.mock import AsyncMock
 
-from core.kiwoom_ws import KiwoomWebSocketClient, WS_TYPE_TICK
+from core.kiwoom_ws import KiwoomWebSocketClient, WS_TYPE_TICK, WS_TYPE_VI
 
 
 @pytest.mark.asyncio
@@ -117,3 +117,39 @@ async def test_provider_empty_falls_back_to_subscriptions():
     await ws._restore_subscriptions()
     sent = json.loads(ws._ws.send.call_args[0][0])
     assert set(sent["data"][0]["item"]) == {"005930"}
+
+
+@pytest.mark.asyncio
+async def test_vi_subscribe_sends_1h_for_all_tickers():
+    """_subscribe_vi()가 item=[""] type=["1h"] 메시지를 전송한다."""
+    ws = KiwoomWebSocketClient(
+        ws_url="ws://test",
+        token_manager=AsyncMock(get_token=AsyncMock(return_value="tok")),
+    )
+    ws._ws = AsyncMock()
+
+    await ws._subscribe_vi()
+    ws._ws.send.assert_called_once()
+    sent = json.loads(ws._ws.send.call_args[0][0])
+    assert sent["trnm"] == "REG"
+    assert sent["data"][0]["item"] == [""]
+    assert WS_TYPE_VI in sent["data"][0]["type"]
+
+
+@pytest.mark.asyncio
+async def test_dispatch_vi_calls_vi_handler():
+    """1h 타입 메시지가 vi_handler.update_from_ws_vi()를 호출한다."""
+    from unittest.mock import MagicMock
+    vi_handler = MagicMock()
+    ws = KiwoomWebSocketClient(
+        ws_url="ws://test",
+        token_manager=AsyncMock(get_token=AsyncMock(return_value="tok")),
+        vi_handler=vi_handler,
+    )
+    data = {
+        "type": WS_TYPE_VI,
+        "item": "005930",
+        "values": {"1225": "정적", "1224": "143500"},
+    }
+    ws._dispatch_vi(data)
+    vi_handler.update_from_ws_vi.assert_called_once_with("005930", {"1225": "정적", "1224": "143500"})

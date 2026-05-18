@@ -22,6 +22,7 @@ from utils.market_calendar import is_ws_active_hours
 WS_TYPE_TICK = "0B"        # 체결
 WS_TYPE_ORDERBOOK = "0D"   # 호가
 WS_TYPE_ORDER = "00"       # 주문체결
+WS_TYPE_VI = "1h"          # VI 발동/해제 (전종목)
 
 
 class KiwoomWebSocketClient:
@@ -42,6 +43,7 @@ class KiwoomWebSocketClient:
         order_manager=None,
         notifications_config=None,
         orderbook_manager=None,
+        vi_handler=None,
     ):
         self._ws_url = ws_url
         self._token_manager = token_manager
@@ -52,6 +54,7 @@ class KiwoomWebSocketClient:
         self._order_manager = order_manager
         self._notifications = notifications_config  # Phase 3-B ADR-008
         self._orderbook_manager = orderbook_manager
+        self._vi_handler = vi_handler
         self._ws = None
         self._subscriptions: dict[str, list[str]] = {}  # {real_type: [codes]}
         self._listen_task: asyncio.Task | None = None
@@ -127,6 +130,21 @@ class KiwoomWebSocketClient:
             raise ConnectionError("WS LOGIN 응답 없음")
 
         await self._restore_subscriptions()
+        await self._subscribe_vi()
+
+    async def _subscribe_vi(self) -> None:
+        """WS '1h' VI 발동/해제 전종목 구독 (item="" → 전종목 수신)."""
+        if not self._ws:
+            return
+        msg = json.dumps({
+            "trnm": "REG", "grp_no": "1", "refresh": "1",
+            "data": [{"item": [""], "type": [WS_TYPE_VI]}],
+        })
+        try:
+            await self._ws.send(msg)
+            logger.info("[WS] 1h VI 전종목 구독 등록")
+        except Exception as e:
+            logger.warning(f"[WS] 1h VI 구독 실패 — 0B/0D 정상 동작 유지: {e}")
 
     async def disconnect(self) -> None:
         """연결 종료."""
@@ -332,6 +350,8 @@ class KiwoomWebSocketClient:
                 elif msg_type == WS_TYPE_ORDER:
                     if self._order_queue:
                         await self._order_queue.put(item_data)
+                elif msg_type == WS_TYPE_VI:
+                    self._dispatch_vi(item_data)
             return
 
         # 기존 형식도 호환 (top-level type)
@@ -345,6 +365,8 @@ class KiwoomWebSocketClient:
         elif msg_type == WS_TYPE_ORDER:
             if self._order_queue:
                 await self._order_queue.put(data)
+        elif msg_type == WS_TYPE_VI:
+            self._dispatch_vi(data)
 
     def _parse_tick_from_item(self, item_data: dict) -> dict | None:
         """data[] 배열 안의 항목 → 표준 tick dict."""
@@ -409,6 +431,24 @@ class KiwoomWebSocketClient:
                 self._orderbook_manager.update(ticker, values)
         except Exception as e:
             logger.warning(f"[OB] 호가 파싱 실패: {e}")
+
+    def _dispatch_vi(self, data: dict) -> None:
+        """1h VI 발동/해제 메시지 → VIHandler 갱신 (동기, 논블로킹).
+
+        vi_handler가 없으면 no-op (0B/0D 구독에 영향 없음).
+        """
+        if self._vi_handler is None:
+            return
+        try:
+            values = data.get("values", {})
+            if isinstance(values, str):
+                import json as _json
+                values = _json.loads(values)
+            ticker = data.get("item", "")
+            if ticker:
+                self._vi_handler.update_from_ws_vi(ticker, values)
+        except Exception as e:
+            logger.warning(f"[VI-WS] VI 파싱 실패: {e}")
 
     async def _dispatch_tick(self, tick: dict) -> None:
         """틱 데이터를 Queue로 전달 (논블로킹)."""

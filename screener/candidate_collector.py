@@ -23,9 +23,9 @@ _DEFAULT_UNIVERSE_PATH = Path(__file__).parent.parent / "config" / "universe.yam
 # 일봉 수집 기간 (MA20 + ATR14 계산용)
 _DAILY_LOOKBACK_DAYS = 40
 
-# 투자자별 매매동향 필드명 (TODO: 실제 ka10079 응답 확인 후 수정 — scripts/test_investor_api.py 참조)
-_FIELD_INST_BUY = "orgn_ntby_qty"   # 기관 순매수 수량 (추정)
-_FIELD_FRGN_BUY = "frgn_ntby_qty"  # 외국인 순매수 수량 (추정)
+# ka10009 (EP_FRGN_ISTT) 응답 필드명 — 기관/외국인 일별 순매수
+_FIELD_INST_BUY = "orgn_daly_nettrde"   # 기관 일별 순매수 (부호 포함)
+_FIELD_FRGN_BUY = "frgnr_daly_nettrde"  # 외국인 일별 순매수 (부호 포함)
 
 
 class CandidateCollector:
@@ -372,11 +372,7 @@ class CandidateCollector:
         return 0
 
     def _parse_institutional(self, investor_data: dict) -> int:
-        """ka10079 응답에서 기관 순매수 수량을 파싱한다.
-
-        TODO: _FIELD_INST_BUY 상수를 실제 응답 필드명으로 수정 필요.
-        scripts/test_investor_api.py 실행 후 확정.
-        """
+        """ka10009 응답에서 기관 일별 순매수를 파싱한다 (orgn_daly_nettrde)."""
         val = investor_data.get(_FIELD_INST_BUY)
         if val is None:
             return 0
@@ -386,11 +382,7 @@ class CandidateCollector:
             return 0
 
     def _parse_foreign(self, investor_data: dict) -> int:
-        """ka10079 응답에서 외국인 순매수 수량을 파싱한다.
-
-        TODO: _FIELD_FRGN_BUY 상수를 실제 응답 필드명으로 수정 필요.
-        scripts/test_investor_api.py 실행 후 확정.
-        """
+        """ka10009 응답에서 외국인 일별 순매수를 파싱한다 (frgnr_daly_nettrde)."""
         val = investor_data.get(_FIELD_FRGN_BUY)
         if val is None:
             return 0

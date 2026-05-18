@@ -131,10 +131,38 @@ class TestQueries:
         assert h.should_use_best_limit("c") is True
 
 
-class TestStubs:
-    def test_update_from_ws_0a_no_exception(self):
-        """현재는 스텁 — 호출만으로 예외 없음."""
+class TestWsVi:
+    def test_update_from_ws_vi_triggers_static(self):
+        """1h WS '정적' VI → STATIC_VI 상태 활성."""
         h = _fresh_handler()
-        h.update_from_ws_0a("000001", {"any": "payload"})
-        # 상태 변동 없음 확인
+        h.update_from_ws_vi("000001", {"1225": "정적", "1224": ""})
+        assert h.get_vi_state("000001") == VIState.STATIC_VI
+
+    def test_update_from_ws_vi_release_clears_state(self):
+        """1h WS 해제 메시지 → 엔트리 제거."""
+        h = _fresh_handler()
+        h.update_from_ws_vi("000001", {"1225": "정적", "1224": ""})
+        h.update_from_ws_vi("000001", {"1225": "", "1224": ""})
+        assert "000001" not in h._entries
+
+    def test_ws_controlled_blocks_tick_heuristic(self):
+        """WS 1h 수신 종목은 update_from_tick 휴리스틱이 적용되지 않는다."""
+        h = _fresh_handler(static_pct=0.01)  # 낮은 임계값 — 틱으로는 쉽게 발동
+        h.update_from_ws_vi("000001", {"1225": "", "1224": ""})  # 해제로 등록 → ws_controlled
+        h.update_from_tick("000001", 11000.0, 10000.0)
         assert h.get_vi_state("000001") == VIState.NORMAL
+
+    def test_parse_vi_release_time_valid(self):
+        """HHMMSS 형식 파싱 성공."""
+        dt = VIHandler._parse_vi_release_time("143500")
+        assert dt.hour == 14
+        assert dt.minute == 35
+        assert dt.second == 0
+
+    def test_parse_vi_release_time_invalid_falls_back(self):
+        """파싱 불가 시 현재 + 120초 반환."""
+        from datetime import datetime as _dt
+        before = _dt.now()
+        result = VIHandler._parse_vi_release_time("invalid")
+        diff = (result - before).total_seconds()
+        assert 100 < diff < 130

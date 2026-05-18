@@ -184,6 +184,7 @@ class EngineWorker(QThread):
             tick_queue=self._tick_queue, order_queue=self._order_queue,
             notifier=self._notifier, notifications_config=self._config.notifications,
             orderbook_manager=self._orderbook_manager,
+            vi_handler=self._vi_handler,
         )
         self._ws_client.set_subscription_provider(lambda: list(self._state.active_strategies.keys()))
 

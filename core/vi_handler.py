@@ -45,6 +45,8 @@ class VIHandler:
         self._assumed_duration = timedelta(seconds=assumed_duration_sec)
         self._suspected_duration = timedelta(seconds=suspected_duration_sec)
         self._entries: dict[str, _Entry] = {}
+        # WS 1h로 관리 중인 종목 — update_from_tick이 fallback 역할만 수행
+        self._ws_controlled: set[str] = set()
 
     def get_vi_state(self, ticker: str) -> VIState:
         entry = self._entries.get(ticker)
@@ -63,6 +65,9 @@ class VIHandler:
         return self.get_vi_state(ticker) != VIState.NORMAL
 
     def update_from_tick(self, ticker: str, price: float, prev_close: float) -> None:
+        # WS 1h가 이 종목을 관리 중이면 가격 휴리스틱 적용 안 함
+        if ticker in self._ws_controlled:
+            return
         if prev_close <= 0 or price <= 0:
             return
         limit_up_price = prev_close * _LIMIT_UP_MULTIPLIER
@@ -98,10 +103,39 @@ class VIHandler:
         if static_cnt + suspected_cnt > 0:
             logger.info(f"[VI] 현재 {static_cnt}종목 STATIC_추정, {suspected_cnt}종목 SUSPECTED")
 
-    def update_from_ws_0a(self, ticker: str, payload: dict) -> None:
-        """TODO: 키움 WS '0A'(기세) 메시지의 VI 발동 필드 확정 후 구현.
-        실제 페이로드 샘플 수집 → 단위 테스트 추가 → 본문 작성."""
-        pass
+    def update_from_ws_vi(self, ticker: str, vi_data: dict) -> None:
+        """WS '1h' VI 발동/해제 메시지로 VI 상태를 정확하게 갱신.
+
+        가격 휴리스틱(update_from_tick)보다 우선 적용.
+        vi_data 필드:
+            "1225": VI적용구분 ("정적" / "동적" / "동적+정적" / "")
+            "1224": VI해제시각 (HHMMSS)
+        """
+        self._ws_controlled.add(ticker)
+        vi_type = str(vi_data.get("1225", ""))
+        release_str = str(vi_data.get("1224", ""))
+
+        if vi_type in ("정적", "동적", "동적+정적"):
+            expires = self._parse_vi_release_time(release_str)
+            self._entries[ticker] = _Entry(VIState.STATIC_VI, expires)
+            logger.info(f"[VI-WS] {ticker} {vi_type} 발동 — 해제: {release_str or '미확인'}")
+        else:
+            if ticker in self._entries:
+                del self._entries[ticker]
+            logger.info(f"[VI-WS] {ticker} VI 해제")
+
+    @staticmethod
+    def _parse_vi_release_time(time_str: str) -> datetime:
+        """HHMMSS 형식 VI 해제 시각 → datetime. 파싱 실패 시 현재 + 120초."""
+        try:
+            if len(time_str) == 6:
+                h = int(time_str[:2])
+                m = int(time_str[2:4])
+                s = int(time_str[4:6])
+                return datetime.now().replace(hour=h, minute=m, second=s, microsecond=0)
+        except (ValueError, TypeError):
+            pass
+        return datetime.now() + timedelta(seconds=120)
 
     def flag_suspected(self, ticker: str, reason: str) -> None:
         expires = datetime.now() + self._suspected_duration
