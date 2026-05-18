@@ -63,6 +63,8 @@ def _make_scheduler(
     ws_client._subscriptions = {"0B": []}
     ws_client.subscribe = AsyncMock()
     ws_client.unsubscribe = AsyncMock()
+    ws_client.disconnect = AsyncMock()
+    ws_client.connect = AsyncMock()
 
     notifier = MagicMock()
     notifier.send = MagicMock()

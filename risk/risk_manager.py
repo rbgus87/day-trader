@@ -370,8 +370,8 @@ class RiskManager:
     ) -> bool:
         """Phase 3 Day 11.5: 최근 N일 연속 손실 시 당일 매수 휴식.
 
-        DB의 trades(sell, pnl) 일별 합계를 내림차순으로 훑어 threshold 이상
-        연속 손실(daily_pnl<0)이면 True. DB 실패 시 안전 폴백(False).
+        DB의 trades(sell, pnl) 일별 합계를 역순으로 훑되, 영업일(월~금) 기준으로
+        무거래일에 연속 카운트를 중단한다. DB 실패 시 안전 폴백(False).
         """
         if not getattr(self._config, "consecutive_loss_rest_enabled", False):
             return False
@@ -388,19 +388,34 @@ class RiskManager:
                 "FROM trades WHERE side='sell' AND pnl IS NOT NULL "
                 "AND date(traded_at) < ? "
                 "GROUP BY date(traded_at) ORDER BY dt DESC LIMIT ?",
-                (now.strftime("%Y-%m-%d"), max(threshold * 2, 10)),
+                (now.strftime("%Y-%m-%d"), max(threshold * 2, 30)),
             ).fetchall()
         except Exception:
             conn.close()
             return False
         conn.close()
 
+        # 거래일 집합 구성
+        traded_days = {r[0]: r[1] for r in rows}  # "YYYY-MM-DD" → daily_pnl
+
+        # 오늘 이전 영업일을 역순으로 순회하며 연속 손실 카운트
         consecutive = 0
-        for _, daily_pnl in rows:
-            if daily_pnl is not None and daily_pnl < 0:
-                consecutive += 1
+        check_date = now.date() - timedelta(days=1)
+        for _ in range(max(threshold * 2, 30)):
+            # 주말 스킵
+            if check_date.weekday() >= 5:
+                check_date -= timedelta(days=1)
+                continue
+            dt_str = check_date.strftime("%Y-%m-%d")
+            if dt_str in traded_days:
+                if traded_days[dt_str] is not None and traded_days[dt_str] < 0:
+                    consecutive += 1
+                else:
+                    break  # 수익 또는 손익0 → 연속 끊김
             else:
-                break
+                break  # 무거래 영업일 → 연속 끊김
+            check_date -= timedelta(days=1)
+
         return consecutive >= threshold
 
     def is_ticker_blacklisted(

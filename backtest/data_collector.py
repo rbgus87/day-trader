@@ -29,7 +29,9 @@ class DataCollector:
         self._rest = rest_client
         self._db = db
 
-    async def collect_minute_candles(self, ticker: str, days: int = 30) -> int:
+    async def collect_minute_candles(
+        self, ticker: str, days: int = 30, start_dt: str = ""
+    ) -> int:
         """``ticker`` 의 과거 ``days`` 일치 분봉을 수집해 DB에 저장한다.
 
         페이지네이션: 각 API 호출에서 가장 오래된 캔들의 날짜를 추출해
@@ -38,6 +40,8 @@ class DataCollector:
         Args:
             ticker: 종목코드 (예: "005930")
             days: 수집 대상 영업일 수
+            start_dt: 수집 시작일 YYYYMMDD. 빈 문자열이면 최신 데이터부터.
+                      당일 분봉 수집 시 오늘 날짜를 명시하면 장 마감 후에도 반환됨.
 
         Returns:
             실제로 저장된 캔들 수 (중복 제외)
@@ -45,7 +49,7 @@ class DataCollector:
         target = days * self._CANDLES_PER_DAY
         total_saved = 0
         total_fetched = 0
-        base_dt = ""  # 빈 문자열 = 최신 데이터부터
+        base_dt = start_dt  # 빈 문자열 = 최신 데이터부터, 날짜 지정 시 해당 일부터
 
         logger.info(f"[DataCollector] {ticker} 분봉 수집 시작 (목표: {days}일 ≈ {target}개)")
 

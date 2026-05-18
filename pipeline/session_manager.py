@@ -419,11 +419,15 @@ class SessionManager:
             logger.warning("[CANDLE] 유니버스 비어 있음")
             return
         collector = DataCollector(self._rest_client, self._db)
+        # 오늘 날짜를 명시해야 장 마감 직후 API가 당일 분봉을 반환한다
+        today_str = datetime.now().strftime("%Y%m%d")
         success = failed = total_saved = 0
         for s in stocks:
             ticker = s["ticker"]
             try:
-                saved = await collector.collect_minute_candles(ticker, days=1)
+                saved = await collector.collect_minute_candles(
+                    ticker, days=1, start_dt=today_str
+                )
                 total_saved += saved
                 success += 1
             except Exception as e:

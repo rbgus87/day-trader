@@ -295,7 +295,8 @@ class EngineWorker(QThread):
         self._scheduler.add_job(_sa(lambda: _sm.daily_reset(_ss.register_active_strategies), "daily_reset"), "cron", hour=0, minute=1, misfire_grace_time=600)
         self._scheduler.add_job(_sa(_sm.refresh_ohlcv_all, "refresh_ohlcv"), "cron", hour=8, minute=5, misfire_grace_time=600)
         self._scheduler.add_job(_sa(_sm.skip_universe_refresh, "universe_refresh"), "cron", day_of_week="mon", hour=7, minute=30, misfire_grace_time=600)
-        self._scheduler.add_job(_sa(_sm.collect_daily_candles, "candle_collection"), "cron", day_of_week="mon-fri", hour=15, minute=35, misfire_grace_time=600)
+        self._scheduler.add_job(_sa(_sm.collect_daily_candles, "candle_collection"), "cron", day_of_week="mon-fri", hour=15, minute=25, misfire_grace_time=600)
+        self._scheduler.add_job(_sa(_sm.collect_daily_candles, "candle_collection_retry"), "cron", day_of_week="mon-fri", hour=16, minute=0, misfire_grace_time=600)
         self._scheduler.add_job(_sa(_sm.refresh_market_filter, "market_filter_refresh"), "cron", day_of_week="mon-fri", hour=9, minute=5, misfire_grace_time=300)
         self._scheduler.add_job(_sa(_sm.refresh_market_filter, "market_filter_mid"), "cron", day_of_week="mon-fri", hour=10, minute=0, misfire_grace_time=300, id="market_filter_refresh_mid", replace_existing=True)
         if getattr(self._config.trading, "intraday_market_filter_enabled", False):

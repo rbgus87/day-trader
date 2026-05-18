@@ -425,11 +425,18 @@ class ScreenerScheduler:
         try:
             from core.condition_search import run_condition_search
             token = await self._token_manager.get_token()
-            cs_results = await run_condition_search(
-                ws_url=self._config.kiwoom.ws_url,
-                access_token=token,
-                condition_name=is_cfg.condition_name,
-            )
+            # 키움 서버는 동일 토큰으로 2개 WS를 허용하지 않음 — 조건검색 전 메인 WS 종료
+            logger.info("[INTRADAY] 메인 WS 일시 종료 (조건검색 WS 연결 전)")
+            await self._ws_client.disconnect()
+            try:
+                cs_results = await run_condition_search(
+                    ws_url=self._config.kiwoom.ws_url,
+                    access_token=token,
+                    condition_name=is_cfg.condition_name,
+                )
+            finally:
+                logger.info("[INTRADAY] 메인 WS 재연결 (조건검색 완료)")
+                await self._ws_client.connect()
         except Exception as e:
             logger.error(f"[INTRADAY] 조건검색 실패: {e}")
             return []

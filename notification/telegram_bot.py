@@ -54,6 +54,8 @@ class TelegramNotifier:
             # executor가 이미 shutdown된 경우 — 종료 시점 race
             logger.debug("텔레그램 전송 스킵 — executor 종료됨")
 
+    _MAX_MSG_LEN = 4000  # Telegram API 한도 4096자, 여유 포함
+
     def _send_sync(
         self,
         message: str,
@@ -62,6 +64,9 @@ class TelegramNotifier:
         retry_sleep_sec: int,
     ) -> bool:
         """실제 HTTP 발송 — 워커 스레드에서 실행 (블로킹 I/O 격리)."""
+        if len(message) > self._MAX_MSG_LEN:
+            message = message[: self._MAX_MSG_LEN] + "\n…(생략)"
+
         last_err = ""
         for attempt in range(retries):
             try:
@@ -77,6 +82,10 @@ class TelegramNotifier:
                 if resp.status_code == 200:
                     return True
                 last_err = f"status={resp.status_code}"
+                if resp.status_code == 400:
+                    logger.warning(
+                        f"텔레그램 400 Bad Request — 메시지 내용: {message[:200]!r}"
+                    )
             except Exception as e:
                 last_err = f"{type(e).__name__}: {e}"
 
