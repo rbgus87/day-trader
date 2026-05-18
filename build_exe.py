@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 # 콘솔 cp949 환경에서도 한글 출력 안전화 (subprocess UTF-8 캡처 결과 print 시 필수)
 try:
@@ -22,6 +23,7 @@ PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 
 def build() -> None:
+    start = time.time()
     args = [
         os.path.join(PROJECT_ROOT, "gui.py"),
         "--name=DayTrader",
@@ -155,7 +157,10 @@ def build() -> None:
         print("\n*** 빌드된 exe selftest FAIL ***")
         print("운영 투입 금지. 빌드 옵션 재검토 필요.")
         sys.exit(1)
-    print("*** 빌드 + selftest 모두 통과 ***")
+    elapsed = time.time() - start
+    minutes = int(elapsed // 60)
+    seconds = int(elapsed % 60)
+    print(f"*** 빌드 + selftest 모두 통과 ({minutes}분 {seconds}초) ***")
 
 
 if __name__ == "__main__":
