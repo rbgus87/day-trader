@@ -64,5 +64,12 @@ class EngineSignals(QObject):
     # WS 녹화 제어 (UI → Worker)
     request_ws_record = pyqtSignal(bool)  # True=녹화 시작, False=녹화 중지
 
+    # 시장 필터 오버라이드 (UI → Worker, 세션 한정)
+    request_market_filter_override = pyqtSignal(str, str)  # (market, mode: auto|force_allow|force_block)
+    request_intraday_thresholds = pyqtSignal(float, float)  # (block_pct, resume_pct) — raw decimal
+
     # WS 녹화 상태 (Worker → UI)
     ws_record_status = pyqtSignal(bool, int)  # (is_recording, message_count)
+
+    # 섀도우 트래커 포지션 (Worker → UI, 10초 주기)
+    shadow_updated = pyqtSignal(list)  # list[dict] — shadow_tracker.get_summary()["positions"]

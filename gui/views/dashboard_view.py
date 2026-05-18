@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QSplitter, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QSplitter, QTabWidget, QVBoxLayout, QWidget
 
 from gui.views.dashboard.market_status_panel import MarketStatusPanel
 from gui.views.dashboard.equity_chart import EquityChart
 from gui.views.dashboard.positions_panel import PositionsPanel
 from gui.views.dashboard.watchlist_panel import WatchlistPanel
 from gui.views.dashboard.signal_timeline import SignalTimeline
+from gui.views.dashboard.blocked_signals_panel import BlockedSignalsPanel
 from gui.views.dashboard.orderbook_widget import OrderbookWidget
 from gui.views.dashboard.trades_panel import TradesPanel
 from gui.views.dashboard.daily_summary_panel import DailySummaryPanel
@@ -65,7 +66,7 @@ class DashboardView(QWidget):
         left_splitter.addWidget(self._watchlist)
         left_splitter.setSizes([280, 220])
 
-        # 우측 컬럼: Equity Curve + SignalTimeline + OrderbookWidget
+        # 우측 컬럼: Equity Curve + [시그널 탭] + OrderbookWidget
         right_splitter = QSplitter(Qt.Orientation.Vertical)
         right_splitter.setHandleWidth(6)
         right_splitter.setStyleSheet(
@@ -73,10 +74,22 @@ class DashboardView(QWidget):
         )
         right_splitter.setChildrenCollapsible(False)
         self._equity_chart = EquityChart()
+
+        # 미니 탭: [시그널 히스토리] / [차단 시그널]
         self._signal_timeline = SignalTimeline()
+        self._blocked_panel = BlockedSignalsPanel()
+        self._signal_tabs = QTabWidget()
+        self._signal_tabs.setDocumentMode(True)
+        self._signal_tabs.setStyleSheet(
+            "QTabBar::tab { padding: 3px 10px; font-size: 11px; }"
+            "QTabBar::tab:selected { color: #cba6f7; border-bottom: 2px solid #cba6f7; }"
+        )
+        self._signal_tabs.addTab(self._signal_timeline, "시그널 히스토리")
+        self._signal_tabs.addTab(self._blocked_panel, "차단 시그널")
+
         self._orderbook = OrderbookWidget()
         right_splitter.addWidget(self._equity_chart)
-        right_splitter.addWidget(self._signal_timeline)
+        right_splitter.addWidget(self._signal_tabs)
         right_splitter.addWidget(self._orderbook)
         right_splitter.setSizes([250, 180, 80])
 
@@ -140,6 +153,10 @@ class DashboardView(QWidget):
     def show_daily_summary(self, data: dict) -> None:
         """15:30 daily_report 완료 후 일일 요약 패널을 갱신·표시한다."""
         self._daily_summary.update_summary(data)
+
+    def update_shadow(self, positions: list[dict]) -> None:
+        """shadow_updated 시그널 → 차단 시그널 패널 갱신."""
+        self._blocked_panel.update_shadow(positions)
 
     def on_log_message(self, text: str, level: str) -> None:
         """loguru 로그 → Signal Timeline 차단 이벤트 필터링."""

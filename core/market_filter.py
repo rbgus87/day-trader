@@ -52,6 +52,13 @@ class MarketFilter:
         # 마지막 갱신의 index_code → change_pct (로그/디버깅용)
         self._intraday_change: dict[str, float] = {}
 
+        # ── 세션 한정 오버라이드 (GUI 제어판용, 재시작 시 초기화) ────
+        # 'auto' | 'force_allow' | 'force_block'
+        self._overrides: dict[str, str] = {}
+        # 장중 임계값 세션 오버라이드 (None = config값 사용)
+        self._block_threshold_override: float | None = None
+        self._resume_threshold_override: float | None = None
+
     @property
     def kospi_strong(self) -> bool:
         return self._kospi_strong
@@ -189,8 +196,34 @@ class MarketFilter:
         self._index_metrics[index_code] = (current, ma)
         return current > ma
 
+    def set_override(self, market: str, mode: str) -> None:
+        """시장 필터 수동 오버라이드 (세션 한정, 재시작 시 초기화).
+
+        Args:
+            market: "kospi" / "kosdaq"
+            mode: "auto" | "force_allow" | "force_block"
+        """
+        self._overrides[market] = mode
+        logger.bind(event="market_filter_override").info(
+            f"[MARKET] {market} 오버라이드 설정: {mode}"
+        )
+
+    def set_intraday_thresholds(self, block_threshold: float, resume_threshold: float) -> None:
+        """장중 필터 임계값 세션 한정 오버라이드.
+
+        다음 refresh_intraday() 호출 시 config 기본값 대신 이 값을 사용한다.
+        재시작 시 config.yaml 기본값으로 복원된다.
+        """
+        self._block_threshold_override = block_threshold
+        self._resume_threshold_override = resume_threshold
+        logger.info(
+            f"[MARKET] 장중 임계값 세션 변경: 차단 {block_threshold:.2%}, 재개 {resume_threshold:.2%}"
+        )
+
     def is_allowed(self, market: str) -> bool:
         """종목의 시장 구분으로 매수 허용 여부 반환.
+
+        오버라이드가 설정된 경우 MA5 자동 로직보다 우선한다.
 
         Args:
             market: "kospi" / "kosdaq" / 그 외
@@ -198,6 +231,12 @@ class MarketFilter:
         Returns:
             해당 시장이 강세면 True. "unknown" 등은 둘 중 하나라도 강세면 True.
         """
+        override = self._overrides.get(market, "auto")
+        if override == "force_allow":
+            return True
+        if override == "force_block":
+            return False
+        # 자동 로직: MA5 기반
         if market == "kospi":
             return self._kospi_strong
         if market == "kosdaq":

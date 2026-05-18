@@ -196,10 +196,19 @@ def test_trail_log_skipped_when_no_peak_update(mock_logger, risk_mgr):
 
 @pytest.mark.asyncio
 async def test_check_consecutive_losses(risk_mgr):
+    from datetime import date as _date, timedelta
+    # 최근 3 영업일 계산 (오늘 제외, 주말 스킵)
+    biz_days = []
+    _d = _date.today() - timedelta(days=1)
+    while len(biz_days) < 3:
+        if _d.weekday() < 5:
+            biz_days.append(_d.strftime("%Y-%m-%d"))
+        _d -= timedelta(days=1)
+
     risk_mgr._db.fetch_all = AsyncMock(return_value=[
-        {"total_pnl": -50000},
-        {"total_pnl": -30000},
-        {"total_pnl": -10000},
+        {"date": biz_days[0], "total_pnl": -50000},
+        {"date": biz_days[1], "total_pnl": -30000},
+        {"date": biz_days[2], "total_pnl": -10000},
     ])
     reduced = await risk_mgr.check_consecutive_losses()
     assert reduced is True

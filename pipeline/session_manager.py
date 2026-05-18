@@ -491,9 +491,19 @@ class SessionManager:
         try:
             prev_kospi = self._market_filter.is_intraday_blocked("kospi")
             prev_kosdaq = self._market_filter.is_intraday_blocked("kosdaq")
+            block_thr = (
+                self._market_filter._block_threshold_override
+                if self._market_filter._block_threshold_override is not None
+                else self._config.trading.intraday_block_threshold
+            )
+            resume_thr = (
+                self._market_filter._resume_threshold_override
+                if self._market_filter._resume_threshold_override is not None
+                else self._config.trading.intraday_resume_threshold
+            )
             await self._market_filter.refresh_intraday(
-                block_threshold=self._config.trading.intraday_block_threshold,
-                resume_threshold=self._config.trading.intraday_resume_threshold,
+                block_threshold=block_thr,
+                resume_threshold=resume_thr,
                 cooldown_minutes=20,
             )
             now_kospi = self._market_filter.is_intraday_blocked("kospi")

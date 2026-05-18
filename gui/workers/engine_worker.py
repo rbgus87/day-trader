@@ -41,6 +41,8 @@ class EngineWorker(QThread):
         self.signals.request_daily_reset.connect(self._on_request_daily_reset)
         self.signals.request_strategy_change.connect(self._on_request_strategy_change)
         self.signals.request_ws_record.connect(self._on_request_ws_record)
+        self.signals.request_market_filter_override.connect(self._on_request_market_filter_override)
+        self.signals.request_intraday_thresholds.connect(self._on_request_intraday_thresholds)
         self._recorder = None
         self.setTerminationEnabled(True)
 
@@ -342,7 +344,7 @@ class EngineWorker(QThread):
         logger.info("파이프라인 시작 -- 매매 대기 중 (GUI)")
 
         import time as _time
-        _last_health = _last_heartbeat = _time.time()
+        _last_health = _last_heartbeat = _last_shadow = _time.time()
         while self._running:
             now_ts = _time.time()
             if now_ts - _last_heartbeat >= 300:
@@ -354,6 +356,14 @@ class EngineWorker(QThread):
             if now_ts - _last_health >= 30:
                 _last_health = now_ts
                 self._health_check()
+            if now_ts - _last_shadow >= 10:
+                _last_shadow = now_ts
+                if self._shadow_tracker:
+                    try:
+                        summary = self._shadow_tracker.get_summary()
+                        self.signals.shadow_updated.emit(summary.get("positions", []))
+                    except Exception:
+                        pass
             self._ui_emitter.emit_all()
             try:
                 await asyncio.wait_for(self._stop_event.wait(), timeout=2.0)
@@ -587,6 +597,23 @@ class EngineWorker(QThread):
         await self._session_manager.strategy_change(strategy_name)
         if self._ui_emitter:
             self._ui_emitter.emit_status()
+
+    def _on_request_market_filter_override(self, market: str, mode: str) -> None:
+        """시장 필터 수동 오버라이드 (세션 한정, Qt 스레드에서 직접 호출 가능)."""
+        if self._market_filter is None:
+            logger.warning("[OVERRIDE] 시장 필터 비활성 — 오버라이드 무시")
+            return
+        self._market_filter.set_override(market, mode)
+        logger.bind(event="market_filter_override", market=market, mode=mode).info(
+            f"[OVERRIDE] 시장 필터 오버라이드 적용: {market}={mode}"
+        )
+
+    def _on_request_intraday_thresholds(self, block: float, resume: float) -> None:
+        """장중 필터 임계값 세션 변경 (세션 한정, Qt 스레드에서 직접 호출 가능)."""
+        if self._market_filter is None:
+            logger.warning("[OVERRIDE] 시장 필터 비활성 — 임계값 변경 무시")
+            return
+        self._market_filter.set_intraday_thresholds(block, resume)
 
     def _on_request_daily_reset(self):
         if self._loop and self._loop.is_running():

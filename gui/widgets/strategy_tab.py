@@ -21,6 +21,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
+    QComboBox,
     QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
@@ -57,6 +58,9 @@ class StrategyTab(QWidget):
     """전략 탭 — 현재 시스템 설정 전체 표시 + 편집 가능 필드 구분."""
 
     settings_saved = pyqtSignal()
+    # 세션 한정 오버라이드 시그널 (엔진에 즉시 반영, config.yaml 미저장)
+    market_filter_override_changed = pyqtSignal(str, str)   # (market, mode)
+    intraday_thresholds_changed = pyqtSignal(float, float)  # (block_pct, resume_pct) raw decimal
 
     # ADR-008/012/014: 알림 정책 토글 12종
     _NOTIFICATION_FIELDS = [
@@ -96,8 +100,8 @@ class StrategyTab(QWidget):
         self._lbl_momentum_fade_threshold: QLabel | None = None
         self._lbl_momentum_fade_min_profit: QLabel | None = None
         self._lbl_max_entry_above_breakout: QLabel | None = None
-        self._lbl_intraday_block: QLabel | None = None
-        self._lbl_intraday_resume: QLabel | None = None
+        self._lbl_intraday_block: QLabel | None = None   # 레거시 (미사용, 하위호환)
+        self._lbl_intraday_resume: QLabel | None = None  # 레거시 (미사용, 하위호환)
         self._lbl_obi_filter: QLabel | None = None
         self._lbl_stale_exit: QLabel | None = None
         self._lbl_afternoon_entry: QLabel | None = None
@@ -283,6 +287,7 @@ class StrategyTab(QWidget):
         form.setContentsMargins(10, 16, 10, 10)
         form.setSpacing(8)
 
+        # ── 기본 설정 ──────────────────────────────────────────────────
         self._risk_market_filter = QCheckBox("시장 필터 활성화")
         self._risk_market_filter.setChecked(True)
         self._risk_market_filter.setToolTip(
@@ -293,16 +298,97 @@ class StrategyTab(QWidget):
         self._lbl_market_ma_length = _ro_label("5 (MA5)")
         form.addRow("market_ma_length:", self._lbl_market_ma_length)
 
-        self._lbl_intraday_block = _ro_label("-1.0 % (장중 차단 임계값)")
-        form.addRow("intraday_block_threshold:", self._lbl_intraday_block)
+        # ── 오버라이드 제어 (세션 한정) ──────────────────────────────
+        sep_lbl = QLabel("── 수동 오버라이드 (세션 한정) ──")
+        sep_lbl.setStyleSheet("color: #6c7086; font-size: 10px; padding-top: 4px;")
+        form.addRow(sep_lbl)
 
-        self._lbl_intraday_resume = _ro_label("-0.5 % (장중 재개 임계값)")
-        form.addRow("intraday_resume_threshold:", self._lbl_intraday_resume)
+        _OVERRIDE_ITEMS = ["자동", "강제 허용", "강제 차단"]
+        _OVERRIDE_TIPS = [
+            "자동: MA5 기반 강세/약세 자동 판단 (기본값)",
+            "강제 허용: 약세장에서도 해당 시장 종목 매수 허용",
+            "강제 차단: 강세장에서도 해당 시장 종목 매수 차단",
+        ]
+
+        self._kospi_override = QComboBox()
+        self._kospi_override.addItems(_OVERRIDE_ITEMS)
+        for i, tip in enumerate(_OVERRIDE_TIPS):
+            self._kospi_override.setItemData(i, tip, Qt.ItemDataRole.ToolTipRole)
+        self._kospi_override.setToolTip("KOSPI 시장 매수 오버라이드")
+        form.addRow("KOSPI 오버라이드:", self._kospi_override)
+
+        self._kosdaq_override = QComboBox()
+        self._kosdaq_override.addItems(_OVERRIDE_ITEMS)
+        for i, tip in enumerate(_OVERRIDE_TIPS):
+            self._kosdaq_override.setItemData(i, tip, Qt.ItemDataRole.ToolTipRole)
+        self._kosdaq_override.setToolTip("KOSDAQ 시장 매수 오버라이드")
+        form.addRow("KOSDAQ 오버라이드:", self._kosdaq_override)
+
+        # ── 장중 임계값 (편집 가능, 세션 한정) ───────────────────────
+        sep_lbl2 = QLabel("── 장중 필터 임계값 (세션 한정) ──")
+        sep_lbl2.setStyleSheet("color: #6c7086; font-size: 10px; padding-top: 4px;")
+        form.addRow(sep_lbl2)
+
+        self._intraday_block_spin = QDoubleSpinBox()
+        self._intraday_block_spin.setRange(-10.0, 0.0)
+        self._intraday_block_spin.setValue(-1.0)
+        self._intraday_block_spin.setSingleStep(0.1)
+        self._intraday_block_spin.setDecimals(1)
+        self._intraday_block_spin.setSuffix(" %")
+        self._intraday_block_spin.setToolTip(
+            "장중 지수 등락률이 이 값 미만이면 매수 차단 (기본 -1.0%)"
+        )
+        form.addRow("매수 차단 임계:", self._intraday_block_spin)
+
+        self._intraday_resume_spin = QDoubleSpinBox()
+        self._intraday_resume_spin.setRange(-10.0, 0.0)
+        self._intraday_resume_spin.setValue(-0.5)
+        self._intraday_resume_spin.setSingleStep(0.1)
+        self._intraday_resume_spin.setDecimals(1)
+        self._intraday_resume_spin.setSuffix(" %")
+        self._intraday_resume_spin.setToolTip(
+            "장중 지수 등락률이 이 값 이상으로 회복되면 매수 재개 (기본 -0.5%)"
+        )
+        form.addRow("매수 재개 임계:", self._intraday_resume_spin)
 
         intraday_interval_lbl = _ro_label("10분 갱신 주기")
         form.addRow("intraday_check_interval:", intraday_interval_lbl)
 
+        # ── 섀도우 모드 ───────────────────────────────────────────────
+        self._shadow_mode_cb = QCheckBox("섀도우 모드 (차단 유지 + 추적만)")
+        self._shadow_mode_cb.setChecked(True)
+        self._shadow_mode_cb.setEnabled(False)   # 항상 활성 — UI 상태 표시 전용
+        self._shadow_mode_cb.setToolTip(
+            "차단된 시그널을 섀도우 트래커에 기록해 '만약 진입했다면' PnL을 추적합니다.\n"
+            "현재 항상 활성 (비활성화 미지원)"
+        )
+        form.addRow(self._shadow_mode_cb)
+
+        # ── 설정 적용 버튼 ────────────────────────────────────────────
+        note = QLabel("※ 오버라이드·임계값은 세션 한정 — 재시작 시 config.yaml 기본값 복원")
+        note.setStyleSheet("color: #6c7086; font-size: 10px;")
+        note.setWordWrap(True)
+        form.addRow(note)
+
+        btn_apply = QPushButton("설정 적용")
+        btn_apply.setToolTip("오버라이드와 장중 임계값을 실행 중인 엔진에 즉시 반영합니다")
+        btn_apply.clicked.connect(self._on_apply_market_filter)
+        form.addRow(btn_apply)
+
         return group
+
+    def _on_apply_market_filter(self) -> None:
+        """시장 필터 오버라이드 + 장중 임계값을 엔진에 즉시 반영."""
+        _MODE_MAP = {"자동": "auto", "강제 허용": "force_allow", "강제 차단": "force_block"}
+
+        kospi_mode = _MODE_MAP.get(self._kospi_override.currentText(), "auto")
+        kosdaq_mode = _MODE_MAP.get(self._kosdaq_override.currentText(), "auto")
+        block_pct = self._intraday_block_spin.value() / 100.0
+        resume_pct = self._intraday_resume_spin.value() / 100.0
+
+        self.market_filter_override_changed.emit("kospi", kospi_mode)
+        self.market_filter_override_changed.emit("kosdaq", kosdaq_mode)
+        self.intraday_thresholds_changed.emit(block_pct, resume_pct)
 
     # ---- 6) 알림 정책 -------------------------------------------------
 
@@ -534,12 +620,11 @@ class StrategyTab(QWidget):
         if self._lbl_market_ma_length is not None:
             ma = int(trading_cfg.get("market_ma_length", 5))
             self._lbl_market_ma_length.setText(f"{ma} (MA{ma})")
-        if self._lbl_intraday_block is not None:
-            block = float(trading_cfg.get("intraday_block_threshold", -0.01)) * 100
-            self._lbl_intraday_block.setText(f"{block:.1f} % (장중 차단 임계값)")
-        if self._lbl_intraday_resume is not None:
-            resume = float(trading_cfg.get("intraday_resume_threshold", -0.005)) * 100
-            self._lbl_intraday_resume.setText(f"{resume:.1f} % (장중 재개 임계값)")
+        # 장중 임계값 → SpinBox에 config 기본값 주입
+        block_val = float(trading_cfg.get("intraday_block_threshold", -0.01)) * 100
+        self._intraday_block_spin.setValue(block_val)
+        resume_val = float(trading_cfg.get("intraday_resume_threshold", -0.005)) * 100
+        self._intraday_resume_spin.setValue(resume_val)
 
         # 알림 정책
         notif_cfg = config.get("notifications", {}) or {}

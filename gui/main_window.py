@@ -18,8 +18,8 @@ from gui.tray_icon import TrayIcon
 from gui.widgets.sidebar import Sidebar
 from gui.views.header_bar import HeaderBar
 from gui.views.dashboard_view import DashboardView
-from gui.widgets.screener_tab import ScreenerTab
-from gui.widgets.backtest_tab import BacktestTab
+# from gui.widgets.screener_tab import ScreenerTab   # 비활성 — 탭 미표시 (코드 유지)
+# from gui.widgets.backtest_tab import BacktestTab   # 비활성 — 탭 미표시 (코드 유지)
 from gui.widgets.strategy_tab import StrategyTab
 from gui.widgets.log_tab import LogTab
 from gui.workers.engine_worker import EngineWorker
@@ -73,14 +73,13 @@ class MainWindow(QMainWindow):
         # 우측 탭 위젯
         self.tab_widget = QTabWidget()
         self.dashboard_view = DashboardView()
-        self.screener_tab = ScreenerTab()
-        self.backtest_tab = BacktestTab()
+        # self.screener_tab = ScreenerTab()   # 비활성 — 위젯 인스턴스화 건너뜀
+        # self.backtest_tab = BacktestTab()   # 비활성 — 위젯 인스턴스화 건너뜀
         self.strategy_tab = StrategyTab()
         self.log_tab = LogTab()
 
+        # 탭 3개만 표시: [대시보드] [전략 설정] [로그]
         self.tab_widget.addTab(self.dashboard_view, "대시보드")
-        self.tab_widget.addTab(self.screener_tab, "스크리너")
-        self.tab_widget.addTab(self.backtest_tab, "백테스트")
         self.tab_widget.addTab(self.strategy_tab, "전략 설정")
         self.tab_widget.addTab(self.log_tab, "로그")
         body.addWidget(self.tab_widget, stretch=1)
@@ -112,10 +111,12 @@ class MainWindow(QMainWindow):
         self.sidebar.ws_record_toggled.connect(self._on_ws_record_toggled)
 
         # 탭 시그널 연결
-        self.screener_tab.run_screening_clicked.connect(self._on_screening)
+        # self.screener_tab.run_screening_clicked.connect(self._on_screening)  # 비활성
         self.strategy_tab.settings_saved.connect(self._on_settings_saved)
-        self.backtest_tab.run_backtest_clicked.connect(self._on_run_backtest)
-        self.backtest_tab.run_compare_clicked.connect(self._on_run_compare)
+        self.strategy_tab.market_filter_override_changed.connect(self._on_market_filter_override)
+        self.strategy_tab.intraday_thresholds_changed.connect(self._on_intraday_thresholds_changed)
+        # self.backtest_tab.run_backtest_clicked.connect(self._on_run_backtest)  # 비활성
+        # self.backtest_tab.run_compare_clicked.connect(self._on_run_compare)    # 비활성
 
     # ── 테마 / 타이틀바 ───────────────────────────────────────────────────────
 
@@ -234,6 +235,7 @@ class MainWindow(QMainWindow):
         s.startup_progress.connect(self._on_startup_progress)
         s.ws_record_status.connect(self._on_ws_record_status)
         s.daily_summary_updated.connect(self._on_daily_summary_updated)
+        s.shadow_updated.connect(self._on_shadow_updated)
         self.dashboard_view.manual_close_requested.connect(self._on_manual_close)
 
     def _on_market_status(self, kospi_strong: bool, kosdaq_strong: bool):
@@ -363,6 +365,17 @@ class MainWindow(QMainWindow):
 
     def _on_daily_summary_updated(self, data: dict) -> None:
         self.dashboard_view.show_daily_summary(data)
+
+    def _on_shadow_updated(self, positions: list) -> None:
+        self.dashboard_view.update_shadow(positions)
+
+    def _on_market_filter_override(self, market: str, mode: str) -> None:
+        if self._worker:
+            self._worker.signals.request_market_filter_override.emit(market, mode)
+
+    def _on_intraday_thresholds_changed(self, block: float, resume: float) -> None:
+        if self._worker:
+            self._worker.signals.request_intraday_thresholds.emit(block, resume)
 
     def _on_ws_record_status(self, recording: bool, count: int) -> None:
         if recording:
@@ -553,7 +566,7 @@ class MainWindow(QMainWindow):
                 uni = yaml.safe_load(open(uni_path, encoding="utf-8")) or {}
                 stocks = uni.get("stocks", [])
                 self.strategy_tab.load_universe(stocks)
-                self.backtest_tab.set_tickers([s["ticker"] for s in stocks])
+                # self.backtest_tab.set_tickers(...)  # 비활성
             force = cfg.get("strategy", {}).get("force", "")
             if force:
                 self.sidebar.set_strategy(force)
@@ -658,7 +671,7 @@ class MainWindow(QMainWindow):
         self.dashboard_view.on_daily_loss(pnl, capital)
 
     def _on_candidates_updated(self, candidates: list):
-        self.screener_tab.update_candidates(candidates)
+        pass  # screener_tab 비활성 — 업데이트 무시
 
     def _on_watchlist_updated(self, items: list):
         self.dashboard_view.update_watchlist(items)

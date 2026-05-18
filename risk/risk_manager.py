@@ -397,6 +397,7 @@ class RiskManager:
 
         # 거래일 집합 구성
         traded_days = {r[0]: r[1] for r in rows}  # "YYYY-MM-DD" → daily_pnl
+        logger.info(f"[LOSS-REST] DB 조회 결과: {dict(list(traded_days.items())[:10])}")
 
         # 오늘 이전 영업일을 역순으로 순회하며 연속 손실 카운트
         consecutive = 0
@@ -408,14 +409,19 @@ class RiskManager:
                 continue
             dt_str = check_date.strftime("%Y-%m-%d")
             if dt_str in traded_days:
-                if traded_days[dt_str] is not None and traded_days[dt_str] < 0:
+                pnl_val = traded_days[dt_str]
+                if pnl_val is not None and pnl_val < 0:
                     consecutive += 1
+                    logger.info(f"[LOSS-REST] {dt_str} 손실일 (pnl={pnl_val:.0f}) → 연속={consecutive}")
                 else:
+                    logger.info(f"[LOSS-REST] {dt_str} 수익/0일 (pnl={pnl_val}) → 연속 끊김")
                     break  # 수익 또는 손익0 → 연속 끊김
             else:
+                logger.info(f"[LOSS-REST] {dt_str} 무거래 영업일 → 연속 끊김")
                 break  # 무거래 영업일 → 연속 끊김
             check_date -= timedelta(days=1)
 
+        logger.info(f"[LOSS-REST] 최종 연속손실={consecutive}일, threshold={threshold}, 휴식={'YES' if consecutive >= threshold else 'NO'}")
         return consecutive >= threshold
 
     def is_ticker_blacklisted(
@@ -460,17 +466,40 @@ class RiskManager:
         self._daily_capital = capital
 
     async def check_consecutive_losses(self) -> bool:
+        threshold = self._config.consecutive_loss_days
         rows = await self._db.fetch_all(
-            "SELECT total_pnl FROM daily_pnl ORDER BY date DESC LIMIT ?",
-            (self._config.consecutive_loss_days,),
+            "SELECT date, total_pnl FROM daily_pnl ORDER BY date DESC LIMIT ?",
+            (max(threshold * 2, 30),),
         )
-        if len(rows) < self._config.consecutive_loss_days:
-            return False
-        all_loss = all(row["total_pnl"] < 0 for row in rows)
+        # 날짜 → pnl 매핑
+        traded_days = {r["date"]: r["total_pnl"] for r in rows}
+
+        # 영업일 역순 순회 (오늘 제외, 무거래일 → 연속 끊김)
+        consecutive = 0
+        check_date = datetime.now().date() - timedelta(days=1)
+        for _ in range(max(threshold * 2, 30)):
+            if check_date.weekday() >= 5:  # 주말 스킵
+                check_date -= timedelta(days=1)
+                continue
+            dt_str = check_date.strftime("%Y-%m-%d")
+            if dt_str in traded_days:
+                if traded_days[dt_str] is not None and traded_days[dt_str] < 0:
+                    consecutive += 1
+                    logger.info(f"[CONSEC-LOSS] {dt_str} 손실 (pnl={traded_days[dt_str]:.0f}) → 연속={consecutive}")
+                else:
+                    logger.info(f"[CONSEC-LOSS] {dt_str} 수익/0 (pnl={traded_days[dt_str]}) → 끊김")
+                    break
+            else:
+                logger.info(f"[CONSEC-LOSS] {dt_str} 무거래일 → 끊김")
+                break
+            check_date -= timedelta(days=1)
+
+        logger.info(f"[CONSEC-LOSS] 최종 연속손실={consecutive}일, threshold={threshold}")
+        all_loss = consecutive >= threshold
         if all_loss:
             self._position_scale = self._config.reduced_position_pct
             logger.warning(
-                f"{self._config.consecutive_loss_days}일 연속 손실 → "
+                f"{threshold}일 연속 손실 → "
                 f"포지션 {self._position_scale:.0%}로 축소"
             )
         else:
