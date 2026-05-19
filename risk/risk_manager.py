@@ -201,16 +201,28 @@ class RiskManager:
 
         # ADR-017: Breakeven Stop (BE3) — peak_return ≥ trigger 도달 시
         # stop을 entry × (1 + offset)로 상향. 기존 trailing과 max 비교로 공존.
+        # ATR 비례: trigger = max(breakeven_trigger_pct, ATR × be3_atr_ratio)
+        #           offset  = ATR × be3_stop_atr_ratio (ATR 미가용 시 breakeven_offset_pct)
         if getattr(self._config, "breakeven_enabled", False) and pos.exit_phase != ExitPhase.BREAKEVEN:
             entry = pos.entry_price
             peak = pos.highest_price
-            trigger = getattr(self._config, "breakeven_trigger_pct", 0.03)
+            base_trigger = getattr(self._config, "breakeven_trigger_pct", 0.03)
+            if atr_pct is not None:
+                be3_atr_ratio = getattr(self._config, "be3_atr_ratio", 0.4)
+                trigger = max(base_trigger, atr_pct * be3_atr_ratio)
+            else:
+                trigger = base_trigger
             if entry > 0 and (peak - entry) / entry >= trigger:
-                offset = getattr(self._config, "breakeven_offset_pct", 0.01)
+                if atr_pct is not None:
+                    be3_stop_atr_ratio = getattr(self._config, "be3_stop_atr_ratio", 0.15)
+                    offset = atr_pct * be3_stop_atr_ratio
+                else:
+                    offset = getattr(self._config, "breakeven_offset_pct", 0.01)
                 be_stop = entry * (1.0 + offset)
                 pos.activate_breakeven(be_stop)
                 logger.info(
                     f"[BE3] 발동: {ticker} entry={entry:,.0f} peak={peak:,.0f} "
+                    f"trigger={trigger:.1%} offset={offset:.1%} "
                     f"stop→{pos.stop_loss:,.0f} (+{(peak - entry) / entry * 100:.2f}%)"
                 )
 

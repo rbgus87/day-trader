@@ -252,7 +252,7 @@ class MarketFilter:
         return dict(self._intraday_change)
 
     def is_intraday_blocked(self, market: str) -> bool:
-        """시장별 장중 차단 여부.
+        """시장별 장중 차단 여부 (override 미반영 — 테스트/로깅용).
 
         Args:
             market: "kospi" / "kosdaq" / 그 외
@@ -260,11 +260,40 @@ class MarketFilter:
         Returns:
             차단 중이면 True. "unknown"은 둘 중 하나라도 차단이면 True.
         """
+        return self._raw_intraday_blocked(market)
+
+    def _raw_intraday_blocked(self, market: str) -> bool:
         if market == "kospi":
             return self._kospi_intraday_blocked
         if market == "kosdaq":
             return self._kosdaq_intraday_blocked
         return self._kospi_intraday_blocked or self._kosdaq_intraday_blocked
+
+    def is_intraday_allowed(self, market: str) -> bool:
+        """force_allow 오버라이드를 반영한 장중 매수 허용 여부.
+
+        force_allow: 장중 약세여도 허용 (로그만 남김)
+        force_block: 장중 상태 무관 항상 차단
+        auto:        _raw_intraday_blocked() 반전값
+
+        Args:
+            market: "kospi" / "kosdaq" / 그 외
+
+        Returns:
+            매수 허용이면 True.
+        """
+        override = self._overrides.get(market, "auto")
+        if override == "force_allow":
+            if self._raw_intraday_blocked(market):
+                idx = "001" if market == "kospi" else "101"
+                change = self._intraday_change.get(idx, 0.0)
+                logger.info(
+                    f"[INTRADAY] {market} 약세 ({change:.2%}) — 오버라이드로 허용"
+                )
+            return True
+        if override == "force_block":
+            return False
+        return not self._raw_intraday_blocked(market)
 
     async def _fetch_intraday_change(self, index_code: str) -> float | None:
         """당일 지수 시가 대비 현재가 등락률 계산.

@@ -47,6 +47,8 @@ class VIHandler:
         self._entries: dict[str, _Entry] = {}
         # WS 1h로 관리 중인 종목 — update_from_tick이 fallback 역할만 수행
         self._ws_controlled: set[str] = set()
+        # 감시 종목 집합 — 미설정 시 전 종목 INFO 로깅
+        self._universe: set[str] = set()
 
     def get_vi_state(self, ticker: str) -> VIState:
         entry = self._entries.get(ticker)
@@ -103,6 +105,10 @@ class VIHandler:
         if static_cnt + suspected_cnt > 0:
             logger.info(f"[VI] 현재 {static_cnt}종목 STATIC_추정, {suspected_cnt}종목 SUSPECTED")
 
+    def set_universe(self, universe: set[str]) -> None:
+        """감시 종목 집합 갱신 — 이 종목만 VI-WS 이벤트를 INFO로 로깅."""
+        self._universe = set(universe)
+
     def update_from_ws_vi(self, ticker: str, vi_data: dict) -> None:
         """WS '1h' VI 발동/해제 메시지로 VI 상태를 정확하게 갱신.
 
@@ -115,14 +121,26 @@ class VIHandler:
         vi_type = str(vi_data.get("1225", ""))
         release_str = str(vi_data.get("1224", ""))
 
+        # 감시 종목 여부 — _NX, _AL 접미사 제거 후 매칭
+        base_ticker = ticker.split("_")[0]
+        in_watch = not self._universe or base_ticker in self._universe
+
         if vi_type in ("정적", "동적", "동적+정적"):
             expires = self._parse_vi_release_time(release_str)
             self._entries[ticker] = _Entry(VIState.STATIC_VI, expires)
-            logger.info(f"[VI-WS] {ticker} {vi_type} 발동 — 해제: {release_str or '미확인'}")
+            msg = f"[VI-WS] {ticker} {vi_type} 발동 — 해제: {release_str or '미확인'}"
+            if in_watch:
+                logger.info(msg)
+            else:
+                logger.debug(msg)
         else:
             if ticker in self._entries:
                 del self._entries[ticker]
-            logger.info(f"[VI-WS] {ticker} VI 해제")
+            msg = f"[VI-WS] {ticker} VI 해제"
+            if in_watch:
+                logger.info(msg)
+            else:
+                logger.debug(msg)
 
     @staticmethod
     def _parse_vi_release_time(time_str: str) -> datetime:

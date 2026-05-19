@@ -668,6 +668,8 @@ class SessionManager:
             logger.error(f"WS 연결 실패: {e}")
 
         final_tickers = [s["ticker"] for s in final_stocks]
+        if self._vi_handler is not None:
+            self._vi_handler.set_universe(set(final_tickers))
         if final_tickers:
             from core.kiwoom_ws import WS_TYPE_ORDERBOOK
             await self._ws_client.subscribe(final_tickers)

@@ -85,13 +85,13 @@ class OrderExecutor:
                             )
                     return None
 
-            # 장중 시장 필터
+            # 장중 시장 필터 (force_allow 오버라이드 반영)
             if (
                 getattr(self._config.trading, "intraday_market_filter_enabled", False)
                 and self._market_filter is not None
             ):
                 _intraday_market = self._state.ticker_markets.get(signal.ticker, "unknown")
-                if self._market_filter.is_intraday_blocked(_intraday_market):
+                if not self._market_filter.is_intraday_allowed(_intraday_market):
                     logger.bind(
                         event="signal_blocked", ticker=signal.ticker,
                         price=int(signal.price), reason="intraday_market", detail=_intraday_market,

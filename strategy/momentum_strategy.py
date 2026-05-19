@@ -193,12 +193,12 @@ class MomentumStrategy(BaseStrategy):
             gap = (current_price - breakout_price) / breakout_price
             if gap > max_gap:
                 self.diag_counters["entry_too_high"] += 1
-                logger.debug(
-                    f"[ENTRY_TOO_HIGH] {tick['ticker']} "
-                    f"gap={gap:.2%} > {max_gap:.2%} "
+                logger.info(
+                    f"[MAX_ENTRY] {tick['ticker']} 차단: {gap * 100:.1f}% > {max_gap * 100:.0f}% "
                     f"(cur={current_price:,.0f} bp={breakout_price:,.0f})"
                 )
                 return None
+            logger.info(f"[MAX_ENTRY] {tick['ticker']} 통과: {gap * 100:.1f}%")
 
         # 2) 거래량 필터
         if candles is None or candles.empty:

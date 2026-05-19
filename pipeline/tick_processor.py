@@ -151,6 +151,17 @@ class TickProcessor:
         if not hist or len(hist) < 30:
             return
 
+        # max_entry_above_breakout_pct 체크 (breakout_threshold 기준 — backtester 일관성)
+        max_gap = getattr(self._config.trading, "max_entry_above_breakout_pct", 0.10)
+        gap = (price - breakout_threshold) / breakout_threshold
+        if gap > max_gap:
+            logger.info(
+                f"[MAX_ENTRY] {ticker} 차단: {gap * 100:.1f}% > {max_gap * 100:.0f}% "
+                f"(cur={price:,} thr={breakout_threshold:,.0f})"
+            )
+            return
+        logger.info(f"[MAX_ENTRY] {ticker} 통과: {gap * 100:.1f}%")
+
         df = _pd.DataFrame(hist)
         breakout_info = self._state.breakout_detected[ticker]
         signal = strategy.generate_signal(df, tick, breakout_price=breakout_info.breakout_price)

@@ -107,10 +107,14 @@ strategy:
     atr_trail_min_pct: 0.025        # 하한 2.5% (0.02 → 0.025, 2026-05-13 그리드)
     atr_trail_max_pct: 0.08         # 상한 8% (0.10 → 0.08, 2026-05-13 그리드)
 
-    # ADR-017: Breakeven Stop (BE3) — peak_return 3% 도달 시 stop을 진입가+1%로
+    # ADR-017: Breakeven Stop (BE3) — ATR 비례 trigger/stop
+    # trigger = max(breakeven_trigger_pct, ATR × be3_atr_ratio)
+    # stop    = entry × (1 + ATR × be3_stop_atr_ratio)  (ATR 미가용 시 breakeven_offset_pct)
     breakeven_enabled: true         # 활성화
-    breakeven_trigger_pct: 0.03     # +3% 도달 시 발동
-    breakeven_offset_pct: 0.01      # stop을 진입가+1%로 상향
+    breakeven_trigger_pct: 0.03     # 최소 발동 threshold (ATR 미가용 fallback)
+    breakeven_offset_pct: 0.01      # ATR 미가용 시 stop offset fallback
+    be3_atr_ratio: 0.4              # trigger = max(0.03, ATR × 0.4)  → ATR 12% → 4.8%
+    be3_stop_atr_ratio: 0.15        # stop = entry × (1 + ATR × 0.15) → ATR 12% → +1.8%
 
     # 상한가 즉시 청산 — current_price >= 상한가 도달 시 즉시 매도
     limit_up_exit_enabled: true     # 활성화
