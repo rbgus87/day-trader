@@ -448,9 +448,9 @@ def _write_report(
         ]
     else:
         lines += [
-            "선정 기준 미달 — VWAP 리버전 전략 비활성 유지 (`vwap_reversion.enabled: false`)",
+            "선정 기준 미달 -- VWAP 리버전 전략 비활성 유지 (`vwap_reversion.enabled: false`)",
             "",
-            f"미달 이유: PF≥{PF_THRESHOLD} AND 거래≥{MIN_TRADES} AND maxCL≤{MAX_CONSEC_LOSS} "
+            f"미달 이유: PF>={PF_THRESHOLD} AND 거래>={MIN_TRADES} AND maxCL<={MAX_CONSEC_LOSS} "
             f"AND NEW_PF>{NEW_PF_THRESHOLD} 조건 충족 조합 없음",
         ]
 
@@ -595,8 +595,8 @@ async def main() -> None:
     else:
         print(
             f"\n[선정] 기준 미달 "
-            f"(PF≥{PF_THRESHOLD} / 거래≥{MIN_TRADES} / "
-            f"maxCL≤{MAX_CONSEC_LOSS} / NEW_PF>{NEW_PF_THRESHOLD}) — "
+            f"(PF>={PF_THRESHOLD} / 거래>={MIN_TRADES} / "
+            f"maxCL<={MAX_CONSEC_LOSS} / NEW_PF>{NEW_PF_THRESHOLD}) -- "
             "VWAP 비활성 유지",
             flush=True,
         )
