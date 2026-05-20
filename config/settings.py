@@ -266,6 +266,17 @@ class TradingConfig:
     vwap_rev_min_prev_volume: int = 50000      # 전일 최소 거래량 (주)
     vwap_rev_max_daily_drop: float = -0.07     # 당일 허용 최대 등락률 (-7%)
 
+    # 눌림목 전략 (09:30~13:00, 초기 급등 후 첫 조정 진입)
+    pb_enabled: bool = False
+    pb_surge_pct: float = 0.05           # 급등 임계: 전일종가 대비 +5%
+    pb_pullback_depth: float = 0.02      # 눌림 임계: 고점 대비 -2%
+    pb_min_above_close_pct: float = 0.01 # 진입 최소 유지: 전일종가 +1%
+    pb_sl_from_high_pct: float = 0.05   # 손절: 고점 대비 -5%
+    pb_tp_above_high_pct: float = 0.01  # 익절: 고점 +1%
+    pb_entry_start: str = "09:30"
+    pb_entry_end: str = "13:00"
+    pb_min_volume: int = 50000           # 전일 최소 거래량 (주)
+
 
 @dataclass(frozen=True)
 class ScreenerConfig:
@@ -522,6 +533,16 @@ class AppConfig:
             vwap_rev_entry_end=vr.get("entry_end", "14:00"),
             vwap_rev_min_prev_volume=vr.get("min_volume", 50000),
             vwap_rev_max_daily_drop=vr.get("max_daily_drop", -0.07),
+            # 눌림목 전략
+            pb_enabled=s.get("pullback", {}).get("enabled", False),
+            pb_surge_pct=s.get("pullback", {}).get("surge_pct", 0.05),
+            pb_pullback_depth=s.get("pullback", {}).get("pullback_depth", 0.02),
+            pb_min_above_close_pct=s.get("pullback", {}).get("min_above_close_pct", 0.01),
+            pb_sl_from_high_pct=s.get("pullback", {}).get("sl_from_high_pct", 0.05),
+            pb_tp_above_high_pct=s.get("pullback", {}).get("tp_above_high_pct", 0.01),
+            pb_entry_start=s.get("pullback", {}).get("entry_start", "09:30"),
+            pb_entry_end=s.get("pullback", {}).get("entry_end", "13:00"),
+            pb_min_volume=s.get("pullback", {}).get("min_volume", 50000),
         )
 
         # screener 섹션

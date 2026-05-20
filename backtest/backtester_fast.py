@@ -1468,3 +1468,294 @@ class VWAPReversionFastBacktester(Backtester):
             f"pnl={kpi['total_pnl']:.1f}"
         )
         return kpi
+
+
+# ---------------------------------------------------------------------------
+# PullbackFastBacktester — 눌림목 전략 전용 numpy 백테스터
+# ---------------------------------------------------------------------------
+
+class PullbackFastBacktester(Backtester):
+    """눌림목 전략 전용 numpy 가속 백테스터.
+
+    진입 조건
+    ---------
+    - 당일 09:05 이후 전일종가 대비 surge_pct 이상 상승한 적 있음 (급등 감지)
+    - 급등 이후 close ≤ day_high × (1 - pullback_depth) (눌림 확인)
+    - close > prev_close × (1 + min_above_close_pct) (추세 유지)
+    - close ≥ closes[i-1] (양봉, 반등 확인)
+    - entry_start ≤ min_i ≤ entry_end
+    - prev_volume ≥ min_volume
+
+    청산 조건 (우선순위 순)
+    ---------------------
+    1. TP 도달 (high ≥ tp_price = day_high × (1+tp_above_high)) → tp_exit
+    2. 손절 (low ≤ stop_loss = day_high × (1-sl_from_high))     → stop_loss
+    3. 마지막 캔들 강제 청산                                      → forced_close
+    """
+
+    async def run_multi_day_cached(
+        self,
+        ticker: str,
+        all_candles: pd.DataFrame,
+        strategy: "Any",
+    ) -> dict[str, Any]:
+        """눌림목 고속 멀티데이 백테스트."""
+        if all_candles.empty:
+            return {**self.calculate_kpi([]), "trades": []}
+
+        ts_pd       = pd.DatetimeIndex(all_candles["ts"])
+        all_closes  = all_candles["close"].values.astype(np.float64)
+        all_highs   = all_candles["high"].values.astype(np.float64)
+        all_lows    = all_candles["low"].values.astype(np.float64)
+        all_volumes = all_candles["volume"].values.astype(np.float64)
+        all_minutes = (ts_pd.hour * 60 + ts_pd.minute).values.astype(np.int32)
+
+        day_ord    = (ts_pd.asi8 // (86_400 * 10 ** 9)).astype(np.int64)
+        day_starts = np.where(np.diff(day_ord, prepend=day_ord[0] - 1) != 0)[0]
+        day_ends   = np.append(day_starts[1:], len(day_ord))
+        n_days     = len(day_starts)
+
+        cfg = self._config
+        surge_pct       = float(getattr(cfg, "pb_surge_pct", 0.05))
+        pullback_depth  = float(getattr(cfg, "pb_pullback_depth", 0.02))
+        min_above_close = float(getattr(cfg, "pb_min_above_close_pct", 0.01))
+        sl_from_high    = float(getattr(cfg, "pb_sl_from_high_pct", 0.05))
+        tp_above_high   = float(getattr(cfg, "pb_tp_above_high_pct", 0.01))
+        entry_start_min = _parse_hhmm(str(getattr(cfg, "pb_entry_start", "09:30")), 570)
+        entry_end_min   = _parse_hhmm(str(getattr(cfg, "pb_entry_end", "13:00")), 780)
+        min_volume      = int(getattr(cfg, "pb_min_volume", 50000))
+        signal_block    = _parse_hhmm(str(getattr(cfg, "signal_block_until", "09:05")), 545)
+
+        all_trades: list[dict] = []
+        prev_close  = 0.0
+        prev_volume = 0.0
+
+        for di in range(n_days):
+            s = int(day_starts[di])
+            e = int(day_ends[di])
+
+            closes  = all_closes[s:e]
+            highs   = all_highs[s:e]
+            lows    = all_lows[s:e]
+            volumes = all_volumes[s:e]
+            mins    = all_minutes[s:e]
+            n       = e - s
+
+            if n == 0:
+                prev_close  = 0.0
+                prev_volume = 0.0
+                continue
+
+            vol_ok = prev_volume >= min_volume
+
+            position: dict | None = None
+            surge_detected  = False
+            day_high_val    = 0.0
+            trade_count     = 0
+
+            for i in range(n):
+                close_i = closes[i]
+                high_i  = highs[i]
+                low_i   = lows[i]
+                min_i   = int(mins[i])
+
+                # 급등 추적 (09:05 이후)
+                if min_i >= signal_block and prev_close > 0:
+                    if high_i > prev_close * (1.0 + surge_pct):
+                        surge_detected = True
+                    if surge_detected and high_i > day_high_val:
+                        day_high_val = float(high_i)
+
+                if position is None:
+                    if (
+                        surge_detected
+                        and vol_ok
+                        and trade_count < 1
+                        and entry_start_min <= min_i <= entry_end_min
+                        and day_high_val > 0
+                        and close_i <= day_high_val * (1.0 - pullback_depth)
+                        and prev_close > 0
+                        and close_i > prev_close * (1.0 + min_above_close)
+                        and (i == 0 or close_i >= closes[i - 1])
+                    ):
+                        trade_count += 1
+                        entry_price, net_entry = apply_buy_costs(close_i, self._costs)
+                        stop_loss = day_high_val * (1.0 - sl_from_high)
+                        tp_price  = day_high_val * (1.0 + tp_above_high)
+                        position = {
+                            "entry_ts":    ts_pd[s + i].to_pydatetime(),
+                            "entry_price": entry_price,
+                            "net_entry":   net_entry,
+                            "stop_loss":   stop_loss,
+                            "tp_price":    tp_price,
+                        }
+                else:
+                    if high_i >= position["tp_price"]:
+                        ep, net_exit = apply_sell_costs(position["tp_price"], self._costs)
+                        all_trades.append({
+                            "entry_ts":    position["entry_ts"],
+                            "exit_ts":     ts_pd[s + i].to_pydatetime(),
+                            "entry_price": position["entry_price"],
+                            "exit_price":  ep,
+                            "pnl":         net_exit - position["net_entry"],
+                            "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
+                            "exit_reason": "tp_exit",
+                        })
+                        position = None
+                    elif low_i <= position["stop_loss"]:
+                        ep, net_exit = apply_sell_costs(position["stop_loss"], self._costs)
+                        all_trades.append({
+                            "entry_ts":    position["entry_ts"],
+                            "exit_ts":     ts_pd[s + i].to_pydatetime(),
+                            "entry_price": position["entry_price"],
+                            "exit_price":  ep,
+                            "pnl":         net_exit - position["net_entry"],
+                            "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
+                            "exit_reason": "stop_loss",
+                        })
+                        position = None
+                    elif i == n - 1:
+                        ep, net_exit = apply_sell_costs(close_i, self._costs)
+                        all_trades.append({
+                            "entry_ts":    position["entry_ts"],
+                            "exit_ts":     ts_pd[s + i].to_pydatetime(),
+                            "entry_price": position["entry_price"],
+                            "exit_price":  ep,
+                            "pnl":         net_exit - position["net_entry"],
+                            "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
+                            "exit_reason": "forced_close",
+                        })
+                        position = None
+
+            prev_close  = float(closes[-1])
+            prev_volume = float(np.sum(volumes))
+
+        kpi = self.calculate_kpi(all_trades)
+        kpi["trades"] = all_trades
+        return kpi
+
+    def run_backtest(
+        self,
+        candles: pd.DataFrame,
+        strategy: "Any" = None,
+    ) -> dict[str, Any]:
+        """numpy 기반 눌림목 단일 날짜 시뮬레이션."""
+        if candles.empty:
+            return {**self.calculate_kpi([]), "trades": []}
+
+        candles = candles.reset_index(drop=True)
+        n = len(candles)
+
+        ts_pd   = pd.DatetimeIndex(candles["ts"].values)
+        closes  = candles["close"].values.astype(np.float64)
+        highs   = candles["high"].values.astype(np.float64)
+        lows    = candles["low"].values.astype(np.float64)
+        minutes = (ts_pd.hour * 60 + ts_pd.minute).values.astype(np.int32)
+
+        cfg = self._config
+        surge_pct       = float(getattr(cfg, "pb_surge_pct", 0.05))
+        pullback_depth  = float(getattr(cfg, "pb_pullback_depth", 0.02))
+        min_above_close = float(getattr(cfg, "pb_min_above_close_pct", 0.01))
+        sl_from_high    = float(getattr(cfg, "pb_sl_from_high_pct", 0.05))
+        tp_above_high   = float(getattr(cfg, "pb_tp_above_high_pct", 0.01))
+        entry_start_min = _parse_hhmm(str(getattr(cfg, "pb_entry_start", "09:30")), 570)
+        entry_end_min   = _parse_hhmm(str(getattr(cfg, "pb_entry_end", "13:00")), 780)
+        min_volume      = int(getattr(cfg, "pb_min_volume", 50000))
+        signal_block    = _parse_hhmm(str(getattr(cfg, "signal_block_until", "09:05")), 545)
+
+        prev_close  = float(getattr(strategy, "_prev_day_close", 0.0)) if strategy else 0.0
+        prev_volume = float(getattr(strategy, "_prev_day_volume", 0)) if strategy else 0.0
+
+        vol_ok = prev_volume >= min_volume
+
+        trades: list[dict] = []
+        position: dict | None = None
+        surge_detected = False
+        day_high_val   = 0.0
+        trade_count    = 0
+
+        for i in range(n):
+            close_i = closes[i]
+            high_i  = highs[i]
+            low_i   = lows[i]
+            min_i   = int(minutes[i])
+            ts_i    = ts_pd[i]
+
+            if min_i >= signal_block and prev_close > 0:
+                if high_i > prev_close * (1.0 + surge_pct):
+                    surge_detected = True
+                if surge_detected and high_i > day_high_val:
+                    day_high_val = float(high_i)
+
+            if position is None:
+                if (
+                    surge_detected
+                    and vol_ok
+                    and trade_count < 1
+                    and entry_start_min <= min_i <= entry_end_min
+                    and day_high_val > 0
+                    and close_i <= day_high_val * (1.0 - pullback_depth)
+                    and prev_close > 0
+                    and close_i > prev_close * (1.0 + min_above_close)
+                    and (i == 0 or close_i >= closes[i - 1])
+                ):
+                    trade_count += 1
+                    entry_price, net_entry = apply_buy_costs(close_i, self._costs)
+                    stop_loss = day_high_val * (1.0 - sl_from_high)
+                    tp_price  = day_high_val * (1.0 + tp_above_high)
+                    if strategy is not None:
+                        strategy.on_entry()
+                    position = {
+                        "entry_ts":    ts_i.to_pydatetime(),
+                        "entry_price": entry_price,
+                        "net_entry":   net_entry,
+                        "stop_loss":   stop_loss,
+                        "tp_price":    tp_price,
+                    }
+            else:
+                if high_i >= position["tp_price"]:
+                    ep, net_exit = apply_sell_costs(position["tp_price"], self._costs)
+                    trades.append({
+                        "entry_ts":    position["entry_ts"],
+                        "exit_ts":     ts_i.to_pydatetime(),
+                        "entry_price": position["entry_price"],
+                        "exit_price":  ep,
+                        "pnl":         net_exit - position["net_entry"],
+                        "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
+                        "exit_reason": "tp_exit",
+                    })
+                    position = None
+                    if strategy is not None:
+                        strategy.on_exit()
+                elif low_i <= position["stop_loss"]:
+                    ep, net_exit = apply_sell_costs(position["stop_loss"], self._costs)
+                    trades.append({
+                        "entry_ts":    position["entry_ts"],
+                        "exit_ts":     ts_i.to_pydatetime(),
+                        "entry_price": position["entry_price"],
+                        "exit_price":  ep,
+                        "pnl":         net_exit - position["net_entry"],
+                        "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
+                        "exit_reason": "stop_loss",
+                    })
+                    position = None
+                    if strategy is not None:
+                        strategy.on_exit()
+                elif i == n - 1:
+                    ep, net_exit = apply_sell_costs(close_i, self._costs)
+                    trades.append({
+                        "entry_ts":    position["entry_ts"],
+                        "exit_ts":     ts_i.to_pydatetime(),
+                        "entry_price": position["entry_price"],
+                        "exit_price":  ep,
+                        "pnl":         net_exit - position["net_entry"],
+                        "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
+                        "exit_reason": "forced_close",
+                    })
+                    position = None
+                    if strategy is not None:
+                        strategy.on_exit()
+
+        kpi = self.calculate_kpi(trades)
+        kpi["trades"] = trades
+        return kpi

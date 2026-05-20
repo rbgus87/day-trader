@@ -248,6 +248,19 @@ strategy:
     min_volume: 50000            # 전일 최소 거래량 (주)
     max_daily_drop: -0.07        # 당일 허용 최대 등락률 (-7%)
 
+  # 눌림목 전략 — 09:30~13:00 초기 급등 후 첫 조정에서 진입
+  # 그리드 검증 전 비활성. 백테스트 전용: python scripts/grid_pullback.py
+  pullback:
+    enabled: false               # 백테스트 전용, 실거래 영향 없음
+    surge_pct: 0.05              # 급등 임계: 전일종가 대비 +5%
+    pullback_depth: 0.02         # 눌림 임계: 고점 대비 -2%
+    min_above_close_pct: 0.01    # 진입 최소 유지: 전일종가 +1%
+    sl_from_high_pct: 0.05       # 손절: 고점 대비 -5%
+    tp_above_high_pct: 0.01      # 익절: 고점 +1%
+    entry_start: "09:30"         # 진입 허용 시작
+    entry_end: "13:00"           # 진입 허용 종료
+    min_volume: 50000            # 전일 최소 거래량 (주)
+
   # 전략 선택기 임계값 (StrategySelector — 현재 항상 momentum)
   selector:
     momentum_etf_threshold: 2.0     # 섹터 ETF 등락 ≥ 2.0% → 모멘텀 전략
