@@ -228,7 +228,10 @@ class TradingConfig:
     gap_breakout_adjust_enabled: bool = False
     gap_threshold_pct: float = 0.03    # 갭업 3% 이상 시 시가를 돌파 기준가로
 
-    # ORB(Opening Range Breakout) 전략 — 백테스트 전용
+    # 활성 전략 선택 ("momentum" | "orb")
+    strategy_type: str = "momentum"
+
+    # ORB(Opening Range Breakout) 전략
     orb_enabled: bool = False
     orb_range_minutes: int = 5
     orb_min_range_pct: float = 0.005
@@ -474,6 +477,8 @@ class AppConfig:
             obi_min=mom.get("obi_min", 0.55),
             spread_max_pct=mom.get("spread_max_pct", 0.005),
             ask_wall_block_enabled=mom.get("ask_wall_block_enabled", False),
+            # 활성 전략 선택
+            strategy_type=s.get("strategy_type", "momentum"),
             # ORB 전략
             orb_enabled=s.get("orb", {}).get("enabled", False),
             orb_range_minutes=s.get("orb", {}).get("range_minutes", 5),

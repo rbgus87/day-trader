@@ -1,6 +1,6 @@
 # CLAUDE.md — day-trader
 
-> **최종 수정**: 2026-05-14 (JSONL 구조화 로깅 + 장중 시장 필터 구현)
+> **최종 수정**: 2026-05-20 (ORB + MA 기간 그리드 + ORB 페이퍼 활성화)
 > 이 문서는 **백테스트에서 검증된 사실만** 기재한다.
 
 ---
@@ -115,7 +115,10 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 - **장중 시장 필터 검증** (2026-05-14): 일봉 close/open 근사 기준 기존 구간 PF 4.881 → **4.798** (7건 차단, −1.7%). 확장 구간(2026-04-11~05-12) PnL **-52,619 → -38,296** (2건 차단, 27% 개선). `intraday_market_filter_enabled: true`, `block_threshold: -0.01`, `resume_threshold: -0.005`, `check_interval: 10min`.
 - **갭업 기준가 조정 + 시그널 스코어링 그리드** (2026-05-14): Stage1 갭업 5조합 — GAP-5%만 PF 4.653 통과하나 PnL +271K로 baseline +295K 대비 −24K. Stage2 스코어링 6조합 — SC-60 PF 5.338 최고이나 PnL +268K로 −28K 감소, NEW 구간(-57K)은 baseline(-52K) 대비 악화. **두 기능 모두 비활성 확정.** `gap_breakout_adjust_enabled: false`, `signal_scoring_enabled: false`. `reports/gap_score_grid.md`.
 - **갭 전략 27조합 그리드** (2026-05-16): gap_min×pullback_min×force_close 3×3×3. 갭 단독 PF 전 조합 < 1.0 (최고 0.771), 선정 기준(PF≥1.5) 미달. 합산 PF 최고 1.856으로 baseline 4.881 대비 −62%. **전 조합 비활성 확정.** `gap_pullback_enabled: false` 유지. `reports/gap_pullback_grid.md`.
-- **ORB(시초가 레인지 돌파) 전략 108조합 그리드** (2026-05-20): sl×tp×deadline×buf×vol = 3×3×3×2×2. **4조합 통과** (PF≥1.5 / 거래≥20 / CL≤8 / NEW PF>1.0). 공통: sl=1.5, entry_deadline=09:30, vol_filter=Y. 최고: sl1.5/tp3.0/dl09:30 → OLD PF=1.800/PnL+40K/거래56/NEW PF=2.623. **모멘텀 PF 4.798 대비 열세 → `orb.enabled: false` 유지.** `reports/orb_grid_result.md`.
+- **ORB(시초가 레인지 돌파) 전략 108조합 그리드** (2026-05-20): sl×tp×deadline×buf×vol = 3×3×3×2×2. **4조합 통과** (PF≥1.5 / 거래≥20 / CL≤8 / NEW PF>1.0). 공통: sl=1.5, entry_deadline=09:30, vol_filter=Y. 최고: sl1.5/tp3.0/dl09:30 → OLD PF=1.800/PnL+40K/거래56/NEW PF=2.623. `reports/orb_grid_result.md`.
+- **ORB + 시장 필터 MA 기간 그리드** (2026-05-20): [MA5 → OLD PF 2.596/+62K / NEW PF 3.643 / MA20 → PF 1.673/+40K / off → PF 1.657/+46K]. **MA5 채택** — 23건 차단으로 PF +57% 개선. `strategy_type: "orb"`, `market_filter_enabled: true`, MA5 확정.
+- **시장 필터 MA 기간 비교 그리드 (모멘텀)** (2026-05-20): MA5(4.881/+296K) > MA10(3.730/+269K) > MA20(3.317/+268K) > off(3.075/+274K). **MA5 현행 유지 확정**.
+- **ORB rvol 감도 그리드** (2026-05-20): rvol=1.0 → OLD PF 0.983 탈락 / rvol=1.2 → 1.506 겨우 통과 / **rvol=1.5 → 1.657 최우수**. 현행 1.5 유지.
 - **이전 baseline** (장중 필터 미포함)
   - 장중 필터 제외 (2026-05-14): PF 4.881 / 228건 / +295,690 / SL# 27
   - 고정 -8% 손절 + trail_min=0.02/max=0.10 (2026-05-13): PF 4.817 / 229건 / +293,532 / SL# 32
@@ -252,6 +255,7 @@ pytest tests/ --cov=. --cov-report=term-missing
 - [x] JSONL 구조화 로깅 (2026-05-14) — `utils/logging_config.py` (_JsonlSink daily rotation·30일 보관·thread-safe), `scripts/analyze_paper_log.py` (장후 분석). engine_worker.py logger.bind(event=...) 주요 경로 17종. `tests/test_logging_config.py` 10개.
 - [x] 장중 시장 필터 구현 (2026-05-14) — `core/market_filter.py` refresh_intraday() / is_intraday_blocked(), engine_worker.py APScheduler 10분 갱신 + signal_consumer 체크, backtester.py build_intraday_blocked_by_date() 일봉 근사. 기존 구간 PF 4.798 / 확장 구간 손실 27% 개선. `tests/test_intraday_market_filter.py` 13개.
 - [x] 시그널 스코어링 + 갭업 기준가 조정 구현 + 그리드 (2026-05-14) — `core/signal_scorer.py` 5요소 100점 스코어러, Signal.context 전달, engine_worker/backtester 통합. `tests/test_signal_scorer.py` 17개. 그리드 결과: 갭업 조정 비활성 확정(GAP-5% PF 4.653 / PnL −24K 열세), 스코어링 비활성 확정(SC-60 PF 5.338 / PnL −28K, NEW 구간 비개선). `reports/gap_score_grid.md`.
+- [x] ORB 페이퍼 활성화 (2026-05-20) — ORB 그리드 108조합 완료 + MF MA 기간 그리드(MA5 우위 확정) + rvol 감도(1.5 유지). `strategy_type: "orb"`, `orb.enabled: true`, `entry_deadline: 09:30`, `sl=1.5`, `tp=3.0`, `rvol=1.5`, `market_filter: MA5`. pipeline: `screener_scheduler.py` ORBStrategy 등록 분기, `tick_processor.py` _on_tick_orb 경로, `session_manager.py` orb 전략 전환 지원. GUI: 사이드바 ORB 항목 + strategy_tab ORB 파라미터 섹션. 텔레그램 종목명 표시(state.ticker_names shared ref). pytest 544건 통과.
 
 ---
 

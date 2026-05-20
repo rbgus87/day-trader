@@ -90,11 +90,16 @@ class ScreenerScheduler:
     # ── 전략 등록 ──
 
     def register_active_strategies(self, stocks: list[dict]) -> None:
-        """유니버스 종목에 MomentumStrategy 인스턴스 등록.
+        """유니버스 종목에 전략 인스턴스 등록.
 
+        strategy_type="orb" 시 ORBStrategy, 기본값은 MomentumStrategy.
         gap_pullback_enabled=true 시 GapPullbackStrategy도 함께 등록.
         """
         from strategy.momentum_strategy import MomentumStrategy
+
+        strategy_type = getattr(self._config.trading, "strategy_type", "momentum")
+        if strategy_type == "orb":
+            from strategy.orb_strategy import ORBStrategy
 
         prev_data: dict[str, tuple[float, int, float]] = {}
         for ticker, info in (self._state.active_strategies or {}).items():
@@ -102,7 +107,7 @@ class ScreenerScheduler:
             high = getattr(old, "_prev_day_high", 0.0)
             vol = getattr(old, "_prev_day_volume", 0)
             close = getattr(old, "_prev_day_close", 0.0)
-            if high > 0:
+            if high > 0 or vol > 0:
                 prev_data[ticker] = (float(high), int(vol), float(close))
 
         gap_enabled = getattr(self._config.trading, "gap_pullback_enabled", False)
@@ -116,7 +121,10 @@ class ScreenerScheduler:
         self._state.ticker_sources = {}
         for s in stocks:
             ticker = s["ticker"]
-            strat = MomentumStrategy(self._config.trading)
+            if strategy_type == "orb":
+                strat = ORBStrategy(self._config.trading)
+            else:
+                strat = MomentumStrategy(self._config.trading)
             strat.configure_multi_trade(
                 max_trades=self._config.trading.max_trades_per_day,
                 cooldown_minutes=self._config.trading.cooldown_minutes,
@@ -132,7 +140,7 @@ class ScreenerScheduler:
             if "market" in s:
                 self._state.ticker_markets[ticker] = s["market"]
             self._state.ticker_names[ticker] = s.get("name", ticker)
-            self._state.ticker_sources[ticker] = "day_momentum"
+            self._state.ticker_sources[ticker] = "day_orb" if strategy_type == "orb" else "day_momentum"
 
             # 갭 전략 등록 (enabled 시)
             if gap_enabled:

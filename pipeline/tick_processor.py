@@ -126,6 +126,13 @@ class TickProcessor:
         if strat_info is None:
             return
         strategy = strat_info["strategy"]
+
+        # ORB 전략은 전일 고가 기반 돌파 감지 불필요 — 별도 경로 처리
+        from strategy.orb_strategy import ORBStrategy as _ORB
+        if isinstance(strategy, _ORB):
+            await self._on_tick_orb(ticker, price, tick, signal_queue, strategy)
+            return
+
         prev_high = getattr(strategy, "_prev_day_high", 0.0)
         if prev_high <= 0:
             return
@@ -227,6 +234,68 @@ class TickProcessor:
                 strategy.reset_cond_tracker()
             await signal_queue.put(signal)
             logger.info(f"[TICK_ENTRY] {ticker} 즉시 진입 신호 @ {price:,}")
+
+    async def _on_tick_orb(
+        self,
+        ticker: str,
+        price: float,
+        tick: dict,
+        signal_queue,
+        strategy,
+    ) -> None:
+        """ORB 전략 틱 처리.
+
+        레인지 계산(09:00~09:04) 후 09:05~09:30 사이 range_high 돌파 시 시그널.
+        COND_MET 로그: RANGE_SET (레인지 확정), BREAKOUT (돌파 감지).
+        """
+        import pandas as _pd
+
+        if ticker in self._state.tick_signaled:
+            return
+
+        hist = self._state.candle_history.get(ticker)
+        if not hist or len(hist) < 5:
+            return
+
+        df = _pd.DataFrame(hist)
+
+        # 레인지 계산 상태 변화 감지 (RANGE_SET 로그)
+        was_valid = strategy._range_valid
+        signal = strategy.generate_signal(df, tick)
+        if not was_valid and strategy._range_valid:
+            logger.bind(event="cond_met", ticker=ticker, condition="RANGE_SET").info(
+                f"[COND_MET] {ticker} RANGE_SET: "
+                f"H={strategy._range_high:,.0f} L={strategy._range_low:,.0f} "
+                f"size={strategy._range_size:,.0f} ({strategy._range_size / strategy._range_high * 100:.2f}%)"
+            )
+
+        if signal is None:
+            return
+
+        # 공통 안전 체크 (모멘텀과 동일)
+        if self._risk_manager.is_trading_halted():
+            return
+        if self._risk_manager.is_ticker_blacklisted(ticker):
+            return
+        if self._risk_manager.is_in_loss_rest():
+            return
+        open_pos = self._risk_manager.get_open_positions()
+        if len(open_pos) >= self._config.trading.max_positions:
+            return
+        if not strategy.can_trade():
+            return
+        if self._vi_handler.is_vi_active(ticker):
+            return
+        if self._order_tracker is not None and self._order_tracker.get_pending(ticker) is not None:
+            return
+
+        self._state.tick_signaled.add(ticker)
+        logger.bind(event="cond_met", ticker=ticker, condition="BREAKOUT").info(
+            f"[COND_MET] {ticker} BREAKOUT @ {price:,} > range_high={strategy._range_high:,.0f} "
+            f"(volume_ok: {not strategy._use_volume_filter or strategy._prev_day_volume <= 0 or int(df['volume'].sum()) >= strategy._prev_day_volume * strategy._rvol_min})"
+        )
+        await signal_queue.put(signal)
+        logger.info(f"[TICK_ENTRY] {ticker} ORB 돌파 진입 @ {price:,}")
 
     # ── 메인 처리 ──
 

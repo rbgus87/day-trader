@@ -782,11 +782,31 @@ class SessionManager:
 
     async def strategy_change(self, strategy_name: str) -> None:
         from strategy.momentum_strategy import MomentumStrategy
+        norm = strategy_name.lower() if strategy_name else ""
         if self._config:
-            object.__setattr__(self._config, "force_strategy", strategy_name)
-        if strategy_name and strategy_name != "momentum":
-            logger.warning(f"전략 변경 요청 무시: {strategy_name} — momentum만 지원")
-        elif strategy_name == "momentum":
+            object.__setattr__(self._config, "force_strategy", norm)
+        if norm not in ("", "momentum", "orb"):
+            logger.warning(f"전략 변경 요청 무시: {strategy_name} — momentum/orb만 지원")
+            return
+        if norm == "orb":
+            from strategy.orb_strategy import ORBStrategy
+            for ticker, info in self._state.active_strategies.items():
+                old_strat = info["strategy"]
+                new_strat = ORBStrategy(self._config.trading)
+                new_strat.configure_multi_trade(
+                    max_trades=self._config.trading.max_trades_per_day,
+                    cooldown_minutes=self._config.trading.cooldown_minutes,
+                )
+                if hasattr(new_strat, "set_prev_day_data"):
+                    new_strat.set_prev_day_data(
+                        getattr(old_strat, "_prev_day_high", 0.0),
+                        getattr(old_strat, "_prev_day_volume", 0),
+                        getattr(old_strat, "_prev_day_close", 0.0),
+                    )
+                info["strategy"] = new_strat
+            logger.info("전략 수동 변경: orb")
+            return
+        if norm == "momentum":
             for ticker, info in self._state.active_strategies.items():
                 old_strat = info["strategy"]
                 new_strat = MomentumStrategy(self._config.trading)

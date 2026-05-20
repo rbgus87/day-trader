@@ -127,6 +127,7 @@ class StrategyTab(QWidget):
 
         root.addWidget(self._build_entry_section())
         root.addWidget(self._build_exit_section())
+        root.addWidget(self._build_orb_section())
         root.addWidget(self._build_risk_section())
         root.addWidget(self._build_capital_section())
         root.addWidget(self._build_market_section())
@@ -276,6 +277,34 @@ class StrategyTab(QWidget):
 
         self._lbl_entry_1st_ratio = _ro_label("1.00 (전량 매수)")
         form.addRow("entry_1st_ratio:", self._lbl_entry_1st_ratio)
+
+        return group
+
+    # ---- 3b) ORB 전략 설정 --------------------------------------------
+
+    def _build_orb_section(self) -> QGroupBox:
+        group = QGroupBox("ORB 전략 (Opening Range Breakout)")
+        form = QFormLayout(group)
+        form.setContentsMargins(10, 16, 10, 10)
+        form.setSpacing(8)
+
+        self._lbl_strategy_type = _ro_label("momentum")
+        form.addRow("strategy_type:", self._lbl_strategy_type)
+
+        self._lbl_orb_sl_ratio = _ro_label("1.5 × range_size")
+        form.addRow("sl_ratio:", self._lbl_orb_sl_ratio)
+
+        self._lbl_orb_tp_ratio = _ro_label("3.0 × range_size")
+        form.addRow("tp_ratio:", self._lbl_orb_tp_ratio)
+
+        self._lbl_orb_deadline = _ro_label("09:30")
+        form.addRow("entry_deadline:", self._lbl_orb_deadline)
+
+        self._lbl_orb_rvol = _ro_label("1.5 배 (전일 거래량 대비)")
+        form.addRow("rvol_min:", self._lbl_orb_rvol)
+
+        self._lbl_orb_range_pct = _ro_label("0.5% ~ 10%")
+        form.addRow("range_pct:", self._lbl_orb_range_pct)
 
         return group
 
@@ -591,6 +620,23 @@ class StrategyTab(QWidget):
             self._lbl_max_entry_above_breakout.setText(
                 f"{float(momentum.get('max_entry_above_breakout_pct', 0.10)) * 100:.1f} % (돌파 후 최대 추격)"
             )
+
+        # ORB 전략 파라미터 (strategy: 섹션 아래 위치)
+        orb_cfg = strategy_cfg.get("orb", {}) or {}
+        if hasattr(self, "_lbl_strategy_type") and self._lbl_strategy_type is not None:
+            self._lbl_strategy_type.setText(str(strategy_cfg.get("strategy_type", "momentum")))
+        if hasattr(self, "_lbl_orb_sl_ratio") and self._lbl_orb_sl_ratio is not None:
+            self._lbl_orb_sl_ratio.setText(f"{float(orb_cfg.get('sl_ratio', 1.5)):.1f} x range_size")
+        if hasattr(self, "_lbl_orb_tp_ratio") and self._lbl_orb_tp_ratio is not None:
+            self._lbl_orb_tp_ratio.setText(f"{float(orb_cfg.get('tp_ratio', 3.0)):.1f} x range_size")
+        if hasattr(self, "_lbl_orb_deadline") and self._lbl_orb_deadline is not None:
+            self._lbl_orb_deadline.setText(str(orb_cfg.get("entry_deadline", "09:30")))
+        if hasattr(self, "_lbl_orb_rvol") and self._lbl_orb_rvol is not None:
+            self._lbl_orb_rvol.setText(f"{float(orb_cfg.get('rvol_min', 1.5)):.1f} 배 (전일 거래량 대비)")
+        if hasattr(self, "_lbl_orb_range_pct") and self._lbl_orb_range_pct is not None:
+            mn = float(orb_cfg.get("min_range_pct", 0.005)) * 100
+            mx = float(orb_cfg.get("max_range_pct", 0.10)) * 100
+            self._lbl_orb_range_pct.setText(f"{mn:.1f}% ~ {mx:.1f}%")
 
         # 리스크 관리 (편집 가능)
         if "max_positions" in trading_cfg:
