@@ -115,6 +115,7 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 - **장중 시장 필터 검증** (2026-05-14): 일봉 close/open 근사 기준 기존 구간 PF 4.881 → **4.798** (7건 차단, −1.7%). 확장 구간(2026-04-11~05-12) PnL **-52,619 → -38,296** (2건 차단, 27% 개선). `intraday_market_filter_enabled: true`, `block_threshold: -0.01`, `resume_threshold: -0.005`, `check_interval: 10min`.
 - **갭업 기준가 조정 + 시그널 스코어링 그리드** (2026-05-14): Stage1 갭업 5조합 — GAP-5%만 PF 4.653 통과하나 PnL +271K로 baseline +295K 대비 −24K. Stage2 스코어링 6조합 — SC-60 PF 5.338 최고이나 PnL +268K로 −28K 감소, NEW 구간(-57K)은 baseline(-52K) 대비 악화. **두 기능 모두 비활성 확정.** `gap_breakout_adjust_enabled: false`, `signal_scoring_enabled: false`. `reports/gap_score_grid.md`.
 - **갭 전략 27조합 그리드** (2026-05-16): gap_min×pullback_min×force_close 3×3×3. 갭 단독 PF 전 조합 < 1.0 (최고 0.771), 선정 기준(PF≥1.5) 미달. 합산 PF 최고 1.856으로 baseline 4.881 대비 −62%. **전 조합 비활성 확정.** `gap_pullback_enabled: false` 유지. `reports/gap_pullback_grid.md`.
+- **ORB(시초가 레인지 돌파) 전략 108조합 그리드** (2026-05-20): sl×tp×deadline×buf×vol = 3×3×3×2×2. **4조합 통과** (PF≥1.5 / 거래≥20 / CL≤8 / NEW PF>1.0). 공통: sl=1.5, entry_deadline=09:30, vol_filter=Y. 최고: sl1.5/tp3.0/dl09:30 → OLD PF=1.800/PnL+40K/거래56/NEW PF=2.623. **모멘텀 PF 4.798 대비 열세 → `orb.enabled: false` 유지.** `reports/orb_grid_result.md`.
 - **이전 baseline** (장중 필터 미포함)
   - 장중 필터 제외 (2026-05-14): PF 4.881 / 228건 / +295,690 / SL# 27
   - 고정 -8% 손절 + trail_min=0.02/max=0.10 (2026-05-13): PF 4.817 / 229건 / +293,532 / SL# 32

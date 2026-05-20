@@ -203,6 +203,21 @@ strategy:
     max_add_per_search: 10             # 1회 검색당 최대 추가 종목
     max_total_added: 30                # 장중 총 추가 한도
 
+  # ORB(Opening Range Breakout) 전략 — 백테스트 전용
+  # 09:00~09:05 첫 5분 고/저가를 레인지로, 돌파 시 진입
+  # orb.enabled: false → 실거래/페이퍼 미사용
+  orb:
+    enabled: false
+    range_minutes: 5
+    min_range_pct: 0.005      # 레인지 최소 0.5% (허위 돌파 방지)
+    max_range_pct: 0.05       # 레인지 최대 5% (손절 과대 방지)
+    breakout_buffer: 0.0      # range_size 대비 추가 여유 (0~0.1)
+    entry_deadline: "10:00"   # 진입 마감 시각
+    sl_ratio: 1.0             # 손절 = entry - range_size × sl_ratio
+    tp_ratio: 2.0             # 익절 = entry + range_size × tp_ratio
+    use_volume_filter: true   # 거래량 필터 활성
+    rvol_min: 1.5             # 당일 누적 거래량 >= 전일 × rvol_min
+
   # 갭업 눌림목 전략 — 장 초반(09:00~09:20) 갭업 후 눌림 반등 포착
   # 모멘텀과 독립: 시간대 분리(갭 09:00~09:20, 모멘텀 09:30~), 슬롯 공유
   gap_pullback:

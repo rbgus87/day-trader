@@ -228,6 +228,18 @@ class TradingConfig:
     gap_breakout_adjust_enabled: bool = False
     gap_threshold_pct: float = 0.03    # 갭업 3% 이상 시 시가를 돌파 기준가로
 
+    # ORB(Opening Range Breakout) 전략 — 백테스트 전용
+    orb_enabled: bool = False
+    orb_range_minutes: int = 5
+    orb_min_range_pct: float = 0.005
+    orb_max_range_pct: float = 0.05
+    orb_breakout_buffer: float = 0.0
+    orb_entry_deadline: str = "10:00"
+    orb_sl_ratio: float = 1.0
+    orb_tp_ratio: float = 2.0
+    orb_use_volume_filter: bool = True
+    orb_rvol_min: float = 1.5
+
     # 갭업 눌림목 전략 (GapPullbackStrategy)
     gap_pullback_enabled: bool = False
     gap_pullback_min_pct: float = 0.02           # 최소 갭업 2%
@@ -462,6 +474,17 @@ class AppConfig:
             obi_min=mom.get("obi_min", 0.55),
             spread_max_pct=mom.get("spread_max_pct", 0.005),
             ask_wall_block_enabled=mom.get("ask_wall_block_enabled", False),
+            # ORB 전략
+            orb_enabled=s.get("orb", {}).get("enabled", False),
+            orb_range_minutes=s.get("orb", {}).get("range_minutes", 5),
+            orb_min_range_pct=s.get("orb", {}).get("min_range_pct", 0.005),
+            orb_max_range_pct=s.get("orb", {}).get("max_range_pct", 0.05),
+            orb_breakout_buffer=s.get("orb", {}).get("breakout_buffer", 0.0),
+            orb_entry_deadline=s.get("orb", {}).get("entry_deadline", "10:00"),
+            orb_sl_ratio=s.get("orb", {}).get("sl_ratio", 1.0),
+            orb_tp_ratio=s.get("orb", {}).get("tp_ratio", 2.0),
+            orb_use_volume_filter=s.get("orb", {}).get("use_volume_filter", True),
+            orb_rvol_min=s.get("orb", {}).get("rvol_min", 1.5),
             # 갭업 눌림목 전략
             gap_pullback_enabled=gap.get("enabled", False),
             gap_pullback_min_pct=gap.get("gap_min_pct", 0.02),

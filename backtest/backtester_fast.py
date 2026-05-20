@@ -667,3 +667,408 @@ class FastBacktester(Backtester):
             f"pnl={kpi['total_pnl']:.1f}"
         )
         return kpi
+
+
+# ---------------------------------------------------------------------------
+# ORBFastBacktester — Opening Range Breakout 전용 numpy 백테스터
+# ---------------------------------------------------------------------------
+
+class ORBFastBacktester(Backtester):
+    """ORB 전략 전용 numpy 가속 백테스터.
+
+    Backtester.run_multi_day_cached 를 그대로 상속하되
+    run_backtest 만 ORB 특화 로직으로 override 한다.
+
+    진입 조건
+    ---------
+    - 09:00~09:04 분봉에서 range_high/range_low 산출
+    - 레인지 유효성: min_range_pct ≤ range_size/ref ≤ max_range_pct
+    - 09:05 ~ entry_deadline 사이에 close > range_high + range_size × breakout_buffer
+    - 거래량 (선택): cum_vol ≥ prev_vol × rvol_min
+
+    청산 조건 (우선순위 순)
+    ---------------------
+    1. TP 도달 (high ≥ tp_price)  → tp_exit
+    2. 손절 (low ≤ stop_loss)     → stop_loss
+    3. 마지막 캔들 강제 청산       → forced_close
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._day_atr_cache: dict[str, float | None] = {}
+
+    async def run_multi_day_cached(
+        self,
+        ticker: str,
+        all_candles: pd.DataFrame,
+        strategy: "Any",  # ORBStrategy
+    ) -> dict[str, Any]:
+        """ORB 전용 고속 멀티데이 백테스트.
+
+        부모 run_multi_day_cached 대비 최적화:
+        - numpy 배열 종목당 1회 변환 (매일 DataFrame copy 제거)
+        - 날짜 경계를 diff로 계산 (groupby 제거)
+        - 시장/블랙리스트/변동성사이징 모두 disable 가정 (ORB 그리드 용)
+        """
+        if all_candles.empty:
+            return {**self.calculate_kpi([]), "trades": []}
+        self._current_ticker = ticker
+
+        # ── 종목당 1회 numpy 변환 ──────────────────────────────────────
+        ts_pd = pd.DatetimeIndex(all_candles["ts"])
+        all_closes  = all_candles["close"].values.astype(np.float64)
+        all_highs   = all_candles["high"].values.astype(np.float64)
+        all_lows    = all_candles["low"].values.astype(np.float64)
+        all_volumes = all_candles["volume"].values.astype(np.float64)
+        all_minutes = (ts_pd.hour * 60 + ts_pd.minute).values.astype(np.int32)
+
+        # 날짜 경계 (일 ordinal — UTC에서 KST 오차 무시, 정렬된 캔들 가정)
+        day_ord = (ts_pd.asi8 // (86_400 * 10 ** 9)).astype(np.int64)
+        day_starts = np.where(np.diff(day_ord, prepend=day_ord[0] - 1) != 0)[0]
+        day_ends   = np.append(day_starts[1:], len(day_ord))
+        n_days     = len(day_starts)
+
+        # ── 설정 (조합당 1회) ──────────────────────────────────────────
+        cfg = self._config
+        range_minutes    = int(getattr(cfg, "orb_range_minutes", 5))
+        min_range_pct    = float(getattr(cfg, "orb_min_range_pct", 0.005))
+        max_range_pct    = float(getattr(cfg, "orb_max_range_pct", 0.05))
+        breakout_buffer  = float(getattr(cfg, "orb_breakout_buffer", 0.0))
+        sl_ratio         = float(getattr(cfg, "orb_sl_ratio", 1.0))
+        tp_ratio         = float(getattr(cfg, "orb_tp_ratio", 2.0))
+        use_vol_filter   = bool(getattr(cfg, "orb_use_volume_filter", True))
+        rvol_min         = float(getattr(cfg, "orb_rvol_min", 1.5))
+        entry_deadline   = _parse_hhmm(str(getattr(cfg, "orb_entry_deadline", "10:00")), 600)
+        signal_block     = _parse_hhmm(str(getattr(cfg, "signal_block_until", "09:05")), 545)
+        max_trades_day   = int(getattr(cfg, "max_trades_per_day", 2))
+        cooldown_min_cfg = int(getattr(cfg, "cooldown_minutes", 0))
+        range_start_min  = 540   # 9 * 60
+        range_end_min    = range_start_min + range_minutes - 1  # 09:04
+
+        all_trades: list[dict] = []
+        prev_close  = 0.0
+        prev_volume = 0.0
+
+        for di in range(n_days):
+            s = int(day_starts[di])
+            e = int(day_ends[di])
+
+            closes  = all_closes[s:e]
+            highs   = all_highs[s:e]
+            lows    = all_lows[s:e]
+            volumes = all_volumes[s:e]
+            mins    = all_minutes[s:e]
+            n       = e - s
+
+            # ── ORB 레인지 ─────────────────────────────────────────────
+            range_mask = (mins >= range_start_min) & (mins <= range_end_min)
+            if not np.any(range_mask):
+                if n > 0:
+                    prev_close  = float(closes[-1])
+                    prev_volume = float(np.sum(volumes))
+                continue
+
+            range_high = float(np.max(highs[range_mask]))
+            range_low  = float(np.min(lows[range_mask]))
+            range_size = range_high - range_low
+
+            ref_price = prev_close if prev_close > 0 else float(closes[0])
+            if ref_price <= 0:
+                ref_price = range_high
+
+            range_pct = range_size / ref_price if ref_price > 0 else 0.0
+            if range_pct < min_range_pct or range_pct > max_range_pct:
+                prev_close  = float(closes[-1])
+                prev_volume = float(np.sum(volumes))
+                continue
+
+            breakout_threshold = range_high + range_size * breakout_buffer
+            cum_vols = np.cumsum(volumes)
+
+            # ── 당일 거래 루프 ─────────────────────────────────────────
+            position: dict | None = None
+            trade_count    = 0
+            last_exit_min: int | None = None
+
+            for i in range(n):
+                close_i = closes[i]
+                high_i  = highs[i]
+                low_i   = lows[i]
+                min_i   = int(mins[i])
+
+                if position is None:
+                    cooldown_ok = (
+                        last_exit_min is None
+                        or cooldown_min_cfg <= 0
+                        or (min_i - last_exit_min) >= cooldown_min_cfg
+                    )
+                    if (
+                        trade_count < max_trades_day
+                        and cooldown_ok
+                        and signal_block <= min_i <= entry_deadline
+                        and close_i > breakout_threshold
+                        and (
+                            not use_vol_filter
+                            or prev_volume <= 0
+                            or cum_vols[i] >= prev_volume * rvol_min
+                        )
+                    ):
+                        trade_count += 1
+                        entry_price, net_entry = apply_buy_costs(close_i, self._costs)
+                        sl = entry_price - range_size * sl_ratio
+                        stop_loss = max(sl, range_low * 0.99)
+                        tp_price  = entry_price + range_size * tp_ratio
+                        ts_i = ts_pd[s + i]
+                        position = {
+                            "entry_ts":    ts_i.to_pydatetime(),
+                            "entry_price": entry_price,
+                            "net_entry":   net_entry,
+                            "stop_loss":   stop_loss,
+                            "tp_price":    tp_price,
+                        }
+                else:
+                    if high_i >= position["tp_price"]:
+                        ep, net_exit = apply_sell_costs(position["tp_price"], self._costs)
+                        all_trades.append({
+                            "entry_ts":    position["entry_ts"],
+                            "exit_ts":     ts_pd[s + i].to_pydatetime(),
+                            "entry_price": position["entry_price"],
+                            "exit_price":  ep,
+                            "pnl":         net_exit - position["net_entry"],
+                            "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
+                            "exit_reason": "tp_exit",
+                        })
+                        position = None
+                        last_exit_min = min_i
+                    elif low_i <= position["stop_loss"]:
+                        ep, net_exit = apply_sell_costs(position["stop_loss"], self._costs)
+                        all_trades.append({
+                            "entry_ts":    position["entry_ts"],
+                            "exit_ts":     ts_pd[s + i].to_pydatetime(),
+                            "entry_price": position["entry_price"],
+                            "exit_price":  ep,
+                            "pnl":         net_exit - position["net_entry"],
+                            "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
+                            "exit_reason": "stop_loss",
+                        })
+                        position = None
+                        last_exit_min = min_i
+                    elif i == n - 1:
+                        ep, net_exit = apply_sell_costs(close_i, self._costs)
+                        all_trades.append({
+                            "entry_ts":    position["entry_ts"],
+                            "exit_ts":     ts_pd[s + i].to_pydatetime(),
+                            "entry_price": position["entry_price"],
+                            "exit_price":  ep,
+                            "pnl":         net_exit - position["net_entry"],
+                            "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
+                            "exit_reason": "forced_close",
+                        })
+                        position = None
+                        last_exit_min = min_i
+
+            prev_close  = float(closes[-1])
+            prev_volume = float(np.sum(volumes))
+
+        kpi = self.calculate_kpi(all_trades)
+        kpi["trades"] = all_trades
+        return kpi
+
+    def run_backtest(
+        self,
+        candles: pd.DataFrame,
+        strategy: "Any",  # ORBStrategy
+    ) -> dict[str, Any]:
+        """numpy 기반 ORB 단일 날짜 시뮬레이션."""
+        if candles.empty:
+            return {**self.calculate_kpi([]), "trades": []}
+
+        candles = candles.reset_index(drop=True)
+        n = len(candles)
+
+        # ── 1. numpy 배열 변환 ─────────────────────────────────────────
+        closes  = candles["close"].values.astype(np.float64)
+        highs   = candles["high"].values.astype(np.float64)
+        lows    = candles["low"].values.astype(np.float64)
+        volumes = candles["volume"].values.astype(np.float64)
+        ts_vals = candles["ts"].values
+        ts_pd   = pd.DatetimeIndex(ts_vals)
+        minutes = ts_pd.hour * 60 + ts_pd.minute   # 분 단위 시각
+
+        # ── 2. 설정값 캐시 ─────────────────────────────────────────────
+        cfg = self._config
+
+        range_minutes   = int(getattr(cfg, "orb_range_minutes", 5))
+        min_range_pct   = float(getattr(cfg, "orb_min_range_pct", 0.005))
+        max_range_pct   = float(getattr(cfg, "orb_max_range_pct", 0.05))
+        breakout_buffer = float(getattr(cfg, "orb_breakout_buffer", 0.0))
+        sl_ratio        = float(getattr(cfg, "orb_sl_ratio", 1.0))
+        tp_ratio        = float(getattr(cfg, "orb_tp_ratio", 2.0))
+        use_vol_filter  = bool(getattr(cfg, "orb_use_volume_filter", True))
+        rvol_min        = float(getattr(cfg, "orb_rvol_min", 1.5))
+        entry_deadline  = _parse_hhmm(str(getattr(cfg, "orb_entry_deadline", "10:00")), 600)
+        signal_block    = _parse_hhmm(str(getattr(cfg, "signal_block_until", "09:05")), 545)
+
+        prev_volume = float(getattr(strategy, "_prev_day_volume", 0))
+        prev_close  = float(getattr(strategy, "_prev_day_close", 0.0))
+
+        max_trades_day   = int(getattr(cfg, "max_trades_per_day", 2))
+        cooldown_min_cfg = int(getattr(cfg, "cooldown_minutes", 0))
+
+        # ── 3. ORB 레인지 계산 ─────────────────────────────────────────
+        range_start_min = 9 * 60            # 09:00
+        range_end_min   = range_start_min + range_minutes - 1  # 09:04
+
+        mask = (minutes >= range_start_min) & (minutes <= range_end_min)
+        if not np.any(mask):
+            logger.debug("[ORB-FAST] 레인지 분봉 없음 — 스킵")
+            return {**self.calculate_kpi([]), "trades": []}
+
+        range_high = float(np.max(highs[mask]))
+        range_low  = float(np.min(lows[mask]))
+        range_size = range_high - range_low
+
+        ref_price = prev_close if prev_close > 0 else float(closes[0]) if n > 0 else range_high
+        if ref_price <= 0:
+            ref_price = range_high
+
+        range_pct = range_size / ref_price if ref_price > 0 else 0.0
+        if range_pct < min_range_pct or range_pct > max_range_pct:
+            logger.debug(
+                f"[ORB-FAST] 레인지 유효성 실패 "
+                f"({range_pct:.3%}, min={min_range_pct:.3%}, max={max_range_pct:.3%})"
+            )
+            return {**self.calculate_kpi([]), "trades": []}
+
+        # 돌파 임계
+        breakout_threshold = range_high + range_size * breakout_buffer
+        # 손절 / 익절 계산 헬퍼
+        def _calc_stop(entry_price: float) -> float:
+            sl = entry_price - range_size * sl_ratio
+            return max(sl, range_low * 0.99)
+
+        def _calc_tp(entry_price: float) -> float:
+            return entry_price + range_size * tp_ratio
+
+        # ── 4. 누적 거래량 (거래량 필터용) ────────────────────────────
+        cum_vols = np.cumsum(volumes)
+
+        # ── 5. 메인 루프 ────────────────────────────────────────────────
+        trades: list[dict] = []
+        position: dict | None = None
+        trade_count    = 0
+        last_exit_min: int | None = None
+        already_entered = False  # 당일 최초 진입 여부 (max_trades_day=1 기본)
+
+        for i in range(n):
+            close_i = closes[i]
+            high_i  = highs[i]
+            low_i   = lows[i]
+            min_i   = int(minutes[i])
+            ts_i    = ts_pd[i]
+
+            # ── 포지션 없음: 진입 탐색 ──────────────────────────────────
+            if position is None:
+                cooldown_ok = (
+                    last_exit_min is None
+                    or cooldown_min_cfg <= 0
+                    or (min_i - last_exit_min) >= cooldown_min_cfg
+                )
+                in_entry_window = (min_i >= signal_block) and (min_i <= entry_deadline)
+                vol_ok = (
+                    not use_vol_filter
+                    or prev_volume <= 0
+                    or cum_vols[i] >= prev_volume * rvol_min
+                )
+
+                if (
+                    trade_count < max_trades_day
+                    and cooldown_ok
+                    and in_entry_window
+                    and close_i > breakout_threshold
+                    and vol_ok
+                ):
+                    strategy.on_entry()
+                    trade_count += 1
+                    ep_raw = close_i
+                    entry_price, net_entry = apply_buy_costs(ep_raw, self._costs)
+                    stop_loss = _calc_stop(entry_price)
+                    tp_price  = _calc_tp(entry_price)
+
+                    position = {
+                        "entry_ts":    ts_i.to_pydatetime(),
+                        "entry_price": entry_price,
+                        "net_entry":   net_entry,
+                        "stop_loss":   stop_loss,
+                        "tp_price":    tp_price,
+                    }
+                    logger.debug(
+                        f"[ORB-FAST] 진입 ts={ts_i} price={entry_price:.1f} "
+                        f"sl={stop_loss:.1f} tp={tp_price:.1f}"
+                    )
+
+            # ── 포지션 보유 중: 청산 확인 ──────────────────────────────
+            else:
+                tp_price = position["tp_price"]
+
+                # TP 도달
+                if high_i >= tp_price:
+                    ep_sl, net_exit = apply_sell_costs(tp_price, self._costs)
+                    pnl = net_exit - position["net_entry"]
+                    trades.append({
+                        "entry_ts":    position["entry_ts"],
+                        "exit_ts":     ts_i.to_pydatetime(),
+                        "entry_price": position["entry_price"],
+                        "exit_price":  ep_sl,
+                        "pnl":         pnl,
+                        "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
+                        "exit_reason": "tp_exit",
+                    })
+                    position = None
+                    strategy.on_exit()
+                    last_exit_min = min_i
+                    continue
+
+                # 손절
+                if low_i <= position["stop_loss"]:
+                    ep_sl, net_exit = apply_sell_costs(position["stop_loss"], self._costs)
+                    pnl = net_exit - position["net_entry"]
+                    trades.append({
+                        "entry_ts":    position["entry_ts"],
+                        "exit_ts":     ts_i.to_pydatetime(),
+                        "entry_price": position["entry_price"],
+                        "exit_price":  ep_sl,
+                        "pnl":         pnl,
+                        "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
+                        "exit_reason": "stop_loss",
+                    })
+                    position = None
+                    strategy.on_exit()
+                    last_exit_min = min_i
+                    continue
+
+                # 마지막 캔들 강제 청산
+                if i == n - 1:
+                    ep_sl, net_exit = apply_sell_costs(close_i, self._costs)
+                    pnl = net_exit - position["net_entry"]
+                    trades.append({
+                        "entry_ts":    position["entry_ts"],
+                        "exit_ts":     ts_i.to_pydatetime(),
+                        "entry_price": position["entry_price"],
+                        "exit_price":  ep_sl,
+                        "pnl":         pnl,
+                        "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
+                        "exit_reason": "forced_close",
+                    })
+                    position = None
+                    strategy.on_exit()
+                    last_exit_min = min_i
+
+        strategy.set_backtest_time(None)
+        kpi = self.calculate_kpi(trades)
+        kpi["trades"] = trades
+        logger.debug(
+            f"[ORB-FAST] 완료: total_trades={kpi['total_trades']} "
+            f"pnl={kpi['total_pnl']:.1f}"
+        )
+        return kpi
