@@ -119,6 +119,9 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 - **ORB + 시장 필터 MA 기간 그리드** (2026-05-20): [MA5 → OLD PF 2.596/+62K / NEW PF 3.643 / MA20 → PF 1.673/+40K / off → PF 1.657/+46K]. **MA5 채택** — 23건 차단으로 PF +57% 개선. `strategy_type: "orb"`, `market_filter_enabled: true`, MA5 확정.
 - **시장 필터 MA 기간 비교 그리드 (모멘텀)** (2026-05-20): MA5(4.881/+296K) > MA10(3.730/+269K) > MA20(3.317/+268K) > off(3.075/+274K). **MA5 현행 유지 확정**.
 - **ORB rvol 감도 그리드** (2026-05-20): rvol=1.0 → OLD PF 0.983 탈락 / rvol=1.2 → 1.506 겨우 통과 / **rvol=1.5 → 1.657 최우수**. 현행 1.5 유지.
+- **눌림목(Pullback) 전략 216조합 그리드** (2026-05-21): surge×pb×sl×tp×entry_end = 4×3×3×3×2. **전 조합 구조적 결함** — sl=pullback_depth 조합 PF 22+ (손절가=진입 트리거, 허수). sl>pb 조합 6개 PF 0.97~1.30, 선정 기준(PF≥1.5) 전량 미달. `pullback.enabled: false` 유지. `reports/pullback_grid_result.md`.
+- **거래량 폭발(Volume Spike) 전략 216조합 그리드** (2026-05-21): lookback×spike×sl×tp×entry_end = 3×4×3×3×2. **전 조합 선정 기준 미달** — OLD 구간 최고 PF=1.005 (전 조합 PF<1.5). 거래 2,000~2,700건 과다 발생, TP 도달 10~16%, 평균 보유 170~230분(대부분 forced_close). NEW 구간 일부 PF>1.5이나 OLD와 방향성 불일치. `volume_spike.enabled: false` 유지. `reports/volume_spike_grid_result.md`.
+- **변동성 돌파(Volatility Breakout) 전략 80조합 그리드** (2026-05-21): k×deadline×sl_mode×tp_mode×vol_confirm = 5×2×2×2×2. **전 조합 선정 기준 미달** — OLD 구간 최고 PF=1.027 (전 조합 PF<1.5). 거래 1,515~3,675건 과다, 평균 보유 120~182분(FC 36~49%), maxCL 12~19. NEW 구간 일부 PF>1.5(최고 1.627)이나 OLD 기준 미달 → 선정 불가. 구조적 문제: 세금/수수료(0.26%) 비용 하에 방향성 확인 없는 진입 → 강제 청산 비율 높고 손익비 1.0 수준. `volatility_breakout.enabled: false` 유지. `reports/volatility_breakout_grid_result.md`.
 - **이전 baseline** (장중 필터 미포함)
   - 장중 필터 제외 (2026-05-14): PF 4.881 / 228건 / +295,690 / SL# 27
   - 고정 -8% 손절 + trail_min=0.02/max=0.10 (2026-05-13): PF 4.817 / 229건 / +293,532 / SL# 32
@@ -257,6 +260,7 @@ pytest tests/ --cov=. --cov-report=term-missing
 - [x] 시그널 스코어링 + 갭업 기준가 조정 구현 + 그리드 (2026-05-14) — `core/signal_scorer.py` 5요소 100점 스코어러, Signal.context 전달, engine_worker/backtester 통합. `tests/test_signal_scorer.py` 17개. 그리드 결과: 갭업 조정 비활성 확정(GAP-5% PF 4.653 / PnL −24K 열세), 스코어링 비활성 확정(SC-60 PF 5.338 / PnL −28K, NEW 구간 비개선). `reports/gap_score_grid.md`.
 - [x] ORB 페이퍼 활성화 (2026-05-20) — ORB 그리드 108조합 완료 + MF MA 기간 그리드(MA5 우위 확정) + rvol 감도(1.5 유지). `strategy_type: "orb"`, `orb.enabled: true`, `entry_deadline: 09:30`, `sl=1.5`, `tp=3.0`, `rvol=1.5`, `market_filter: MA5`. pipeline: `screener_scheduler.py` ORBStrategy 등록 분기, `tick_processor.py` _on_tick_orb 경로, `session_manager.py` orb 전략 전환 지원. GUI: 사이드바 ORB 항목 + strategy_tab ORB 파라미터 섹션. 텔레그램 종목명 표시(state.ticker_names shared ref). pytest 544건 통과.
 - [x] VWAP 리버전 전략 구현 (2026-05-20) — `strategy/vwap_reversion_strategy.py` (VWAPReversionStrategy), `backtest/backtester_fast.py` (VWAPReversionFastBacktester), `scripts/grid_vwap.py` (72조합 그리드), `config/settings.py` vwap_rev_* 8개 필드, `config.yaml` vwap_reversion 섹션. `vwap_reversion.enabled: false` 유지 — 그리드 미완료. --verify 정상 (기본값 PF 0.57). pytest 544건 통과.
+- [x] 변동성 돌파 전략 구현 + 그리드 (2026-05-21) — `strategy/volatility_breakout_strategy.py`, `backtest/backtester_fast.py` (VolatilityBreakoutFastBacktester), `scripts/grid_volatility_breakout.py` (80조합), `config/settings.py` vb_* 12개 필드, `config.yaml` volatility_breakout 섹션. 80조합 × OLD/NEW 완료 (OLD 787s, NEW 53s). **전 조합 선정 기준 미달** — OLD 최고 PF 1.027, 거래 과다 + FC 비율 높음. `volatility_breakout.enabled: false` 유지. `reports/volatility_breakout_grid_result.md`.
 
 ---
 
