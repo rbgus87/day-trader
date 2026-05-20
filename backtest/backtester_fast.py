@@ -292,6 +292,8 @@ class FastBacktester(Backtester):
         rvol_min_v     = float(cfg.rvol_min)
         vwap_min_above = float(cfg.vwap_min_above)
         max_entry_gap  = float(getattr(cfg, "max_entry_above_breakout_pct", 0.10))
+        max_close_pct_raw = float(getattr(cfg, "max_entry_above_close_pct", 999.0))
+        prev_close_day    = float(getattr(strategy, "_prev_day_close", 0.0))
 
         signal_block_min = _parse_hhmm(cfg.signal_block_until, 545)
         buy_time_end_min = _parse_hhmm(cfg.buy_time_end, 720)
@@ -379,6 +381,11 @@ class FastBacktester(Backtester):
                     or cooldown_min_cfg <= 0
                     or (min_i - last_exit_min) >= cooldown_min_cfg
                 )
+                _close_chg_ok = (
+                    max_close_pct_raw >= 500.0
+                    or prev_close_day <= 0
+                    or (close_i - prev_close_day) / prev_close_day * 100.0 <= max_close_pct_raw
+                )
                 if (
                     trade_count < max_trades_day
                     and cooldown_ok
@@ -387,6 +394,7 @@ class FastBacktester(Backtester):
                     and (not buy_time_enabled or min_i < buy_time_end_min)
                     and close_i >= breakout_level
                     and cum_vols[i] >= required_vol
+                    and _close_chg_ok
                 ):
                     bp = breakout_price_day if breakout_price_day is not None else breakout_level
                     entry_gap = (close_i - bp) / bp if bp > 0 else 0.0
@@ -448,6 +456,10 @@ class FastBacktester(Backtester):
                                 "breakeven_active": False,
                                 "tp1_hit":         True,    # pure trailing
                                 "remaining_ratio": 1.0,
+                                "entry_chg_from_close": (
+                                    (entry_price - prev_close_day) / prev_close_day
+                                    if prev_close_day > 0 else 0.0
+                                ),
                             }
                             logger.debug(
                                 f"[FAST] 진입 ts={ts_i} price={entry_price:.1f} sl={stop_loss:.1f}"
@@ -469,6 +481,7 @@ class FastBacktester(Backtester):
                         "pnl":         pnl,
                         "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
                         "exit_reason": "limit_up_exit",
+                        "entry_chg_from_close": position.get("entry_chg_from_close", 0.0),
                     })
                     position = None
                     strategy.on_exit()
@@ -493,6 +506,7 @@ class FastBacktester(Backtester):
                         "pnl":         pnl,
                         "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
                         "exit_reason": exit_reason,
+                        "entry_chg_from_close": position.get("entry_chg_from_close", 0.0),
                     })
                     position = None
                     strategy.on_exit()
@@ -512,6 +526,7 @@ class FastBacktester(Backtester):
                             "pnl":         pnl,
                             "pnl_pct":     pnl / position["net_entry"],
                             "exit_reason": "forced_close",
+                            "entry_chg_from_close": position.get("entry_chg_from_close", 0.0),
                         })
                         position = None
                         strategy.on_exit()
@@ -568,6 +583,7 @@ class FastBacktester(Backtester):
                         "pnl":         pnl,
                         "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
                         "exit_reason": exit_reason,
+                        "entry_chg_from_close": position.get("entry_chg_from_close", 0.0),
                     })
                     position = None
                     strategy.on_exit()
@@ -595,6 +611,7 @@ class FastBacktester(Backtester):
                                     "pnl":         pnl,
                                     "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
                                     "exit_reason": "momentum_fade",
+                                    "entry_chg_from_close": position.get("entry_chg_from_close", 0.0),
                                 })
                                 position = None
                                 strategy.on_exit()
@@ -617,6 +634,7 @@ class FastBacktester(Backtester):
                             "pnl":         pnl,
                             "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
                             "exit_reason": "stale_exit",
+                            "entry_chg_from_close": position.get("entry_chg_from_close", 0.0),
                         })
                         position = None
                         strategy.on_exit()
@@ -635,6 +653,7 @@ class FastBacktester(Backtester):
                         "pnl":         pnl,
                         "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
                         "exit_reason": "forced_close",
+                        "entry_chg_from_close": position.get("entry_chg_from_close", 0.0),
                     })
                     position = None
                     strategy.on_exit()

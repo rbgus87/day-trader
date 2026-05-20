@@ -4,6 +4,8 @@
 v1 진입 로직 + v2 필터(거래량 1.5배 완화, VWAP 필터).
 """
 
+from datetime import datetime
+
 import pandas as pd
 from loguru import logger
 
@@ -25,6 +27,12 @@ class MomentumStrategy(BaseStrategy):
         self._ticker: str = ""
         self._last_signal_date: str = ""  # YYYY-MM-DD
         self._last_adx: float = 0.0        # 스코어링용 마지막 ADX 값
+        # 진입 타이밍 진단: 조건별 최초 충족 시점 (종목당 1회 INFO 보장)
+        self._cond_tracker: dict[str, datetime | None] = {
+            "BREAKOUT": None,
+            "VOLUME": None,
+            "ADX": None,
+        }
         # 5분 요약 로그용 단계별 평가 카운터. engine_worker가 주기적으로
         # 합산해 [SIGNAL-SUMMARY]를 출력하고 reset_diag_counters()로 리셋.
         self.diag_counters: dict[str, int] = self._make_diag_counters()
@@ -59,6 +67,22 @@ class MomentumStrategy(BaseStrategy):
         """5분 요약 로그 출력 직후 호출되어 카운터를 0으로 초기화."""
         for k in self.diag_counters:
             self.diag_counters[k] = 0
+
+    # ── 진입 타이밍 진단 추적기 ──
+
+    def set_cond_breakout(self, dt: datetime) -> bool:
+        """BREAKOUT 최초 충족 시점 기록. True면 신규 기록(최초)."""
+        if self._cond_tracker["BREAKOUT"] is None:
+            self._cond_tracker["BREAKOUT"] = dt
+            return True
+        return False
+
+    def get_cond_tracker(self) -> dict[str, datetime | None]:
+        return dict(self._cond_tracker)
+
+    def reset_cond_tracker(self) -> None:
+        for k in self._cond_tracker:
+            self._cond_tracker[k] = None
 
     def set_prev_day_data(self, high: float, volume: int, close: float = 0.0) -> None:
         """전일 고가·거래량·종가 기준값 저장."""
@@ -188,17 +212,17 @@ class MomentumStrategy(BaseStrategy):
         self.diag_counters["breakout_pass"] += 1
 
         # 1b) 돌파 시점 가격 대비 현재 괴리 제한 (고점 진입 방지)
+        # tick_processor에서 이미 1차 차단 + INFO 로그 처리 → 여기서는 DEBUG만
         if breakout_price is not None and breakout_price > 0:
             max_gap = getattr(self._config, "max_entry_above_breakout_pct", 0.05)
             gap = (current_price - breakout_price) / breakout_price
             if gap > max_gap:
                 self.diag_counters["entry_too_high"] += 1
-                logger.info(
-                    f"[MAX_ENTRY] {tick['ticker']} 차단: {gap * 100:.1f}% > {max_gap * 100:.0f}% "
-                    f"(cur={current_price:,.0f} bp={breakout_price:,.0f})"
+                logger.debug(
+                    f"[MAX_ENTRY] {tick['ticker']} 차단(strategy): {gap * 100:.1f}% > {max_gap * 100:.0f}%"
                 )
                 return None
-            logger.info(f"[MAX_ENTRY] {tick['ticker']} 통과: {gap * 100:.1f}%")
+            logger.debug(f"[MAX_ENTRY] {tick['ticker']} 통과(strategy): {gap * 100:.1f}%")
 
         # 2) 거래량 필터
         if candles is None or candles.empty:
@@ -259,6 +283,18 @@ class MomentumStrategy(BaseStrategy):
             )
             return None
 
+        # [COND_MET] 거래량 최초 충족 기록
+        if self._cond_tracker["VOLUME"] is None:
+            self._cond_tracker["VOLUME"] = datetime.now()
+            _prev_c = self._prev_day_close
+            _chg = (current_price - _prev_c) / _prev_c * 100 if _prev_c > 0 else 0.0
+            _vol_ratio = cum_volume / self._prev_day_volume if self._prev_day_volume > 0 else 0.0
+            logger.info(
+                f"[COND_MET] {tick['ticker']} VOLUME 충족: "
+                f"ratio={_vol_ratio:.1f}x, 현재가={current_price:,.0f}, "
+                f"전일종가대비=+{_chg:.1f}%"
+            )
+
         # 3) 마지막 캔들 종가 돌파 재확정 (ADR-016: 최소 돌파폭 적용)
         last_close = candles.iloc[-1]["close"]
         last_breakout_pct = (last_close - breakout_ref) / breakout_ref
@@ -277,6 +313,13 @@ class MomentumStrategy(BaseStrategy):
                 if _aft and _aft_adx is not None:
                     self.diag_counters["afternoon_adx_fail"] += 1
                 return None
+
+        # [COND_MET] ADX 최초 충족 기록
+        if self._config.adx_enabled and self._cond_tracker["ADX"] is None:
+            self._cond_tracker["ADX"] = datetime.now()
+            logger.info(
+                f"[COND_MET] {tick['ticker']} ADX 충족: {self._last_adx:.1f}"
+            )
 
         # 5) RVol 거래량 급증 필터
         if self._config.rvol_enabled and not self._check_rvol(candles):
@@ -476,3 +519,4 @@ class MomentumStrategy(BaseStrategy):
     def reset(self) -> None:
         """일별 리셋 (기준값은 유지)."""
         super().reset()
+        self.reset_cond_tracker()

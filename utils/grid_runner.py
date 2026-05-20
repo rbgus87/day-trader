@@ -287,6 +287,75 @@ def compute_stats(trades: list[dict]) -> dict:
     }
 
 
+def compute_extended_stats(trades: list[dict]) -> dict:
+    """거래 목록 → 확장 KPI dict (entry_chg_from_close, hold_min, MDD 포함).
+
+    반환 키:
+        pf, pnl, trades, win_rate,
+        fc_pct, sl_pct, be_pct,
+        avg_entry_chg_from_close, avg_hold_min,
+        max_consec_loss, mdd_pct, exit_counts
+    """
+    from datetime import datetime as _dt
+
+    n = len(trades)
+    if n == 0:
+        return {
+            "pf": 0.0, "pnl": 0, "trades": 0, "win_rate": 0.0,
+            "fc_pct": 0.0, "sl_pct": 0.0, "be_pct": 0.0,
+            "avg_entry_chg_from_close": 0.0, "avg_hold_min": 0.0,
+            "max_consec_loss": 0, "mdd_pct": 0.0, "exit_counts": {},
+        }
+
+    gp = sum(t["pnl"] for t in trades if t["pnl"] > 0)
+    gl = abs(sum(t["pnl"] for t in trades if t["pnl"] < 0))
+    pnl_total = sum(t["pnl"] for t in trades)
+    wins = sum(1 for t in trades if t["pnl"] > 0)
+    exits = Counter(t.get("exit_reason", "?") for t in trades)
+
+    chg_vals = [t.get("entry_chg_from_close", 0.0) for t in trades]
+    avg_chg = sum(chg_vals) / n if n > 0 else 0.0
+
+    hold_mins = []
+    for t in trades:
+        e_ts, x_ts = t.get("entry_ts"), t.get("exit_ts")
+        if e_ts and x_ts:
+            hold_mins.append((x_ts - e_ts).total_seconds() / 60.0)
+    avg_hold = sum(hold_mins) / len(hold_mins) if hold_mins else 0.0
+
+    max_cl, cur_cl = 0, 0
+    for t in sorted(trades, key=lambda x: x.get("entry_ts") or _dt.min):
+        if t["pnl"] < 0:
+            cur_cl += 1
+            max_cl = max(max_cl, cur_cl)
+        else:
+            cur_cl = 0
+
+    eq, peak, mdd = 0.0, 0.0, 0.0
+    for t in sorted(trades, key=lambda x: x.get("entry_ts") or _dt.min):
+        eq += t["pnl"]
+        if eq > peak:
+            peak = eq
+        dd = (eq - peak) / abs(peak) * 100.0 if peak != 0 else 0.0
+        if dd < mdd:
+            mdd = dd
+
+    return {
+        "pf":          round(gp / gl, 4) if gl > 0 else float("inf"),
+        "pnl":         int(pnl_total),
+        "trades":      n,
+        "win_rate":    round(wins / n, 4),
+        "fc_pct":      round(exits.get("forced_close", 0) / n * 100, 2),
+        "sl_pct":      round(exits.get("stop_loss", 0) / n * 100, 2),
+        "be_pct":      round(exits.get("breakeven_stop", 0) / n * 100, 2),
+        "avg_entry_chg_from_close": round(avg_chg * 100, 2),
+        "avg_hold_min": round(avg_hold, 1),
+        "max_consec_loss": max_cl,
+        "mdd_pct":     round(mdd, 2),
+        "exit_counts": dict(exits),
+    }
+
+
 # ---------------------------------------------------------------------------
 # 병렬 그리드 실행
 # ---------------------------------------------------------------------------

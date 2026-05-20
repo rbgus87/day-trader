@@ -184,6 +184,8 @@ class TradingConfig:
 
     # 틱 레벨 돌파 감지: 돌파 시점 대비 진입 가격 상한 (초과 시 진입 차단)
     max_entry_above_breakout_pct: float = 0.10
+    # 전일종가 대비 현재가 상한 (%) — 15 이상이면 진입 차단. None/0이면 비활성
+    max_entry_above_close_pct: float = 15.0
 
     # 횡보 포지션 조기 청산 — 보유 N분 후 수익률 < min_profit이면 청산
     stale_position_exit_enabled: bool = False

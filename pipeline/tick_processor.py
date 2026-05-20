@@ -47,6 +47,10 @@ class TickProcessor:
         self._last_tick_log = _time.time()
         self._first_tick_logged = False
 
+        # MAX_ENTRY 차단 중복 로그 억제: 종목당 최초 1회 INFO, 이후 DEBUG
+        self._max_entry_blocked: set[str] = set()
+        self._max_entry_blocked_reset_ts: float = _time.time()
+
     # ── ATR helper ──
 
     def _intraday_atr_pct(self, ticker: str, length: int = 14) -> float | None:
@@ -102,6 +106,18 @@ class TickProcessor:
 
     # ── 돌파 감지 + 즉시 진입 ──
 
+    def _log_max_entry_blocked(self, ticker: str, msg: str) -> None:
+        """MAX_ENTRY 차단 로그: 종목당 최초 1회 INFO, 이후 DEBUG. 5분마다 리셋."""
+        now_ts = _time.time()
+        if now_ts - self._max_entry_blocked_reset_ts >= 300:
+            self._max_entry_blocked.clear()
+            self._max_entry_blocked_reset_ts = now_ts
+        if ticker not in self._max_entry_blocked:
+            self._max_entry_blocked.add(ticker)
+            logger.info(msg)
+        else:
+            logger.debug(msg)
+
     async def _on_tick_no_position(self, ticker: str, price: float, tick: dict, signal_queue) -> None:
         import pandas as _pd
         if not self._state.active_strategies:
@@ -118,13 +134,23 @@ class TickProcessor:
         breakout_threshold = prev_high * (1 + min_bp)
 
         if price >= breakout_threshold and ticker not in self._state.breakout_detected:
+            _now = datetime.now()
             self._state.breakout_detected[ticker] = BreakoutInfo(
-                ticker=ticker, breakout_price=price, detected_at=datetime.now(),
+                ticker=ticker, breakout_price=price, detected_at=_now,
             )
+            prev_close = self._state.prev_close.get(ticker) or 0.0
+            _chg = (price - prev_close) / prev_close * 100 if prev_close > 0 else 0.0
             logger.info(
                 f"[BREAKOUT_TICK] {ticker} @ {price:,} "
                 f"(prev_high={prev_high:,} threshold={breakout_threshold:,.0f})"
             )
+            # [COND_MET] BREAKOUT 최초 충족 기록
+            if hasattr(strategy, "set_cond_breakout") and strategy.set_cond_breakout(_now):
+                logger.info(
+                    f"[COND_MET] {ticker} BREAKOUT 충족: "
+                    f"price={price:,} > prev_high={prev_high:,}, "
+                    f"전일종가대비=+{_chg:.1f}%"
+                )
 
         if ticker not in self._state.breakout_detected:
             return
@@ -151,22 +177,54 @@ class TickProcessor:
         if not hist or len(hist) < 30:
             return
 
+        # B-2: 전일종가 대비 현재가 상한 체크 (상한가 근처 무의미 진입 방지)
+        _max_close_pct = getattr(self._config.trading, "max_entry_above_close_pct", 0.0)
+        if _max_close_pct and _max_close_pct > 0:
+            _prev_close = self._state.prev_close.get(ticker) or 0.0
+            if _prev_close > 0:
+                _chg_from_close = (price - _prev_close) / _prev_close * 100
+                if _chg_from_close >= _max_close_pct:
+                    self._log_max_entry_blocked(
+                        ticker,
+                        f"[MAX_ENTRY] {ticker} 차단: 전일종가 대비 +{_chg_from_close:.1f}% > {_max_close_pct:.0f}%",
+                    )
+                    return
+
         # max_entry_above_breakout_pct 체크 (breakout_threshold 기준 — backtester 일관성)
         max_gap = getattr(self._config.trading, "max_entry_above_breakout_pct", 0.10)
         gap = (price - breakout_threshold) / breakout_threshold
         if gap > max_gap:
-            logger.info(
+            self._log_max_entry_blocked(
+                ticker,
                 f"[MAX_ENTRY] {ticker} 차단: {gap * 100:.1f}% > {max_gap * 100:.0f}% "
-                f"(cur={price:,} thr={breakout_threshold:,.0f})"
+                f"(cur={price:,} thr={breakout_threshold:,.0f})",
             )
             return
-        logger.info(f"[MAX_ENTRY] {ticker} 통과: {gap * 100:.1f}%")
+        logger.debug(f"[MAX_ENTRY] {ticker} 통과: {gap * 100:.1f}%")
 
         df = _pd.DataFrame(hist)
         breakout_info = self._state.breakout_detected[ticker]
         signal = strategy.generate_signal(df, tick, breakout_price=breakout_info.breakout_price)
         if signal:
             self._state.tick_signaled.add(ticker)
+            # [ENTRY_TIMING] 시그널 발생 시 조건별 충족 시점 요약
+            if hasattr(strategy, "get_cond_tracker"):
+                _tracker = strategy.get_cond_tracker()
+                _now = datetime.now()
+                _times = [t for t in _tracker.values() if t is not None]
+                _delta = int((_now - min(_times)).total_seconds()) if _times else None
+                _prev_c = self._state.prev_close.get(ticker) or 0.0
+                _chg = (price - _prev_c) / _prev_c * 100 if _prev_c > 0 else 0.0
+                _fmt = lambda t: t.strftime("%H:%M:%S") if t else "N/A"  # noqa: E731
+                logger.info(
+                    f"[ENTRY_TIMING] {ticker} 시그널 발생 "
+                    f"BREAKOUT={_fmt(_tracker.get('BREAKOUT'))} "
+                    f"VOLUME={_fmt(_tracker.get('VOLUME'))} "
+                    f"ADX={_fmt(_tracker.get('ADX'))} "
+                    f"최초조건~시그널={'{}초'.format(_delta) if _delta is not None else 'N/A'}, "
+                    f"전일종가대비=+{_chg:.1f}%"
+                )
+                strategy.reset_cond_tracker()
             await signal_queue.put(signal)
             logger.info(f"[TICK_ENTRY] {ticker} 즉시 진입 신호 @ {price:,}")
 
