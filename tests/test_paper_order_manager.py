@@ -97,6 +97,45 @@ class TestPaperSell:
         assert result["qty"] == 50  # 100 * 0.5
 
 
+class TestTickerName:
+    @pytest.mark.asyncio
+    async def test_name_from_ticker_names_dict(self, mock_db, mock_notifier):
+        """ticker_names dict로 초기화하면 종목명이 알림에 반영된다."""
+        om = PaperOrderManager(
+            notifier=mock_notifier, db=mock_db, trading_config=TradingConfig(),
+            ticker_names={"069540": "빛과전자"},
+        )
+        await om.execute_buy("069540", 10000, 100)
+        kwargs = mock_notifier.send_execution.call_args.kwargs
+        assert kwargs["name"] == "빛과전자"
+        assert kwargs["ticker"] == "069540"
+
+    @pytest.mark.asyncio
+    async def test_name_fallback_to_ticker(self, mock_db, mock_notifier):
+        """ticker_names에 없는 종목은 코드 자체를 name으로 사용한다."""
+        om = PaperOrderManager(
+            notifier=mock_notifier, db=mock_db, trading_config=TradingConfig(),
+            ticker_names={},
+        )
+        await om.execute_buy("999999", 10000, 100)
+        kwargs = mock_notifier.send_execution.call_args.kwargs
+        assert kwargs["name"] == "999999"
+        assert kwargs["ticker"] == "999999"
+
+    @pytest.mark.asyncio
+    async def test_name_updated_dynamically(self, mock_db, mock_notifier):
+        """외부 dict에 나중에 추가된 종목명도 즉시 반영된다."""
+        shared_names: dict[str, str] = {}
+        om = PaperOrderManager(
+            notifier=mock_notifier, db=mock_db, trading_config=TradingConfig(),
+            ticker_names=shared_names,
+        )
+        shared_names["069540"] = "빛과전자"
+        await om.execute_buy("069540", 10000, 100)
+        kwargs = mock_notifier.send_execution.call_args.kwargs
+        assert kwargs["name"] == "빛과전자"
+
+
 class TestPaperOrderNo:
     @pytest.mark.asyncio
     async def test_sequential_order_numbers(self, paper_om):

@@ -36,6 +36,7 @@ class PaperOrderManager:
         order_queue: asyncio.Queue | None = None,
         notifications_config=None,
         backtest_config: BacktestConfig | None = None,
+        ticker_names: dict[str, str] | None = None,
     ):
         self._risk_manager = risk_manager
         self._notifier = notifier
@@ -51,18 +52,21 @@ class PaperOrderManager:
         self._order_queue: asyncio.Queue = order_queue or asyncio.Queue()
         self._order_seq = 0  # 가상 주문번호 시퀀스
 
-        # 종목명 매핑 로드
-        self._name_map: dict[str, str] = {}
-        from pathlib import Path
-        import yaml
-        uni_path = Path("config/universe.yaml")
-        if uni_path.exists():
-            try:
-                uni = yaml.safe_load(open(uni_path, encoding="utf-8")) or {}
-                for s in uni.get("stocks", []):
-                    self._name_map[s["ticker"]] = s.get("name", s["ticker"])
-            except Exception:
-                pass
+        # 종목명 매핑: 외부 dict 참조 우선(screener 갱신 즉시 반영), 없으면 universe.yaml 로드
+        if ticker_names is not None:
+            self._name_map: dict[str, str] = ticker_names
+        else:
+            self._name_map = {}
+            from pathlib import Path
+            import yaml
+            uni_path = Path("config/universe.yaml")
+            if uni_path.exists():
+                try:
+                    uni = yaml.safe_load(open(uni_path, encoding="utf-8")) or {}
+                    for s in uni.get("stocks", []):
+                        self._name_map[s["ticker"]] = s.get("name", s["ticker"])
+                except Exception:
+                    pass
 
     def _format_ticker(self, ticker: str) -> str:
         """종목명(코드) 형식으로 변환."""

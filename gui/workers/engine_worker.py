@@ -209,6 +209,7 @@ class EngineWorker(QThread):
                 risk_manager=self._risk_manager, notifier=self._notifier, db=self._db,
                 trading_config=self._config.trading, order_queue=self._order_queue,
                 notifications_config=self._config.notifications, backtest_config=self._config.backtest,
+                ticker_names=self._state.ticker_names,
             )
             logger.info("주문 관리자: PaperOrderManager (시뮬레이션)")
         else:
@@ -216,6 +217,7 @@ class EngineWorker(QThread):
                 rest_client=self._rest_client, risk_manager=self._risk_manager,
                 notifier=self._notifier, db=self._db, trading_config=self._config.trading,
                 order_queue=self._order_queue, notifications_config=self._config.notifications,
+                ticker_names=self._state.ticker_names,
             )
             logger.info("주문 관리자: OrderManager (실매매)")
         self._ws_client._risk_manager = self._risk_manager
