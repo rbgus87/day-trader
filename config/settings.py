@@ -256,6 +256,16 @@ class TradingConfig:
     gap_pullback_volume_ratio: float = 1.5
     gap_pullback_atr_stop_mult: float = 0.5
 
+    # VWAP 리버전 전략 (09:30~14:00, 평균회귀)
+    vwap_rev_enabled: bool = False
+    vwap_rev_entry_deviation: float = -0.015   # VWAP 대비 진입 하락폭 (-1.5%)
+    vwap_rev_stop_loss_pct: float = 0.015      # 고정 손절폭 (1.5%)
+    vwap_rev_tp_above_vwap: float = 0.003      # 익절 VWAP 초과폭 (+0.3%)
+    vwap_rev_entry_start: str = "09:30"
+    vwap_rev_entry_end: str = "14:00"
+    vwap_rev_min_prev_volume: int = 50000      # 전일 최소 거래량 (주)
+    vwap_rev_max_daily_drop: float = -0.07     # 당일 허용 최대 등락률 (-7%)
+
 
 @dataclass(frozen=True)
 class ScreenerConfig:
@@ -373,6 +383,7 @@ class AppConfig:
         s = cfg.get("strategy", {})
         mom = s.get("momentum", {})
         gap = s.get("gap_pullback", {})
+        vr = s.get("vwap_reversion", {})
 
         trading = TradingConfig(
             daily_max_loss_pct=t.get("daily_max_loss_pct", -0.02),
@@ -502,6 +513,15 @@ class AppConfig:
             gap_pullback_max_positions=gap.get("max_positions", 1),
             gap_pullback_volume_ratio=gap.get("volume_ratio", 1.5),
             gap_pullback_atr_stop_mult=gap.get("atr_stop_mult", 0.5),
+            # VWAP 리버전 전략
+            vwap_rev_enabled=vr.get("enabled", False),
+            vwap_rev_entry_deviation=vr.get("entry_deviation", -0.015),
+            vwap_rev_stop_loss_pct=vr.get("stop_loss_pct", 0.015),
+            vwap_rev_tp_above_vwap=vr.get("tp_above_vwap", 0.003),
+            vwap_rev_entry_start=vr.get("entry_start", "09:30"),
+            vwap_rev_entry_end=vr.get("entry_end", "14:00"),
+            vwap_rev_min_prev_volume=vr.get("min_volume", 50000),
+            vwap_rev_max_daily_drop=vr.get("max_daily_drop", -0.07),
         )
 
         # screener 섹션

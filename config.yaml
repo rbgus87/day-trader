@@ -236,6 +236,18 @@ strategy:
     volume_ratio: 1.5               # 전일 동시간대 거래량 × 1.5 이상
     atr_stop_mult: 0.5              # 손절: 눌림저점 - ATR × 0.5
 
+  # VWAP 리버전 전략 — 09:30~14:00 평균회귀 (ORB와 시간대 비중복)
+  # 그리드 검증 전 비활성. 백테스트 전용: python scripts/grid_vwap.py
+  vwap_reversion:
+    enabled: false               # 백테스트 전용, 실거래 영향 없음
+    entry_deviation: -0.015      # VWAP 대비 진입 하락폭 (-1.5%)
+    stop_loss_pct: 0.015         # 진입가 대비 고정 손절폭 (1.5%)
+    tp_above_vwap: 0.003         # 익절 VWAP 초과폭 (+0.3%)
+    entry_start: "09:30"         # 진입 허용 시작
+    entry_end: "14:00"           # 진입 허용 종료
+    min_volume: 50000            # 전일 최소 거래량 (주)
+    max_daily_drop: -0.07        # 당일 허용 최대 등락률 (-7%)
+
   # 전략 선택기 임계값 (StrategySelector — 현재 항상 momentum)
   selector:
     momentum_etf_threshold: 2.0     # 섹터 ETF 등락 ≥ 2.0% → 모멘텀 전략

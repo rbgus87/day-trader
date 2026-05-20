@@ -1,6 +1,6 @@
 # CLAUDE.md — day-trader
 
-> **최종 수정**: 2026-05-20 (ORB + MA 기간 그리드 + ORB 페이퍼 활성화)
+> **최종 수정**: 2026-05-20 (VWAP 리버전 전략 구현 + 72조합 그리드 준비)
 > 이 문서는 **백테스트에서 검증된 사실만** 기재한다.
 
 ---
@@ -256,6 +256,7 @@ pytest tests/ --cov=. --cov-report=term-missing
 - [x] 장중 시장 필터 구현 (2026-05-14) — `core/market_filter.py` refresh_intraday() / is_intraday_blocked(), engine_worker.py APScheduler 10분 갱신 + signal_consumer 체크, backtester.py build_intraday_blocked_by_date() 일봉 근사. 기존 구간 PF 4.798 / 확장 구간 손실 27% 개선. `tests/test_intraday_market_filter.py` 13개.
 - [x] 시그널 스코어링 + 갭업 기준가 조정 구현 + 그리드 (2026-05-14) — `core/signal_scorer.py` 5요소 100점 스코어러, Signal.context 전달, engine_worker/backtester 통합. `tests/test_signal_scorer.py` 17개. 그리드 결과: 갭업 조정 비활성 확정(GAP-5% PF 4.653 / PnL −24K 열세), 스코어링 비활성 확정(SC-60 PF 5.338 / PnL −28K, NEW 구간 비개선). `reports/gap_score_grid.md`.
 - [x] ORB 페이퍼 활성화 (2026-05-20) — ORB 그리드 108조합 완료 + MF MA 기간 그리드(MA5 우위 확정) + rvol 감도(1.5 유지). `strategy_type: "orb"`, `orb.enabled: true`, `entry_deadline: 09:30`, `sl=1.5`, `tp=3.0`, `rvol=1.5`, `market_filter: MA5`. pipeline: `screener_scheduler.py` ORBStrategy 등록 분기, `tick_processor.py` _on_tick_orb 경로, `session_manager.py` orb 전략 전환 지원. GUI: 사이드바 ORB 항목 + strategy_tab ORB 파라미터 섹션. 텔레그램 종목명 표시(state.ticker_names shared ref). pytest 544건 통과.
+- [x] VWAP 리버전 전략 구현 (2026-05-20) — `strategy/vwap_reversion_strategy.py` (VWAPReversionStrategy), `backtest/backtester_fast.py` (VWAPReversionFastBacktester), `scripts/grid_vwap.py` (72조합 그리드), `config/settings.py` vwap_rev_* 8개 필드, `config.yaml` vwap_reversion 섹션. `vwap_reversion.enabled: false` 유지 — 그리드 미완료. --verify 정상 (기본값 PF 0.57). pytest 544건 통과.
 
 ---
 
@@ -267,6 +268,7 @@ pytest tests/ --cov=. --cov-report=term-missing
 | OBI 필터 실효성 | 비활성 (`obi_filter_enabled: false`) | Phase 1→2→3 순서로 활성화 (`docs/obi_activation_plan.md`) |
 | NXT API 지원 | 미확인 | NXT 시간에 `python scripts/test_nxt_api.py` 실행 |
 | 확장 기간 PF | 2026-04-11~05-12 구간 PF 1.08 (KOSPI +31.58% 상승장) | 페이퍼 실측으로 실시간 PF 추적 |
+| VWAP 리버전 그리드 | 72조합 미실행 (기본값 PF 0.57) | `python scripts/grid_vwap.py` 실행 후 선정 |
 
 검증 명령어: `docs/verification_commands.md`
 후속 작업: [`docs/phase_followup_todo.md`](docs/phase_followup_todo.md)
