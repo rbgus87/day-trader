@@ -261,6 +261,36 @@ strategy:
     entry_end: "13:00"           # 진입 허용 종료
     min_volume: 50000            # 전일 최소 거래량 (주)
 
+  # 거래량 폭발 전략 — 09:30~13:00 평소 대비 N배 급증 양봉에서 진입
+  # 그리드 검증 전 비활성. 백테스트 전용: python scripts/grid_volume_spike.py
+  volume_spike:
+    enabled: false               # 백테스트 전용, 실거래 영향 없음
+    lookback_minutes: 10         # 평균 산출 직전 N분봉
+    spike_ratio: 5.0             # 급증 배수 (평균 대비 N배 이상)
+    sl_pct: 0.02                 # 손절: 진입가 대비 -2%
+    tp_pct: 0.03                 # 익절: 진입가 대비 +3%
+    entry_start: "09:30"         # 진입 허용 시작
+    entry_end: "13:00"           # 진입 허용 종료
+    min_prev_volume: 50000       # 전일 최소 거래량 (주)
+    min_spike_volume: 10000      # 급증 분봉 절대 최소 거래량 (주)
+
+  # 변동성 돌파 전략 (래리 윌리엄스) — 09:00~entry_deadline
+  # target = 당일시가 + (전일고가 - 전일저가) × k_value
+  # 그리드 검증 전 비활성. 백테스트 전용: python scripts/grid_volatility_breakout.py
+  volatility_breakout:
+    enabled: false              # 백테스트 전용, 실거래 영향 없음
+    k_value: 0.5                # K값 (0.3~0.7)
+    entry_deadline: "14:00"     # 진입 허용 마감
+    sl_mode: "open"             # "open": 시가 손절 / "fixed": 고정% 손절
+    sl_pct: 0.02                # 고정 손절폭 (sl_mode=fixed 시)
+    tp_pct: 0.03                # 익절 목표 (0.0이면 TP 없음)
+    use_trailing: true          # 트레일링 스톱 사용 여부
+    trail_pct: 0.02             # 트레일링 스톱폭 (고점 대비)
+    use_volume_confirm: true    # 분봉 거래량 확인 (당일 평균 × 2.0 이상)
+    min_range_pct: 0.015        # 전일 변동폭 최소 (전일종가 대비 1.5%)
+    max_range_pct: 0.10         # 전일 변동폭 최대 (10%)
+    min_prev_volume: 50000      # 전일 최소 거래량 (주)
+
   # 전략 선택기 임계값 (StrategySelector — 현재 항상 momentum)
   selector:
     momentum_etf_threshold: 2.0     # 섹터 ETF 등락 ≥ 2.0% → 모멘텀 전략

@@ -277,6 +277,32 @@ class TradingConfig:
     pb_entry_end: str = "13:00"
     pb_min_volume: int = 50000           # 전일 최소 거래량 (주)
 
+    # 거래량 폭발 전략 (09:30~13:00, 급증 양봉 진입)
+    vs_enabled: bool = False
+    vs_lookback_minutes: int = 10        # 평균 산출 직전 N분봉
+    vs_spike_ratio: float = 5.0          # 급증 배수
+    vs_sl_pct: float = 0.02              # 손절: 진입가 대비 -2%
+    vs_tp_pct: float = 0.03              # 익절: 진입가 대비 +3%
+    vs_entry_start: str = "09:30"
+    vs_entry_end: str = "13:00"
+    vs_min_prev_volume: int = 50000      # 전일 최소 거래량 (주)
+    vs_min_spike_volume: int = 10000     # 급증 분봉 절대 최소 거래량 (주)
+
+    # 변동성 돌파 전략 (래리 윌리엄스, 09:00~entry_deadline)
+    # target = 당일시가 + (전일고가 - 전일저가) × k_value
+    vb_enabled: bool = False
+    vb_k_value: float = 0.5              # K값 (0.3~0.7)
+    vb_entry_deadline: str = "14:00"     # 진입 허용 마감
+    vb_sl_mode: str = "open"             # "open": 시가 손절 / "fixed": 고정% 손절
+    vb_sl_pct: float = 0.02             # 고정 손절폭 (sl_mode=fixed 시)
+    vb_tp_pct: float = 0.03             # 익절 목표 (0.0이면 TP 없음)
+    vb_use_trailing: bool = True         # 트레일링 스톱 사용 여부
+    vb_trail_pct: float = 0.02          # 트레일링 스톱폭 (고점 대비)
+    vb_use_volume_confirm: bool = True   # 분봉 거래량 확인 (당일 평균 × 2.0 이상)
+    vb_min_range_pct: float = 0.015     # 전일 변동폭 최소 (전일종가 대비)
+    vb_max_range_pct: float = 0.10      # 전일 변동폭 최대
+    vb_min_prev_volume: int = 50000     # 전일 최소 거래량 (주)
+
 
 @dataclass(frozen=True)
 class ScreenerConfig:
@@ -543,6 +569,29 @@ class AppConfig:
             pb_entry_start=s.get("pullback", {}).get("entry_start", "09:30"),
             pb_entry_end=s.get("pullback", {}).get("entry_end", "13:00"),
             pb_min_volume=s.get("pullback", {}).get("min_volume", 50000),
+            # 거래량 폭발 전략
+            vs_enabled=s.get("volume_spike", {}).get("enabled", False),
+            vs_lookback_minutes=s.get("volume_spike", {}).get("lookback_minutes", 10),
+            vs_spike_ratio=s.get("volume_spike", {}).get("spike_ratio", 5.0),
+            vs_sl_pct=s.get("volume_spike", {}).get("sl_pct", 0.02),
+            vs_tp_pct=s.get("volume_spike", {}).get("tp_pct", 0.03),
+            vs_entry_start=s.get("volume_spike", {}).get("entry_start", "09:30"),
+            vs_entry_end=s.get("volume_spike", {}).get("entry_end", "13:00"),
+            vs_min_prev_volume=s.get("volume_spike", {}).get("min_prev_volume", 50000),
+            vs_min_spike_volume=s.get("volume_spike", {}).get("min_spike_volume", 10000),
+            # 변동성 돌파 전략
+            vb_enabled=s.get("volatility_breakout", {}).get("enabled", False),
+            vb_k_value=s.get("volatility_breakout", {}).get("k_value", 0.5),
+            vb_entry_deadline=s.get("volatility_breakout", {}).get("entry_deadline", "14:00"),
+            vb_sl_mode=s.get("volatility_breakout", {}).get("sl_mode", "open"),
+            vb_sl_pct=s.get("volatility_breakout", {}).get("sl_pct", 0.02),
+            vb_tp_pct=s.get("volatility_breakout", {}).get("tp_pct", 0.03),
+            vb_use_trailing=s.get("volatility_breakout", {}).get("use_trailing", True),
+            vb_trail_pct=s.get("volatility_breakout", {}).get("trail_pct", 0.02),
+            vb_use_volume_confirm=s.get("volatility_breakout", {}).get("use_volume_confirm", True),
+            vb_min_range_pct=s.get("volatility_breakout", {}).get("min_range_pct", 0.015),
+            vb_max_range_pct=s.get("volatility_breakout", {}).get("max_range_pct", 0.10),
+            vb_min_prev_volume=s.get("volatility_breakout", {}).get("min_prev_volume", 50000),
         )
 
         # screener 섹션
