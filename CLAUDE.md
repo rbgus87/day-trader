@@ -1,6 +1,6 @@
 # CLAUDE.md — day-trader
 
-> **최종 수정**: 2026-05-20 (VWAP 리버전 전략 구현 + 72조합 그리드 준비)
+> **최종 수정**: 2026-05-21 (VI 돌파 전략 구현 + 192조합 그리드 — 전 조합 미달 확정)
 > 이 문서는 **백테스트에서 검증된 사실만** 기재한다.
 
 ---
@@ -122,6 +122,7 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 - **눌림목(Pullback) 전략 216조합 그리드** (2026-05-21): surge×pb×sl×tp×entry_end = 4×3×3×3×2. **전 조합 구조적 결함** — sl=pullback_depth 조합 PF 22+ (손절가=진입 트리거, 허수). sl>pb 조합 6개 PF 0.97~1.30, 선정 기준(PF≥1.5) 전량 미달. `pullback.enabled: false` 유지. `reports/pullback_grid_result.md`.
 - **거래량 폭발(Volume Spike) 전략 216조합 그리드** (2026-05-21): lookback×spike×sl×tp×entry_end = 3×4×3×3×2. **전 조합 선정 기준 미달** — OLD 구간 최고 PF=1.005 (전 조합 PF<1.5). 거래 2,000~2,700건 과다 발생, TP 도달 10~16%, 평균 보유 170~230분(대부분 forced_close). NEW 구간 일부 PF>1.5이나 OLD와 방향성 불일치. `volume_spike.enabled: false` 유지. `reports/volume_spike_grid_result.md`.
 - **변동성 돌파(Volatility Breakout) 전략 80조합 그리드** (2026-05-21): k×deadline×sl_mode×tp_mode×vol_confirm = 5×2×2×2×2. **전 조합 선정 기준 미달** — OLD 구간 최고 PF=1.027 (전 조합 PF<1.5). 거래 1,515~3,675건 과다, 평균 보유 120~182분(FC 36~49%), maxCL 12~19. NEW 구간 일부 PF>1.5(최고 1.627)이나 OLD 기준 미달 → 선정 불가. 구조적 문제: 세금/수수료(0.26%) 비용 하에 방향성 확인 없는 진입 → 강제 청산 비율 높고 손익비 1.0 수준. `volatility_breakout.enabled: false` 유지. `reports/volatility_breakout_grid_result.md`.
+- **VI 돌파(VI Breakout) 전략 192조합 그리드** (2026-05-21): vi_breakout_pct×sl_pct×tp_mode×deadline×use_volume = 4×3×4×2×2. **전 조합 선정 기준 미달** — OLD 구간 최고 PF=1.325 (전 조합 PF<1.5). 거래 362~677건 과다, SL 비율 60~80%, 승률 19~50%. NEW 구간 일부 PF>1.5이나 OLD 기준 미달 → 선정 불가. 구조적 문제: 분봉 기반 VI 발동 추정 정밀도 한계 + 재돌파 진입 시점에 이미 고점 형성 → 세금/수수료 비용 하에 수익성 없음. `vi_breakout.enabled: false` 유지. `reports/vi_breakout_grid_result.md`.
 - **이전 baseline** (장중 필터 미포함)
   - 장중 필터 제외 (2026-05-14): PF 4.881 / 228건 / +295,690 / SL# 27
   - 고정 -8% 손절 + trail_min=0.02/max=0.10 (2026-05-13): PF 4.817 / 229건 / +293,532 / SL# 32

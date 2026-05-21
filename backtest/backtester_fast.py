@@ -2569,3 +2569,593 @@ class VolatilityBreakoutFastBacktester(Backtester):
             f"pnl={kpi['total_pnl']:.1f}"
         )
         return kpi
+
+
+# ---------------------------------------------------------------------------
+# Gap & Go 전략 전용 numpy 가속 백테스터
+# ---------------------------------------------------------------------------
+
+class GapAndGoFastBacktester(Backtester):
+    """갭앤고(Gap & Go) 전략 전용 numpy 가속 백테스터.
+
+    갭업으로 시작한 종목의 첫 5분봉(09:00~09:04)이 양봉이면 매수 진입.
+    이전 gap_pullback 전략과 별개 — 전략 로직/파라미터 완전 분리.
+
+    진입 조건
+    ---------
+    - 당일 시가 > 전일 종가 × (1 + gap_min_pct)  AND  < 전일 종가 × (1 + gap_max_pct)
+    - 09:00~09:04 첫 5분봉: 양봉 (close > open) + 몸통비율 >= body_ratio_min
+    - 거래량 (선택): 첫 봉 거래량 >= 전일 평균 5분봉 거래량 × volume_ratio
+
+    진입 방식
+    ---------
+    - close     : 09:05 즉시 진입 (첫 봉 종가 기준가)
+    - high_break: 09:05~entry_deadline 사이 첫 봉 고가 돌파 시 진입
+
+    청산 조건 (우선순위 순)
+    -----------------------
+    1. TP 도달 (high >= tp_price)                       → tp_exit
+    2. 트레일링 스톱 (close < peak × (1-trail_pct))     → trailing_stop  (trail_only)
+    3. 손절 (low <= stop_loss)                          → stop_loss
+    4. 강제 청산 (15:10 이후 또는 마지막 캔들)           → forced_close
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+
+    async def run_multi_day_cached(
+        self,
+        ticker: str,
+        all_candles: pd.DataFrame,
+        strategy: "Any" = None,
+    ) -> dict[str, Any]:
+        """갭앤고 전용 고속 멀티데이 백테스트."""
+        if all_candles.empty:
+            return {**self.calculate_kpi([]), "trades": []}
+        self._current_ticker = ticker
+
+        # ── 종목당 1회 numpy 변환 ──────────────────────────────────────────
+        ts_pd       = pd.DatetimeIndex(all_candles["ts"])
+        all_closes  = all_candles["close"].values.astype(np.float64)
+        all_highs   = all_candles["high"].values.astype(np.float64)
+        all_lows    = all_candles["low"].values.astype(np.float64)
+        all_volumes = all_candles["volume"].values.astype(np.float64)
+        all_opens   = all_candles["open"].values.astype(np.float64)
+        all_minutes = (ts_pd.hour * 60 + ts_pd.minute).values.astype(np.int32)
+
+        day_ord    = (ts_pd.asi8 // (86_400 * 10 ** 9)).astype(np.int64)
+        day_starts = np.where(np.diff(day_ord, prepend=day_ord[0] - 1) != 0)[0]
+        day_ends   = np.append(day_starts[1:], len(day_ord))
+        n_days     = len(day_starts)
+
+        # ── 설정 (조합당 1회) ──────────────────────────────────────────────
+        cfg = self._config
+        gap_min_pct      = float(getattr(cfg, "gg_gap_min_pct", 0.02))
+        gap_max_pct      = float(getattr(cfg, "gg_gap_max_pct", 0.15))
+        body_ratio_min   = float(getattr(cfg, "gg_body_ratio_min", 0.5))
+        entry_mode       = str(getattr(cfg, "gg_entry_mode", "close"))
+        entry_deadline   = _parse_hhmm(str(getattr(cfg, "gg_entry_deadline", "09:30")), 570)
+        sl_mode          = str(getattr(cfg, "gg_sl_mode", "first_bar_low"))
+        sl_pct           = float(getattr(cfg, "gg_sl_pct", 0.02))
+        tp_pct           = float(getattr(cfg, "gg_tp_pct", 0.05))
+        use_trailing     = bool(getattr(cfg, "gg_use_trailing", False))
+        trail_pct        = float(getattr(cfg, "gg_trail_pct", 0.02))
+        use_volume       = bool(getattr(cfg, "gg_use_volume", True))
+        volume_ratio     = float(getattr(cfg, "gg_volume_ratio", 2.0))
+
+        range_start_min  = 540   # 09:00
+        range_end_min    = 544   # 09:04
+        force_close_min  = 15 * 60 + 10  # 15:10
+
+        all_trades: list[dict] = []
+        prev_close  = 0.0
+        prev_volume = 0.0
+        prev_n_bars = 0
+
+        for di in range(n_days):
+            s = int(day_starts[di])
+            e = int(day_ends[di])
+
+            closes  = all_closes[s:e]
+            highs   = all_highs[s:e]
+            lows    = all_lows[s:e]
+            volumes = all_volumes[s:e]
+            opens   = all_opens[s:e]
+            mins    = all_minutes[s:e]
+            n       = e - s
+
+            # ── 첫날 (전일 데이터 없음) 스킵 ──────────────────────────────
+            if prev_close <= 0:
+                prev_close  = float(closes[-1])
+                prev_volume = float(np.sum(volumes))
+                prev_n_bars = n
+                continue
+
+            # ── 당일 시가 (09:00 봉 open) ──────────────────────────────────
+            open09_idxs = np.where(mins == range_start_min)[0]
+            if len(open09_idxs) == 0:
+                prev_close  = float(closes[-1])
+                prev_volume = float(np.sum(volumes))
+                prev_n_bars = n
+                continue
+            day_open = float(opens[open09_idxs[0]])
+
+            # ── 갭업 체크 ──────────────────────────────────────────────────
+            gap_pct_val = (day_open - prev_close) / prev_close
+            if gap_pct_val < gap_min_pct or gap_pct_val >= gap_max_pct:
+                prev_close  = float(closes[-1])
+                prev_volume = float(np.sum(volumes))
+                prev_n_bars = n
+                continue
+
+            # ── 첫 5분봉 집계 (09:00~09:04) ────────────────────────────────
+            first_bar_mask = (mins >= range_start_min) & (mins <= range_end_min)
+            if not np.any(first_bar_mask):
+                prev_close  = float(closes[-1])
+                prev_volume = float(np.sum(volumes))
+                prev_n_bars = n
+                continue
+
+            fb_idxs  = np.where(first_bar_mask)[0]
+            fb_open  = float(opens[fb_idxs[0]])
+            fb_close = float(closes[fb_idxs[-1]])
+            fb_high  = float(np.max(highs[first_bar_mask]))
+            fb_low   = float(np.min(lows[first_bar_mask]))
+            fb_vol   = float(np.sum(volumes[first_bar_mask]))
+
+            # ── 양봉 체크 ──────────────────────────────────────────────────
+            if fb_close <= fb_open:
+                prev_close  = float(closes[-1])
+                prev_volume = float(np.sum(volumes))
+                prev_n_bars = n
+                continue
+
+            # ── 몸통비율 체크 ──────────────────────────────────────────────
+            fb_range = fb_high - fb_low
+            if fb_range > 0 and (fb_close - fb_open) / fb_range < body_ratio_min:
+                prev_close  = float(closes[-1])
+                prev_volume = float(np.sum(volumes))
+                prev_n_bars = n
+                continue
+
+            # ── 거래량 필터 ────────────────────────────────────────────────
+            # 전일 평균 5분봉 거래량 = prev_volume / (prev_n_bars / 5)
+            if use_volume and prev_volume > 0 and prev_n_bars > 0:
+                avg_5min = prev_volume / prev_n_bars * 5
+                if fb_vol < avg_5min * volume_ratio:
+                    prev_close  = float(closes[-1])
+                    prev_volume = float(np.sum(volumes))
+                    prev_n_bars = n
+                    continue
+
+            # ── 진입 ───────────────────────────────────────────────────────
+            entry_price = 0.0
+            entry_ts    = None
+            entry_i     = -1
+
+            if entry_mode == "close":
+                # 09:05 즉시 진입 (첫 봉 종가 기준가)
+                after_idxs = np.where(mins > range_end_min)[0]
+                if len(after_idxs) == 0:
+                    prev_close  = float(closes[-1])
+                    prev_volume = float(np.sum(volumes))
+                    prev_n_bars = n
+                    continue
+                entry_i     = int(after_idxs[0])
+                entry_price = fb_close
+                entry_ts    = ts_pd[s + entry_i].to_pydatetime()
+            else:
+                # high_break: 09:05~entry_deadline 사이 close > fb_high 시 진입
+                scan_idxs = np.where((mins > range_end_min) & (mins <= entry_deadline))[0]
+                for idx in scan_idxs:
+                    if closes[idx] > fb_high:
+                        entry_i     = int(idx)
+                        entry_price = float(closes[idx])
+                        entry_ts    = ts_pd[s + idx].to_pydatetime()
+                        break
+
+            if entry_i < 0:
+                prev_close  = float(closes[-1])
+                prev_volume = float(np.sum(volumes))
+                prev_n_bars = n
+                continue
+
+            # ── 비용 적용 ──────────────────────────────────────────────────
+            ep, net_entry = apply_buy_costs(entry_price, self._costs)
+
+            # ── 손절가 ─────────────────────────────────────────────────────
+            if sl_mode == "first_bar_low":
+                stop_loss = fb_low
+            elif sl_mode == "prev_close":
+                stop_loss = prev_close
+            else:  # fixed_2pct
+                stop_loss = ep * (1.0 - sl_pct)
+
+            # ── 익절가 / 트레일링 설정 ─────────────────────────────────────
+            tp_price   = 0.0 if (use_trailing or tp_pct <= 0) else ep * (1.0 + tp_pct)
+            peak_price = ep
+
+            # ── 포지션 관리 루프 ───────────────────────────────────────────
+            exited = False
+            for i in range(entry_i + 1, n):
+                close_i = closes[i]
+                high_i  = highs[i]
+                low_i   = lows[i]
+                min_i   = int(mins[i])
+
+                if use_trailing and high_i > peak_price:
+                    peak_price = high_i
+
+                # 1. TP
+                if tp_price > 0 and high_i >= tp_price:
+                    ep_out, net_exit = apply_sell_costs(tp_price, self._costs)
+                    all_trades.append({
+                        "entry_ts":    entry_ts,
+                        "exit_ts":     ts_pd[s + i].to_pydatetime(),
+                        "entry_price": ep,
+                        "exit_price":  ep_out,
+                        "pnl":         net_exit - net_entry,
+                        "pnl_pct":     (net_exit - net_entry) / net_entry,
+                        "exit_reason": "tp_exit",
+                    })
+                    exited = True
+                    break
+
+                # 2. 트레일링 스톱
+                if use_trailing and close_i < peak_price * (1.0 - trail_pct):
+                    ep_out, net_exit = apply_sell_costs(close_i, self._costs)
+                    all_trades.append({
+                        "entry_ts":    entry_ts,
+                        "exit_ts":     ts_pd[s + i].to_pydatetime(),
+                        "entry_price": ep,
+                        "exit_price":  ep_out,
+                        "pnl":         net_exit - net_entry,
+                        "pnl_pct":     (net_exit - net_entry) / net_entry,
+                        "exit_reason": "trailing_stop",
+                    })
+                    exited = True
+                    break
+
+                # 3. 손절
+                if low_i <= stop_loss:
+                    ep_out, net_exit = apply_sell_costs(stop_loss, self._costs)
+                    all_trades.append({
+                        "entry_ts":    entry_ts,
+                        "exit_ts":     ts_pd[s + i].to_pydatetime(),
+                        "entry_price": ep,
+                        "exit_price":  ep_out,
+                        "pnl":         net_exit - net_entry,
+                        "pnl_pct":     (net_exit - net_entry) / net_entry,
+                        "exit_reason": "stop_loss",
+                    })
+                    exited = True
+                    break
+
+                # 4. 강제 청산 (15:10 이후 또는 마지막 캔들)
+                if min_i >= force_close_min or i == n - 1:
+                    ep_out, net_exit = apply_sell_costs(close_i, self._costs)
+                    all_trades.append({
+                        "entry_ts":    entry_ts,
+                        "exit_ts":     ts_pd[s + i].to_pydatetime(),
+                        "entry_price": ep,
+                        "exit_price":  ep_out,
+                        "pnl":         net_exit - net_entry,
+                        "pnl_pct":     (net_exit - net_entry) / net_entry,
+                        "exit_reason": "forced_close",
+                    })
+                    exited = True
+                    break
+
+            # 진입 캔들이 마지막이었을 때 (edge case)
+            if not exited:
+                ep_out, net_exit = apply_sell_costs(float(closes[-1]), self._costs)
+                all_trades.append({
+                    "entry_ts":    entry_ts,
+                    "exit_ts":     ts_pd[s + n - 1].to_pydatetime(),
+                    "entry_price": ep,
+                    "exit_price":  ep_out,
+                    "pnl":         net_exit - net_entry,
+                    "pnl_pct":     (net_exit - net_entry) / net_entry,
+                    "exit_reason": "forced_close",
+                })
+
+            prev_close  = float(closes[-1])
+            prev_volume = float(np.sum(volumes))
+            prev_n_bars = n
+
+        kpi = self.calculate_kpi(all_trades)
+        kpi["trades"] = all_trades
+        return kpi
+
+    def run_backtest(
+        self,
+        candles: pd.DataFrame,
+        strategy: "Any" = None,
+    ) -> dict[str, Any]:
+        """단일 날짜 시뮬레이션 — run_multi_day_cached 위임."""
+        import asyncio as _asyncio
+        return _asyncio.run(self.run_multi_day_cached("_single", candles, strategy))
+
+
+# ---------------------------------------------------------------------------
+# VIBreakoutFastBacktester — VI(변동성완화장치) 돌파 전략 전용 numpy 백테스터
+# ---------------------------------------------------------------------------
+
+class VIBreakoutFastBacktester(Backtester):
+    """VI 돌파 전략 전용 numpy 가속 백테스터.
+
+    분봉 기반 VI 추정
+    -----------------
+    - 정적 VI: high >= prev_close × (1 + vi_static_trigger_pct) 시 발동 추정
+    - VI 발동 분봉의 open을 'VI 직전가(vi_pre_price)'로 사용
+      (해당 분봉이 시작했을 때 가격 ≈ VI 발동 직전 마지막 체결가)
+    - 발동 분봉은 단일가 매매 중이므로 진입 스킵
+    - 다음 분봉 이후 close > vi_pre_price × (1 + vi_breakout_pct) 시 진입
+
+    진입 조건
+    ---------
+    - 09:05 ≤ min_i ≤ entry_deadline
+    - 상승 방향 VI만 (하락 VI 제외)
+    - 당일 1회만 진입
+    - 전일 거래량: prev_volume >= min_prev_volume
+    - (선택) 진입 분봉 거래량 ≥ 직전 10분 평균 × volume_ratio
+
+    청산 조건 (우선순위)
+    --------------------
+    1. 강제 청산 시간(15:10) 도달    → forced_close
+    2. TP 도달 (tp_pct > 0)         → tp_exit
+    3. 트레일링 스톱 (use_trailing)  → trailing_stop
+    4. SL 도달                      → stop_loss
+    5. 마지막 캔들                   → forced_close
+    """
+
+    async def run_multi_day_cached(
+        self,
+        ticker: str,
+        all_candles: pd.DataFrame,
+        strategy: "Any" = None,
+    ) -> dict[str, Any]:
+        """VI 돌파 멀티데이 고속 백테스트."""
+        if all_candles.empty:
+            return {**self.calculate_kpi([]), "trades": []}
+        self._current_ticker = ticker
+
+        # ── 종목당 1회 numpy 변환 ──────────────────────────────────────────
+        ts_pd       = pd.DatetimeIndex(all_candles["ts"])
+        all_closes  = all_candles["close"].values.astype(np.float64)
+        all_highs   = all_candles["high"].values.astype(np.float64)
+        all_lows    = all_candles["low"].values.astype(np.float64)
+        all_volumes = all_candles["volume"].values.astype(np.float64)
+        all_opens   = all_candles["open"].values.astype(np.float64)
+        all_minutes = (ts_pd.hour * 60 + ts_pd.minute).values.astype(np.int32)
+
+        # 날짜 경계
+        day_ord    = (ts_pd.asi8 // (86_400 * 10 ** 9)).astype(np.int64)
+        day_starts = np.where(np.diff(day_ord, prepend=day_ord[0] - 1) != 0)[0]
+        day_ends   = np.append(day_starts[1:], len(day_ord))
+        n_days     = len(day_starts)
+
+        # ── 설정값 캐시 ──────────────────────────────────────────────────
+        cfg = self._config
+        vi_static_trigger_pct = float(getattr(cfg, "vi_static_trigger_pct", 0.095))
+        vi_breakout_pct       = float(getattr(cfg, "vi_breakout_pct",       0.005))
+        sl_pct                = float(getattr(cfg, "vi_sl_pct",             0.015))
+        tp_pct                = float(getattr(cfg, "vi_tp_pct",             0.03))
+        use_trailing          = bool(getattr(cfg, "vi_use_trailing",        False))
+        trail_pct             = float(getattr(cfg, "vi_trail_pct",          0.015))
+        entry_deadline        = _parse_hhmm(str(getattr(cfg, "vi_entry_deadline", "13:00")), 780)
+        use_volume            = bool(getattr(cfg, "vi_use_volume",          True))
+        volume_ratio          = float(getattr(cfg, "vi_volume_ratio",       2.0))
+        min_prev_volume       = float(getattr(cfg, "vi_min_prev_volume",    50000))
+        signal_block          = _parse_hhmm(str(getattr(cfg, "signal_block_until", "09:05")), 545)
+        force_close_min       = _parse_hhmm(str(getattr(cfg, "force_close_time", "15:10")), 910)
+        vol_lookback          = 10  # 직전 10분 평균 거래량 기준
+
+        all_trades: list[dict] = []
+        prev_close  = 0.0
+        prev_volume = 0.0
+
+        for di in range(n_days):
+            s = int(day_starts[di])
+            e = int(day_ends[di])
+
+            closes  = all_closes[s:e]
+            highs   = all_highs[s:e]
+            lows    = all_lows[s:e]
+            volumes = all_volumes[s:e]
+            opens   = all_opens[s:e]
+            mins    = all_minutes[s:e]
+            n       = e - s
+
+            if n == 0:
+                prev_close  = 0.0
+                prev_volume = 0.0
+                continue
+
+            # 첫날 (전일 데이터 없음) 스킵
+            if prev_close <= 0:
+                prev_close  = float(closes[-1])
+                prev_volume = float(np.sum(volumes))
+                continue
+
+            # 전일 거래량 필터
+            if min_prev_volume > 0 and prev_volume > 0 and prev_volume < min_prev_volume:
+                prev_close  = float(closes[-1])
+                prev_volume = float(np.sum(volumes))
+                continue
+
+            # ── 당일 VI 추정 상태 ─────────────────────────────────────────
+            vi_triggered   = False
+            vi_pre_price   = 0.0
+            vi_trigger_bar = -1  # VI 발동 분봉 인덱스 (발동 분봉은 진입 스킵)
+
+            # ── 당일 거래 루프 ─────────────────────────────────────────────
+            position: dict | None = None
+            entered_today = False
+            last_exit_min: int | None = None
+
+            for i in range(n):
+                close_i = closes[i]
+                high_i  = highs[i]
+                low_i   = lows[i]
+                vol_i   = volumes[i]
+                open_i  = opens[i]
+                min_i   = int(mins[i])
+                ts_i    = ts_pd[s + i]
+
+                # ── 강제 청산 시간 ─────────────────────────────────────────
+                if position is not None and min_i >= force_close_min:
+                    ep, net_exit = apply_sell_costs(close_i, self._costs)
+                    all_trades.append({
+                        "entry_ts":    position["entry_ts"],
+                        "exit_ts":     ts_i.to_pydatetime(),
+                        "entry_price": position["entry_price"],
+                        "exit_price":  ep,
+                        "pnl":         net_exit - position["net_entry"],
+                        "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
+                        "exit_reason": "forced_close",
+                    })
+                    position = None
+                    last_exit_min = min_i
+                    continue
+
+                # ── VI 발동 추정 (포지션 없음, 미진입, 09:05 이후) ──────────
+                if (
+                    not vi_triggered
+                    and position is None
+                    and not entered_today
+                    and min_i >= signal_block
+                    and prev_close > 0
+                ):
+                    pct_change = (high_i - prev_close) / prev_close
+                    if pct_change >= vi_static_trigger_pct:
+                        vi_triggered   = True
+                        vi_pre_price   = float(open_i)  # VI 발동 직전 분봉 시가
+                        vi_trigger_bar = i
+                        # 발동 분봉 자체는 단일가 매매 중 → 진입 스킵
+
+                # ── 진입 탐색 ─────────────────────────────────────────────
+                if position is None:
+                    if (
+                        vi_triggered
+                        and not entered_today
+                        and i > vi_trigger_bar          # 발동 분봉 다음 분봉부터
+                        and signal_block <= min_i <= entry_deadline
+                        and vi_pre_price > 0
+                    ):
+                        breakout_threshold = vi_pre_price * (1.0 + vi_breakout_pct)
+                        if close_i > breakout_threshold:
+                            # 거래량 필터 (선택)
+                            if use_volume:
+                                if i >= vol_lookback:
+                                    avg_vol = float(np.mean(volumes[i - vol_lookback : i]))
+                                    vol_ok = avg_vol > 0 and vol_i >= avg_vol * volume_ratio
+                                else:
+                                    vol_ok = False
+                            else:
+                                vol_ok = True
+
+                            if vol_ok:
+                                entered_today = True
+                                entry_price, net_entry = apply_buy_costs(close_i, self._costs)
+                                stop_loss = entry_price * (1.0 - sl_pct)
+                                tp_price  = entry_price * (1.0 + tp_pct) if tp_pct > 0 else 0.0
+                                position = {
+                                    "entry_ts":    ts_i.to_pydatetime(),
+                                    "entry_price": entry_price,
+                                    "net_entry":   net_entry,
+                                    "stop_loss":   stop_loss,
+                                    "tp_price":    tp_price,
+                                    "peak_price":  entry_price,
+                                }
+
+                # ── 청산 처리 ─────────────────────────────────────────────
+                else:
+                    # 고점 갱신 (트레일링용)
+                    if use_trailing and high_i > position["peak_price"]:
+                        position["peak_price"] = high_i
+
+                    # 1. TP
+                    if tp_pct > 0 and high_i >= position["tp_price"]:
+                        ep, net_exit = apply_sell_costs(position["tp_price"], self._costs)
+                        all_trades.append({
+                            "entry_ts":    position["entry_ts"],
+                            "exit_ts":     ts_i.to_pydatetime(),
+                            "entry_price": position["entry_price"],
+                            "exit_price":  ep,
+                            "pnl":         net_exit - position["net_entry"],
+                            "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
+                            "exit_reason": "tp_exit",
+                        })
+                        position = None
+                        last_exit_min = min_i
+                        continue
+
+                    # 2. 트레일링 스톱
+                    if use_trailing:
+                        trail_stop = position["peak_price"] * (1.0 - trail_pct)
+                        if low_i <= trail_stop:
+                            ep, net_exit = apply_sell_costs(trail_stop, self._costs)
+                            all_trades.append({
+                                "entry_ts":    position["entry_ts"],
+                                "exit_ts":     ts_i.to_pydatetime(),
+                                "entry_price": position["entry_price"],
+                                "exit_price":  ep,
+                                "pnl":         net_exit - position["net_entry"],
+                                "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
+                                "exit_reason": "trailing_stop",
+                            })
+                            position = None
+                            last_exit_min = min_i
+                            continue
+
+                    # 3. SL
+                    if low_i <= position["stop_loss"]:
+                        ep, net_exit = apply_sell_costs(position["stop_loss"], self._costs)
+                        all_trades.append({
+                            "entry_ts":    position["entry_ts"],
+                            "exit_ts":     ts_i.to_pydatetime(),
+                            "entry_price": position["entry_price"],
+                            "exit_price":  ep,
+                            "pnl":         net_exit - position["net_entry"],
+                            "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
+                            "exit_reason": "stop_loss",
+                        })
+                        position = None
+                        last_exit_min = min_i
+                        continue
+
+                    # 4. 마지막 캔들 강제 청산
+                    if i == n - 1:
+                        ep, net_exit = apply_sell_costs(close_i, self._costs)
+                        all_trades.append({
+                            "entry_ts":    position["entry_ts"],
+                            "exit_ts":     ts_i.to_pydatetime(),
+                            "entry_price": position["entry_price"],
+                            "exit_price":  ep,
+                            "pnl":         net_exit - position["net_entry"],
+                            "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
+                            "exit_reason": "forced_close",
+                        })
+                        position = None
+                        last_exit_min = min_i
+
+            prev_close  = float(closes[-1])
+            prev_volume = float(np.sum(volumes))
+
+        kpi = self.calculate_kpi(all_trades)
+        kpi["trades"] = all_trades
+        logger.debug(
+            f"[VI-FAST] {ticker} 완료: trades={kpi['total_trades']} "
+            f"pnl={kpi['total_pnl']:.1f}"
+        )
+        return kpi
+
+    def run_backtest(
+        self,
+        candles: pd.DataFrame,
+        strategy: "Any" = None,
+    ) -> dict[str, Any]:
+        """단일 날짜 시뮬레이션 — run_multi_day_cached 위임."""
+        import asyncio as _asyncio
+        return _asyncio.run(self.run_multi_day_cached("_single", candles, strategy))

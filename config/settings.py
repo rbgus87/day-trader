@@ -303,6 +303,39 @@ class TradingConfig:
     vb_max_range_pct: float = 0.10      # 전일 변동폭 최대
     vb_min_prev_volume: int = 50000     # 전일 최소 거래량 (주)
 
+    # 갭앤고(Gap & Go) 전략 — 갭업 + 첫 봉 양봉 확인 후 진입
+    # 백테스트 전용 (gg_enabled: false → 실거래 영향 없음)
+    gg_enabled: bool = False
+    gg_gap_min_pct: float = 0.02        # 최소 갭업 (2%)
+    gg_gap_max_pct: float = 0.15        # 최대 갭업 (15%, 초과 시 과열 제외)
+    gg_body_ratio_min: float = 0.5      # 첫 봉 몸통비율 최소 (0.5 = 50%)
+    gg_entry_mode: str = "close"        # "close" | "high_break"
+    gg_entry_deadline: str = "09:30"    # high_break 모드 진입 마감
+    gg_sl_mode: str = "first_bar_low"   # "first_bar_low" | "prev_close" | "fixed_2pct"
+    gg_sl_pct: float = 0.02             # fixed_2pct 모드 손절폭 (2%)
+    gg_tp_pct: float = 0.05             # 익절 목표 (0.0이면 trail_only)
+    gg_use_trailing: bool = False       # 트레일링 스톱 사용 (trail_only 모드)
+    gg_trail_pct: float = 0.02          # 트레일링 스톱폭 (고점 대비 2%)
+    gg_use_volume: bool = True          # 첫 봉 거래량 필터 활성
+    gg_volume_ratio: float = 2.0        # 전일 평균 5분봉 거래량 대비 배수
+    gg_min_prev_volume: int = 50000     # 전일 최소 거래량 (주)
+
+    # VI 돌파 전략 — VI 발동 후 해제 시 재돌파 진입
+    # 백테스트 전용 (vi_breakout_enabled: false → 실거래 영향 없음)
+    # 분봉 기반 VI 추정: high >= prev_close × (1 + vi_static_trigger_pct) 시 발동
+    # 다음 분봉 close > vi_pre_price × (1 + vi_breakout_pct) 시 진입
+    vi_breakout_enabled: bool = False
+    vi_breakout_pct: float = 0.005       # VI 직전가 대비 재돌파 임계 (0.5%)
+    vi_static_trigger_pct: float = 0.095 # VI 발동 추정 임계 (전일종가 대비 9.5%)
+    vi_sl_pct: float = 0.015             # 손절폭 (진입가 대비 1.5%)
+    vi_tp_pct: float = 0.03              # 익절 목표 (3%, 0이면 trail_only)
+    vi_use_trailing: bool = False        # 트레일링 스톱 사용 여부
+    vi_trail_pct: float = 0.015          # 트레일링 스톱폭 (고점 대비 1.5%)
+    vi_entry_deadline: str = "13:00"     # 진입 허용 마감
+    vi_use_volume: bool = True           # 진입 분봉 거래량 필터
+    vi_volume_ratio: float = 2.0         # 직전 10분 평균 대비 배수
+    vi_min_prev_volume: int = 50000      # 전일 최소 거래량 (주)
+
 
 @dataclass(frozen=True)
 class ScreenerConfig:
@@ -420,6 +453,7 @@ class AppConfig:
         s = cfg.get("strategy", {})
         mom = s.get("momentum", {})
         gap = s.get("gap_pullback", {})
+        gg = s.get("gap_and_go", {})
         vr = s.get("vwap_reversion", {})
 
         trading = TradingConfig(
@@ -592,6 +626,33 @@ class AppConfig:
             vb_min_range_pct=s.get("volatility_breakout", {}).get("min_range_pct", 0.015),
             vb_max_range_pct=s.get("volatility_breakout", {}).get("max_range_pct", 0.10),
             vb_min_prev_volume=s.get("volatility_breakout", {}).get("min_prev_volume", 50000),
+            # 갭앤고 전략 (config.yaml에서 % 단위 → fraction 변환)
+            gg_enabled=gg.get("enabled", False),
+            gg_gap_min_pct=gg.get("gap_min_pct", 2.0) / 100,
+            gg_gap_max_pct=gg.get("gap_max_pct", 15.0) / 100,
+            gg_body_ratio_min=gg.get("body_ratio_min", 0.5),
+            gg_entry_mode=gg.get("entry_mode", "close"),
+            gg_entry_deadline=gg.get("entry_deadline", "09:30"),
+            gg_sl_mode=gg.get("sl_mode", "first_bar_low"),
+            gg_sl_pct=gg.get("sl_pct", 2.0) / 100,
+            gg_tp_pct=gg.get("tp_pct", 5.0) / 100,
+            gg_use_trailing=gg.get("use_trailing", False),
+            gg_trail_pct=gg.get("trail_pct", 2.0) / 100,
+            gg_use_volume=gg.get("use_volume", True),
+            gg_volume_ratio=gg.get("volume_ratio", 2.0),
+            gg_min_prev_volume=gg.get("min_prev_volume", 50000),
+            # VI 돌파 전략
+            vi_breakout_enabled=s.get("vi_breakout", {}).get("enabled", False),
+            vi_breakout_pct=s.get("vi_breakout", {}).get("vi_breakout_pct", 0.005),
+            vi_static_trigger_pct=s.get("vi_breakout", {}).get("vi_static_trigger_pct", 0.095),
+            vi_sl_pct=s.get("vi_breakout", {}).get("sl_pct", 0.015),
+            vi_tp_pct=s.get("vi_breakout", {}).get("tp_pct", 0.03),
+            vi_use_trailing=s.get("vi_breakout", {}).get("use_trailing", False),
+            vi_trail_pct=s.get("vi_breakout", {}).get("trail_pct", 0.015),
+            vi_entry_deadline=s.get("vi_breakout", {}).get("entry_deadline", "13:00"),
+            vi_use_volume=s.get("vi_breakout", {}).get("use_volume", True),
+            vi_volume_ratio=s.get("vi_breakout", {}).get("volume_ratio", 2.0),
+            vi_min_prev_volume=s.get("vi_breakout", {}).get("min_prev_volume", 50000),
         )
 
         # screener 섹션
