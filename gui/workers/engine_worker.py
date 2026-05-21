@@ -523,6 +523,16 @@ class EngineWorker(QThread):
                 reason = row.get("exit_reason") or "unknown"
                 exit_reasons[reason] = exit_reasons.get(reason, 0) + 1
 
+            strat_rows = await self._db.fetch_all(
+                "SELECT strategy, COUNT(*) as cnt FROM trades "
+                "WHERE side='buy' AND traded_at LIKE ? || '%' GROUP BY strategy",
+                (today,),
+            )
+            strategy_breakdown: dict[str, int] = {}
+            for row in strat_rows:
+                s = (row.get("strategy") or "unknown").lower()
+                strategy_breakdown[s] = int(row.get("cnt", 0))
+
             shadow: dict = {}
             if self._shadow_tracker:
                 shadow = self._shadow_tracker.get_summary()
@@ -543,6 +553,7 @@ class EngineWorker(QThread):
                 "total_pnl":    int(summary["total_pnl"])    if summary else 0,
                 "exit_reasons": exit_reasons,
                 "shadow":       shadow,
+                "strategy_breakdown": strategy_breakdown,
             }
             self.signals.daily_summary_updated.emit(data)
         except Exception as e:

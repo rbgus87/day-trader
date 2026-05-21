@@ -177,8 +177,7 @@ class Sidebar(QFrame):
 
         self._strategy_combo = QComboBox()
         self._strategy_combo.addItems([
-            "Auto", "Momentum", "ORB", "Multi (ORB+Momentum)",
-            "Pullback", "Flow", "Gap", "OpenBreak", "BigCandle",
+            "Momentum", "ORB", "Multi (ORB+Momentum)",
         ])
         self._strategy_combo.setFixedHeight(24)
         self._strategy_combo.currentTextChanged.connect(self._on_strategy_changed)
@@ -350,9 +349,7 @@ class Sidebar(QFrame):
 
     def _on_strategy_changed(self, text: str) -> None:
         """전략 콤보 변경 → signal emit."""
-        if text == "Auto":
-            value = ""
-        elif text == "Multi (ORB+Momentum)":
+        if text == "Multi (ORB+Momentum)":
             value = "multi"
         else:
             value = text.lower()

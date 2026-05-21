@@ -72,7 +72,9 @@ class SignalTimeline(QWidget):
         reason = _REASON_MAP.get(reason_raw.lower(), reason_raw[:6] or "?")
 
         if side == "buy":
-            text = f"{ts}  📈 {ticker}  매수  {price:,}원  [{reason}]"
+            strat = (trade.get("strategy", "") or "").lower()
+            strat_tag = "[ORB] " if strat == "orb" else "[MOM] " if strat == "momentum" else ""
+            text = f"{ts}  📈 {strat_tag}{ticker}  매수  {price:,}원  [{reason}]"
             color = Colors.accent_blue
         else:
             pnl_v = int(pnl or 0)

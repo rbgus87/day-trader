@@ -56,6 +56,7 @@ class HeaderBar(QFrame):
         self._buy_time_end = _DEFAULT_BUY_TIME_END
         self._buy_time_enabled = _DEFAULT_BUY_TIME_ENABLED
         self._daily_loss_limit = _DEFAULT_DAILY_LOSS_LIMIT
+        self._strategy_type = "momentum"
 
         self._build_ui()
 
@@ -86,6 +87,10 @@ class HeaderBar(QFrame):
         self._lbl_pnl = QLabel("일일PnL —")
         self._lbl_pnl.setStyleSheet(f"color: {Colors.text_muted}; {_BOLD}")
 
+        self._lbl_strategy_phase = QLabel("")
+        self._lbl_strategy_phase.setStyleSheet(f"color: {Colors.text_muted}; {_BOLD}")
+        self._lbl_strategy_phase.setVisible(False)
+
         self._lbl_capital = QLabel("자본 —")
         self._lbl_capital.setStyleSheet(f"color: {Colors.text_muted}; {_BOLD}")
 
@@ -95,6 +100,7 @@ class HeaderBar(QFrame):
             self._lbl_kospi,
             self._lbl_kosdaq,
             self._lbl_pnl,
+            self._lbl_strategy_phase,
         ]
         for i, w in enumerate(items):
             layout.addWidget(w)
@@ -129,6 +135,11 @@ class HeaderBar(QFrame):
         self._lbl_kospi.setStyleSheet(f"color: {k_color}; {_BOLD}")
         self._lbl_kosdaq.setText(f"KOSDAQ {q_text}")
         self._lbl_kosdaq.setStyleSheet(f"color: {q_color}; {_BOLD}")
+
+    def on_strategy_type_changed(self, strategy_type: str) -> None:
+        self._strategy_type = strategy_type
+        self._lbl_strategy_phase.setVisible(strategy_type == "multi")
+        self._refresh_strategy_phase()
 
     def on_daily_pnl(self, pnl: float, capital: float | None = None) -> None:
         self._daily_pnl = pnl
@@ -167,8 +178,22 @@ class HeaderBar(QFrame):
             reasons.append(("MKT", ""))
         return reasons
 
+    def _refresh_strategy_phase(self) -> None:
+        if self._strategy_type != "multi":
+            return
+        now = datetime.now().time()
+        if now < dt_time(9, 30):
+            phase, color = "전략: ORB 활성", "#cba6f7"
+        elif now < dt_time(12, 0):
+            phase, color = "전략: Momentum 활성", "#a6e3a1"
+        else:
+            phase, color = "전략: 청산 관리만", "#6c7086"
+        self._lbl_strategy_phase.setText(phase)
+        self._lbl_strategy_phase.setStyleSheet(f"color: {color}; {_BOLD}")
+
     def _refresh(self) -> None:
         self._lbl_time.setText(datetime.now().strftime("⏱ %H:%M:%S"))
+        self._refresh_strategy_phase()
 
         reasons = self._compute_block_reasons()
         if not reasons:

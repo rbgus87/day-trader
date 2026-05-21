@@ -82,6 +82,7 @@ class StrategyTab(QWidget):
         super().__init__(parent)
         # 읽기 전용 라벨 핸들 (load_config에서 갱신)
         self._lbl_volume_ratio: QLabel | None = None
+        self._lbl_max_entry_above_close: QLabel | None = None
         self._lbl_min_breakout_pct: QLabel | None = None
         self._lbl_adx_min: QLabel | None = None
         self._lbl_adx_length: QLabel | None = None
@@ -153,6 +154,9 @@ class StrategyTab(QWidget):
 
         self._lbl_volume_ratio = _ro_label("2.0 배")
         form.addRow("volume_ratio:", self._lbl_volume_ratio)
+
+        self._lbl_max_entry_above_close = _ro_label("25.0 % (전일 종가 대비 최대 진입)")
+        form.addRow("max_entry_above_close_pct:", self._lbl_max_entry_above_close)
 
         self._lbl_min_breakout_pct = _ro_label("3.0 % (ADR-016)")
         form.addRow("min_breakout_pct:", self._lbl_min_breakout_pct)
@@ -290,6 +294,13 @@ class StrategyTab(QWidget):
         form = QFormLayout(group)
         form.setContentsMargins(10, 16, 10, 10)
         form.setSpacing(8)
+
+        self._lbl_multi_info = QLabel("Multi 모드: ORB(09:05~09:30) → Momentum(09:30~12:00)")
+        self._lbl_multi_info.setStyleSheet(
+            "color: #cba6f7; font-size: 10px; padding: 2px 0; background: transparent;"
+        )
+        self._lbl_multi_info.setWordWrap(True)
+        form.addRow(self._lbl_multi_info)
 
         self._lbl_strategy_type = _ro_label("momentum")
         form.addRow("strategy_type:", self._lbl_strategy_type)
@@ -581,6 +592,10 @@ class StrategyTab(QWidget):
         if self._lbl_volume_ratio is not None:
             self._lbl_volume_ratio.setText(
                 f"{float(momentum.get('volume_ratio', 2.0)):.1f} 배"
+            )
+        if self._lbl_max_entry_above_close is not None:
+            self._lbl_max_entry_above_close.setText(
+                f"{float(momentum.get('max_entry_above_close_pct', 0.25)) * 100:.1f} % (전일 종가 대비 최대 진입)"
             )
         if self._lbl_min_breakout_pct is not None:
             self._lbl_min_breakout_pct.setText(

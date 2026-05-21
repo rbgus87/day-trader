@@ -21,6 +21,7 @@ _REASON_CODES = {
     "limit_up_exit": "상한",
     "momentum_fade": "FADE",
     "momentum": "MOM",
+    "orb": "ORB",
     "paper": "?", "unknown": "?", "": "?",
 }
 

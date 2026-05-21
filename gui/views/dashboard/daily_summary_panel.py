@@ -143,6 +143,26 @@ class DailySummaryPanel(QWidget):
         cl.addWidget(self._exit_section)
         self._exit_section.setVisible(False)
 
+        # ── 전략별 분리 섹션 ────────────────────────────────────────
+        self._breakdown_widget = QWidget()
+        self._breakdown_widget.setStyleSheet("background: transparent;")
+        bd_v = QVBoxLayout(self._breakdown_widget)
+        bd_v.setContentsMargins(0, 0, 0, 0)
+        bd_v.setSpacing(Spacing.gap_xs)
+        bd_title = QLabel("전략별 거래")
+        bd_title.setStyleSheet(
+            f"color: {Colors.text_muted}; font-size: {Typography.size_xs}px; background: transparent;"
+        )
+        self._breakdown_body = QLabel("")
+        self._breakdown_body.setWordWrap(True)
+        self._breakdown_body.setStyleSheet(
+            f"color: {Colors.text_secondary}; font-size: {Typography.size_sm}px; background: transparent;"
+        )
+        bd_v.addWidget(bd_title)
+        bd_v.addWidget(self._breakdown_body)
+        cl.addWidget(self._breakdown_widget)
+        self._breakdown_widget.setVisible(False)
+
         # ── 섀도우 트래커 섹션 ──────────────────────────────────────
         self._shadow_widget = QWidget()
         self._shadow_widget.setStyleSheet("background: transparent;")
@@ -189,11 +209,15 @@ class DailySummaryPanel(QWidget):
         total_pnl    = int(data.get("total_pnl", 0))
         exit_reasons: dict[str, int] = data.get("exit_reasons", {})
         shadow: dict = data.get("shadow", {})
+        strategy_breakdown: dict = data.get("strategy_breakdown", {})
 
         if total_trades == 0:
             self._show_empty()
         else:
-            self._show_data(total_trades, wins, losses, win_rate, total_pnl, exit_reasons, shadow)
+            self._show_data(
+                total_trades, wins, losses, win_rate, total_pnl,
+                exit_reasons, shadow, strategy_breakdown,
+            )
 
         self.setVisible(True)
 
@@ -204,6 +228,7 @@ class DailySummaryPanel(QWidget):
         self._card_winrate.set_value("—")
         self._card_pnl.set_value("0원")
         self._exit_section.setVisible(False)
+        self._breakdown_widget.setVisible(False)
         self._shadow_widget.setVisible(False)
         self._empty_lbl.setVisible(True)
 
@@ -216,6 +241,7 @@ class DailySummaryPanel(QWidget):
         total_pnl: int,
         exit_reasons: dict[str, int],
         shadow: dict,
+        strategy_breakdown: dict | None = None,
     ) -> None:
         self._empty_lbl.setVisible(False)
 
@@ -236,6 +262,17 @@ class DailySummaryPanel(QWidget):
             self._exit_section.setVisible(True)
         else:
             self._exit_section.setVisible(False)
+
+        # 전략별 거래 분리
+        if strategy_breakdown:
+            parts = []
+            for strat, cnt in sorted(strategy_breakdown.items()):
+                tag = strat.upper()
+                parts.append(f"{tag}: {cnt}건")
+            self._breakdown_body.setText("  /  ".join(parts))
+            self._breakdown_widget.setVisible(True)
+        else:
+            self._breakdown_widget.setVisible(False)
 
         # 섀도우
         shadow_total = int(shadow.get("total", 0))
