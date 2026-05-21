@@ -1,6 +1,6 @@
 # CLAUDE.md — day-trader
 
-> **최종 수정**: 2026-05-21 (모멘텀 고정 SL/TP 96조합 그리드 — 전 조합 미달 확정)
+> **최종 수정**: 2026-05-21 (모멘텀 entry_deadline 5조합 그리드 — 12:00 유지 확정)
 > 이 문서는 **백테스트에서 검증된 사실만** 기재한다.
 
 ---
@@ -123,6 +123,7 @@ day-trader는 **KOSPI/KOSDAQ 모멘텀 단타 시스템**이다.
 - **거래량 폭발(Volume Spike) 전략 216조합 그리드** (2026-05-21): lookback×spike×sl×tp×entry_end = 3×4×3×3×2. **전 조합 선정 기준 미달** — OLD 구간 최고 PF=1.005 (전 조합 PF<1.5). 거래 2,000~2,700건 과다 발생, TP 도달 10~16%, 평균 보유 170~230분(대부분 forced_close). NEW 구간 일부 PF>1.5이나 OLD와 방향성 불일치. `volume_spike.enabled: false` 유지. `reports/volume_spike_grid_result.md`.
 - **변동성 돌파(Volatility Breakout) 전략 80조합 그리드** (2026-05-21): k×deadline×sl_mode×tp_mode×vol_confirm = 5×2×2×2×2. **전 조합 선정 기준 미달** — OLD 구간 최고 PF=1.027 (전 조합 PF<1.5). 거래 1,515~3,675건 과다, 평균 보유 120~182분(FC 36~49%), maxCL 12~19. NEW 구간 일부 PF>1.5(최고 1.627)이나 OLD 기준 미달 → 선정 불가. 구조적 문제: 세금/수수료(0.26%) 비용 하에 방향성 확인 없는 진입 → 강제 청산 비율 높고 손익비 1.0 수준. `volatility_breakout.enabled: false` 유지. `reports/volatility_breakout_grid_result.md`.
 - **VI 돌파(VI Breakout) 전략 192조합 그리드** (2026-05-21): vi_breakout_pct×sl_pct×tp_mode×deadline×use_volume = 4×3×4×2×2. **전 조합 선정 기준 미달** — OLD 구간 최고 PF=1.325 (전 조합 PF<1.5). 거래 362~677건 과다, SL 비율 60~80%, 승률 19~50%. NEW 구간 일부 PF>1.5이나 OLD 기준 미달 → 선정 불가. 구조적 문제: 분봉 기반 VI 발동 추정 정밀도 한계 + 재돌파 진입 시점에 이미 고점 형성 → 세금/수수료 비용 하에 수익성 없음. `vi_breakout.enabled: false` 유지. `reports/vi_breakout_grid_result.md`.
+- **모멘텀 entry_deadline 5조합 그리드** (2026-05-21): entry_deadline = [10:00, 11:00, 12:00, 13:00, 14:00]. 나머지 파라미터 현행 유지(vr2.0, ATR 청산, max_entry_above_close_pct=25). OLD: 10:00 PF=4.178(최고) / 12:00 PF=3.870·PnL+198K(PnL 최고) / 13:00→PF1.828 / 14:00→PF1.373으로 12:00 이후 급락. NEW: 10:00만 PF=1.665(>1.0, 단 10건), 나머지 전부 PF<1.0. **12:00 현행 유지 확정** — PnL 최고 + 13:00/14:00 PF 미달 + 10:00/11:00 거래 과소(81건/149건). `buy_time_end: "12:00"` 유지. `reports/momentum_deadline_grid_result.md`.
 - **모멘텀 고정 SL/TP 96조합 그리드** (2026-05-21): sl_pct×tp_pct×trail_mode×entry_deadline = 4×4×3×2. **전 조합 선정 기준 미달** — OLD 구간 최고 PF=1.816 (sl2%/tp2%/off/ee11:00), 3조합 PF≥1.5 충족하나 **NEW 구간 전 조합 PF<1.0** (최고 0.65). 구조적 문제: 타이트한 SL로 거래당 비용(0.26%) 대비 손익비 불리, NEW 구간 승률 급락(21~52%). 기존 ATR 기반 청산(PF 4.881)이 고정 SL/TP 대비 명확히 우위. `tight_sl.enabled: false` 유지. `reports/momentum_tight_sl_grid_result.md`.
 - **이전 baseline** (장중 필터 미포함)
   - 장중 필터 제외 (2026-05-14): PF 4.881 / 228건 / +295,690 / SL# 27
