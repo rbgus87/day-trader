@@ -336,6 +336,12 @@ class TradingConfig:
     vi_volume_ratio: float = 2.0         # 직전 10분 평균 대비 배수
     vi_min_prev_volume: int = 50000      # 전일 최소 거래량 (주)
 
+    # 모멘텀 고정 SL/TP 그리드 — grid_momentum_tight_sl.py 전용
+    # 실거래/운영 경로에서는 사용되지 않음
+    tight_sl_pct: float = 0.010         # 고정 손절폭 (진입가 대비)
+    tight_tp_pct: float = 0.020         # 고정 익절폭 (trail_mode=off 시만 사용)
+    tight_trail_mode: str = "off"        # "off" | "trail_1pct" | "trail_1.5pct"
+
 
 @dataclass(frozen=True)
 class ScreenerConfig:

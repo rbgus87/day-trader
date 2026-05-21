@@ -670,6 +670,301 @@ class FastBacktester(Backtester):
 
 
 # ---------------------------------------------------------------------------
+# MomentumTightSLFastBacktester — 고정 SL/TP 그리드 전용 numpy 백테스터
+# ---------------------------------------------------------------------------
+
+class MomentumTightSLFastBacktester(Backtester):
+    """모멘텀 고정 SL/TP 백테스터 — grid_momentum_tight_sl.py 전용.
+
+    FastBacktester와 동일한 진입 조건(전일고가 돌파·거래량·ADX·RVol·VWAP)을
+    사용하되 청산 로직을 단순화한다.
+
+    청산 모드
+    ----------
+    - trail_mode="off"       : 고정 SL + 고정 TP (tp_exit 또는 stop_loss, 미달 시 forced_close)
+    - trail_mode="trail_1pct": 고정 초기 SL + 고점 대비 1% 단순 트레일링 (TP 없음)
+    - trail_mode="trail_1.5pct": 고점 대비 1.5% 트레일링 (TP 없음)
+
+    비활성 항목
+    -----------
+    ATR 비례 손절, Chandelier 트레일링, time_decay, breakeven, momentum_fade,
+    stale_exit, limit_up_exit — 이 클래스에서는 읽지 않음.
+    """
+
+    def run_backtest(
+        self,
+        candles: "pd.DataFrame",
+        strategy: "BaseStrategy",
+    ) -> "dict[str, Any]":
+        """고정 SL/TP numpy 시뮬레이션."""
+        if candles.empty:
+            return {**self.calculate_kpi([]), "trades": []}
+
+        candles = candles.reset_index(drop=True)
+        n = len(candles)
+
+        # ── 1. numpy 배열 변환 ───────────────────────────────────────────
+        closes  = candles["close"].values.astype(np.float64)
+        highs   = candles["high"].values.astype(np.float64)
+        lows    = candles["low"].values.astype(np.float64)
+        volumes = candles["volume"].values.astype(np.float64)
+        ts_vals = candles["ts"].values
+        ts_pd   = pd.DatetimeIndex(ts_vals)
+        minutes = ts_pd.hour * 60 + ts_pd.minute
+
+        # ── 2. 사전계산 ─────────────────────────────────────────────────
+        cum_vols     = np.cumsum(volumes)
+        tp_arr       = (highs + lows + closes) / 3.0
+        cum_tp_vol   = np.cumsum(tp_arr * volumes)
+        cum_vol_safe = np.where(cum_vols > 0, cum_vols, 1.0)
+        vwap_arr     = cum_tp_vol / cum_vol_safe
+        _adx_window  = int(self._config.adx_length) + 20
+
+        # ── 3. 설정값 캐시 ──────────────────────────────────────────────
+        cfg = self._config
+
+        prev_high      = float(getattr(strategy, "_prev_day_high",   0.0))
+        prev_volume    = float(getattr(strategy, "_prev_day_volume", 0))
+        prev_close_day = float(getattr(strategy, "_prev_day_close",  0.0))
+
+        min_bp            = float(getattr(cfg, "min_breakout_pct", 0.0))
+        vol_ratio         = float(cfg.momentum_volume_ratio)
+        adx_min           = float(cfg.adx_min)
+        adx_len           = int(cfg.adx_length)
+        min_bars_adx      = adx_len + 20
+        rvol_win          = int(cfg.rvol_window)
+        rvol_min_v        = float(cfg.rvol_min)
+        vwap_min_above    = float(cfg.vwap_min_above)
+        max_entry_gap     = float(getattr(cfg, "max_entry_above_breakout_pct", 0.10))
+        max_close_pct_raw = float(getattr(cfg, "max_entry_above_close_pct", 999.0))
+
+        signal_block_min = _parse_hhmm(cfg.signal_block_until, 545)
+        buy_time_end_min = _parse_hhmm(cfg.buy_time_end, 720)
+        buy_time_enabled = bool(getattr(cfg, "buy_time_limit_enabled", True))
+
+        tight_sl_pct     = float(getattr(cfg, "tight_sl_pct",    0.010))
+        tight_tp_pct     = float(getattr(cfg, "tight_tp_pct",    0.020))
+        tight_trail_mode = str(getattr(cfg,  "tight_trail_mode", "off"))
+
+        trail_pct = 0.0
+        if tight_trail_mode == "trail_1pct":
+            trail_pct = 0.010
+        elif tight_trail_mode == "trail_1.5pct":
+            trail_pct = 0.015
+
+        breakout_level = prev_high * (1.0 + min_bp)
+        required_vol   = prev_volume * vol_ratio
+
+        max_trades_day   = int(getattr(cfg, "max_trades_per_day", 1))
+        cooldown_min_cfg = int(getattr(cfg, "cooldown_minutes",   0))
+
+        # ── 4. 메인 루프 ────────────────────────────────────────────────
+        trades: list[dict] = []
+        position: dict | None = None
+        breakout_price_day: float | None = None
+        trade_count    = 0
+        last_exit_min: int | None = None
+
+        for i in range(n):
+            close_i = closes[i]
+            high_i  = highs[i]
+            low_i   = lows[i]
+            min_i   = int(minutes[i])
+            ts_i    = ts_pd[i]
+
+            # ── 포지션 없음: 진입 신호 탐색 ─────────────────────────────
+            if position is None:
+                if breakout_price_day is None and high_i >= breakout_level:
+                    breakout_price_day = breakout_level
+
+                cooldown_ok = (
+                    last_exit_min is None
+                    or cooldown_min_cfg <= 0
+                    or (min_i - last_exit_min) >= cooldown_min_cfg
+                )
+                _close_chg_ok = (
+                    max_close_pct_raw >= 500.0
+                    or prev_close_day <= 0
+                    or (close_i - prev_close_day) / prev_close_day * 100.0 <= max_close_pct_raw
+                )
+                if (
+                    trade_count < max_trades_day
+                    and cooldown_ok
+                    and prev_high > 0
+                    and min_i >= signal_block_min
+                    and (not buy_time_enabled or min_i < buy_time_end_min)
+                    and close_i >= breakout_level
+                    and cum_vols[i] >= required_vol
+                    and _close_chg_ok
+                ):
+                    bp        = breakout_price_day if breakout_price_day is not None else breakout_level
+                    entry_gap = (close_i - bp) / bp if bp > 0 else 0.0
+
+                    if entry_gap <= max_entry_gap:
+                        # ADX
+                        adx_ok = True
+                        if cfg.adx_enabled:
+                            if i < min_bars_adx - 1:
+                                adx_ok = False
+                            else:
+                                ws = max(0, i - _adx_window + 1)
+                                a  = _wilder_adx_numpy(
+                                    highs[ws:i + 1], lows[ws:i + 1], closes[ws:i + 1],
+                                    self._config.adx_length,
+                                )
+                                av     = a[-1] if len(a) > 0 else np.nan
+                                adx_ok = not np.isnan(av) and av >= adx_min
+
+                        # RVol
+                        rvol_ok = True
+                        if cfg.rvol_enabled:
+                            if i < rvol_win + 9:
+                                rvol_ok = False
+                            else:
+                                recent_sum = float(np.sum(volumes[i - rvol_win + 1:i + 1]))
+                                prev_arr   = volumes[:i - rvol_win + 1]
+                                avg_v      = float(np.mean(prev_arr)) if len(prev_arr) > 0 else 0.0
+                                rvol_ok    = avg_v > 0 and (recent_sum / (avg_v * rvol_win)) >= rvol_min_v
+
+                        # VWAP
+                        vwap_ok = True
+                        if cfg.vwap_enabled:
+                            if i < 9:
+                                vwap_ok = False
+                            else:
+                                vwap_ok = close_i >= vwap_arr[i] * (1.0 + vwap_min_above)
+
+                        # 마지막 종가 돌파 재확인
+                        last_bp_ok = (
+                            prev_high > 0
+                            and (close_i - prev_high) / prev_high >= min_bp
+                        )
+
+                        if adx_ok and rvol_ok and vwap_ok and last_bp_ok:
+                            strategy.on_entry()
+                            trade_count += 1
+                            entry_price, net_entry = apply_buy_costs(close_i, self._costs)
+                            stop_loss = entry_price * (1.0 - tight_sl_pct)
+                            tp_price  = (
+                                entry_price * (1.0 + tight_tp_pct)
+                                if tight_trail_mode == "off"
+                                else None
+                            )
+
+                            position = {
+                                "entry_ts":    ts_i.to_pydatetime(),
+                                "entry_price": entry_price,
+                                "net_entry":   net_entry,
+                                "stop_loss":   stop_loss,
+                                "tp_price":    tp_price,
+                                "highest_price": float(high_i),
+                                "entry_chg_from_close": (
+                                    (entry_price - prev_close_day) / prev_close_day
+                                    if prev_close_day > 0 else 0.0
+                                ),
+                            }
+
+            # ── 포지션 보유 중: 청산 확인 ───────────────────────────────
+            else:
+                # 1. TP 확인 (trail_mode="off" 전용, 고가 기준)
+                if tight_trail_mode == "off" and position["tp_price"] is not None:
+                    if high_i >= position["tp_price"]:
+                        ep_tp, net_exit = apply_sell_costs(position["tp_price"], self._costs)
+                        pnl = net_exit - position["net_entry"]
+                        trades.append({
+                            "entry_ts":    position["entry_ts"],
+                            "exit_ts":     ts_i.to_pydatetime(),
+                            "entry_price": position["entry_price"],
+                            "exit_price":  ep_tp,
+                            "pnl":         pnl,
+                            "pnl_pct":     pnl / position["net_entry"],
+                            "exit_reason": "tp_exit",
+                            "entry_chg_from_close": position.get("entry_chg_from_close", 0.0),
+                        })
+                        position = None
+                        strategy.on_exit()
+                        last_exit_min = min_i
+                        continue
+
+                # 2. SL 확인 (트레일 업데이트 전)
+                if low_i <= position["stop_loss"]:
+                    ep_sl, net_exit = apply_sell_costs(position["stop_loss"], self._costs)
+                    pnl = net_exit - position["net_entry"]
+                    exit_reason = (
+                        "trailing_stop"
+                        if position["stop_loss"] >= position["entry_price"]
+                        else "stop_loss"
+                    )
+                    trades.append({
+                        "entry_ts":    position["entry_ts"],
+                        "exit_ts":     ts_i.to_pydatetime(),
+                        "entry_price": position["entry_price"],
+                        "exit_price":  ep_sl,
+                        "pnl":         pnl,
+                        "pnl_pct":     pnl / position["net_entry"],
+                        "exit_reason": exit_reason,
+                        "entry_chg_from_close": position.get("entry_chg_from_close", 0.0),
+                    })
+                    position = None
+                    strategy.on_exit()
+                    last_exit_min = min_i
+                    continue
+
+                # 3. 트레일 업데이트 + 재확인 (trail_mode != "off")
+                if tight_trail_mode != "off" and trail_pct > 0:
+                    if high_i > position["highest_price"]:
+                        position["highest_price"] = float(high_i)
+                        new_stop = position["highest_price"] * (1.0 - trail_pct)
+                        position["stop_loss"] = max(position["stop_loss"], new_stop)
+
+                    if low_i <= position["stop_loss"]:
+                        ep_sl, net_exit = apply_sell_costs(position["stop_loss"], self._costs)
+                        pnl = net_exit - position["net_entry"]
+                        exit_reason = (
+                            "trailing_stop"
+                            if position["stop_loss"] >= position["entry_price"]
+                            else "stop_loss"
+                        )
+                        trades.append({
+                            "entry_ts":    position["entry_ts"],
+                            "exit_ts":     ts_i.to_pydatetime(),
+                            "entry_price": position["entry_price"],
+                            "exit_price":  ep_sl,
+                            "pnl":         pnl,
+                            "pnl_pct":     pnl / position["net_entry"],
+                            "exit_reason": exit_reason,
+                            "entry_chg_from_close": position.get("entry_chg_from_close", 0.0),
+                        })
+                        position = None
+                        strategy.on_exit()
+                        last_exit_min = min_i
+                        continue
+
+                # 4. 마지막 캔들 강제 청산
+                if i == n - 1 and position is not None:
+                    ep_sl, net_exit = apply_sell_costs(close_i, self._costs)
+                    pnl = net_exit - position["net_entry"]
+                    trades.append({
+                        "entry_ts":    position["entry_ts"],
+                        "exit_ts":     ts_i.to_pydatetime(),
+                        "entry_price": position["entry_price"],
+                        "exit_price":  ep_sl,
+                        "pnl":         pnl,
+                        "pnl_pct":     pnl / position["net_entry"],
+                        "exit_reason": "forced_close",
+                        "entry_chg_from_close": position.get("entry_chg_from_close", 0.0),
+                    })
+                    position = None
+                    strategy.on_exit()
+                    last_exit_min = min_i
+
+        strategy.set_backtest_time(None)
+        kpi = self.calculate_kpi(trades)
+        kpi["trades"] = trades
+        return kpi
+
+
+# ---------------------------------------------------------------------------
 # ORBFastBacktester — Opening Range Breakout 전용 numpy 백테스터
 # ---------------------------------------------------------------------------
 
