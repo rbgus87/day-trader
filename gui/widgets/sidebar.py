@@ -177,7 +177,7 @@ class Sidebar(QFrame):
 
         self._strategy_combo = QComboBox()
         self._strategy_combo.addItems([
-            "Momentum", "ORB", "Multi (ORB+Momentum)",
+            "Multi (ORB+Momentum)", "Momentum", "ORB",
         ])
         self._strategy_combo.setFixedHeight(24)
         self._strategy_combo.currentTextChanged.connect(self._on_strategy_changed)
@@ -439,6 +439,13 @@ class Sidebar(QFrame):
     def get_strategy(self) -> str:
         """현재 선택된 전략 콤보 텍스트 반환."""
         return self._strategy_combo.currentText()
+
+    def get_strategy_value(self) -> str:
+        """현재 선택된 전략의 내부 값 반환 (multi / momentum / orb)."""
+        text = self._strategy_combo.currentText()
+        if text == "Multi (ORB+Momentum)":
+            return "multi"
+        return text.lower()
 
     def set_strategy(self, force: str) -> None:
         """전략 콤보를 force 값으로 설정 (대소문자 무시)."""

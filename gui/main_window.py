@@ -569,9 +569,13 @@ class MainWindow(QMainWindow):
                 stocks = uni.get("stocks", [])
                 self.strategy_tab.load_universe(stocks)
                 # self.backtest_tab.set_tickers(...)  # 비활성
-            force = cfg.get("strategy", {}).get("force", "")
+            strat_cfg = cfg.get("strategy", {}) or {}
+            # strategy_type 우선, 없으면 force 폴백
+            force = strat_cfg.get("strategy_type", "") or strat_cfg.get("force", "")
             if force:
                 self.sidebar.set_strategy(force)
+                self.strategy_tab.on_strategy_changed(force)
+                self.header_bar.on_strategy_type_changed(force)
         except Exception as e:
             logger.warning(f"config UI 로드 실패: {e}")
 
@@ -587,9 +591,9 @@ class MainWindow(QMainWindow):
         mode = self.sidebar.get_mode()
         self._lbl_status_left.setText(f"Mode: {mode.upper()} | Engine: 실행 중")
         self.sidebar.update_connection(True, True)
-        combo_text = self.sidebar.get_strategy()
-        if combo_text and combo_text != "Auto":
-            self._worker.signals.request_strategy_change.emit(combo_text.lower())
+        strat_val = self.sidebar.get_strategy_value()
+        if strat_val:
+            self._worker.signals.request_strategy_change.emit(strat_val)
         self._update_tray_tooltip()
 
     def _on_engine_stopped(self):
