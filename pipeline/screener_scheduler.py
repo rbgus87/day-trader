@@ -98,7 +98,7 @@ class ScreenerScheduler:
         from strategy.momentum_strategy import MomentumStrategy
 
         strategy_type = getattr(self._config.trading, "strategy_type", "momentum")
-        if strategy_type == "orb":
+        if strategy_type in ("orb", "multi"):
             from strategy.orb_strategy import ORBStrategy
 
         prev_data: dict[str, tuple[float, int, float]] = {}
@@ -123,6 +123,8 @@ class ScreenerScheduler:
             ticker = s["ticker"]
             if strategy_type == "orb":
                 strat = ORBStrategy(self._config.trading)
+            elif strategy_type == "multi":
+                strat = ORBStrategy(self._config.trading)  # ORB 창(09:05~09:30) 담당
             else:
                 strat = MomentumStrategy(self._config.trading)
             strat.configure_multi_trade(
@@ -134,13 +136,31 @@ class ScreenerScheduler:
             if ticker in prev_data and hasattr(strat, "set_prev_day_data"):
                 ph, pv, pc = prev_data[ticker]
                 strat.set_prev_day_data(ph, pv, pc)
-            self._state.active_strategies[ticker] = {
-                "strategy": strat, "name": s.get("name", ticker), "score": 0,
-            }
+            entry: dict = {"strategy": strat, "name": s.get("name", ticker), "score": 0}
+
+            # Multi 모드: 모멘텀 전략도 함께 등록 (09:30 이후 전환용)
+            if strategy_type == "multi":
+                mom_strat = MomentumStrategy(self._config.trading)
+                mom_strat.configure_multi_trade(
+                    max_trades=self._config.trading.max_trades_per_day,
+                    cooldown_minutes=self._config.trading.cooldown_minutes,
+                )
+                if hasattr(mom_strat, "set_ticker"):
+                    mom_strat.set_ticker(ticker)
+                if ticker in prev_data and hasattr(mom_strat, "set_prev_day_data"):
+                    ph, pv, pc = prev_data[ticker]
+                    mom_strat.set_prev_day_data(ph, pv, pc)
+                entry["momentum_strategy"] = mom_strat
+
+            self._state.active_strategies[ticker] = entry
             if "market" in s:
                 self._state.ticker_markets[ticker] = s["market"]
             self._state.ticker_names[ticker] = s.get("name", ticker)
-            self._state.ticker_sources[ticker] = "day_orb" if strategy_type == "orb" else "day_momentum"
+            self._state.ticker_sources[ticker] = (
+                "day_orb" if strategy_type == "orb"
+                else "day_multi" if strategy_type == "multi"
+                else "day_momentum"
+            )
 
             # 갭 전략 등록 (enabled 시)
             if gap_enabled:
@@ -157,6 +177,7 @@ class ScreenerScheduler:
         )
         logger.info(
             f"유니버스 전체 전략 등록: {len(self._state.active_strategies)}종목"
+            + (f" (multi=ORB+모멘텀)" if strategy_type == "multi" else "")
             + (f" + gap_pullback {len(self._state.gap_strategies)}종목" if gap_enabled else "")
         )
 

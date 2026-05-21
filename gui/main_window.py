@@ -210,6 +210,7 @@ class MainWindow(QMainWindow):
     def _on_strategy_changed(self, strategy: str):
         if self._worker:
             self._worker.signals.request_strategy_change.emit(strategy)
+        self.strategy_tab.on_strategy_changed(strategy)
 
     def _on_start(self):
         mode = self.sidebar.get_mode()

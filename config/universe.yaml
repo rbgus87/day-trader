@@ -1,5 +1,5 @@
 # ============================================================================
-# universe.yaml — 조건검색 자동 갱신 (2026-05-20 08:28:32)
+# universe.yaml — 조건검색 자동 갱신 (2026-05-21 09:39:15)
 # 생성: gui.workers.engine_worker._write_universe_yaml
 # ============================================================================
 
@@ -10,147 +10,147 @@ stocks:
 - ticker: '439960'
   name: 코스모로보틱스
   market: kosdaq
-- ticker: '066570'
-  name: LG전자
-  market: kospi
 - ticker: 036930
   name: 주성엔지니어링
   market: kosdaq
-- ticker: '454910'
-  name: 두산로보틱스
-  market: kospi
-- ticker: '027360'
-  name: 아주IB투자
-  market: kosdaq
-- ticker: '042700'
-  name: 한미반도체
+- ticker: '066570'
+  name: LG전자
   market: kospi
 - ticker: '034020'
   name: 두산에너빌리티
   market: kospi
-- ticker: '100790'
-  name: 미래에셋벤처투자
-  market: kosdaq
-- ticker: '274090'
-  name: 켄코아에어로스페이스
-  market: kosdaq
-- ticker: '010120'
-  name: LS ELECTRIC
-  market: kospi
-- ticker: '196170'
-  name: 알테오젠
-  market: kosdaq
-- ticker: 028260
-  name: 삼성물산
+- ticker: '042700'
+  name: 한미반도체
   market: kospi
 - ticker: 005490
   name: POSCO홀딩스
   market: kospi
-- ticker: '178320'
-  name: 서진시스템
-  market: kosdaq
 - ticker: '000270'
   name: 기아
   market: kospi
-- ticker: '440110'
-  name: 파두
-  market: kosdaq
 - ticker: '001440'
   name: 대한전선
   market: kospi
 - ticker: '047040'
   name: 대우건설
   market: kospi
-- ticker: '356680'
-  name: 엑스게이트
-  market: kosdaq
 - ticker: 006800
   name: 미래에셋증권
+  market: kospi
+- ticker: 001820
+  name: 삼화콘덴서
+  market: kospi
+- ticker: 028260
+  name: 삼성물산
+  market: kospi
+- ticker: 069540
+  name: 빛과전자
+  market: kosdaq
+- ticker: '105560'
+  name: KB금융
+  market: kospi
+- ticker: '010120'
+  name: LS ELECTRIC
   market: kospi
 - ticker: '035420'
   name: NAVER
   market: kospi
-- ticker: '105560'
-  name: KB금융
-  market: kospi
-- ticker: 032830
-  name: 삼성생명
-  market: kospi
-- ticker: '064400'
-  name: LG씨엔에스
-  market: kospi
-- ticker: '487580'
-  name: 폴레드
+- ticker: '440110'
+  name: 파두
   market: kosdaq
-- ticker: '373220'
-  name: LG에너지솔루션
+- ticker: 086790
+  name: 하나금융지주
   market: kospi
 - ticker: '007660'
   name: 이수페타시스
   market: kospi
-- ticker: 088350
-  name: 한화생명
+- ticker: '253840'
+  name: 수젠텍
+  market: kosdaq
+- ticker: 017900
+  name: 광전자
   market: kospi
-- ticker: '347700'
-  name: 스피어
+- ticker: '178320'
+  name: 서진시스템
+  market: kosdaq
+- ticker: '373220'
+  name: LG에너지솔루션
+  market: kospi
+- ticker: '196170'
+  name: 알테오젠
   market: kosdaq
 - ticker: 051910
   name: LG화학
   market: kospi
-- ticker: 086520
-  name: 에코프로
-  market: kosdaq
-- ticker: '055550'
-  name: 신한지주
+- ticker: 032830
+  name: 삼성생명
   market: kospi
-- ticker: '141080'
-  name: 리가켐바이오
-  market: kosdaq
-- ticker: '010140'
-  name: 삼성중공업
-  market: kospi
-- ticker: '272210'
-  name: 한화시스템
+- ticker: '454910'
+  name: 두산로보틱스
   market: kospi
 - ticker: '000720'
   name: 현대건설
   market: kospi
-- ticker: '064350'
-  name: 현대로템
-  market: kospi
-- ticker: 086280
-  name: 현대글로비스
-  market: kospi
-- ticker: '001740'
-  name: SK네트웍스
-  market: kospi
-- ticker: 086790
-  name: 하나금융지주
-  market: kospi
-- ticker: '015760'
-  name: 한국전력
-  market: kospi
-- ticker: '042660'
-  name: 한화오션
+- ticker: '100790'
+  name: 미래에셋벤처투자
+  market: kosdaq
+- ticker: '010140'
+  name: 삼성중공업
   market: kospi
 - ticker: '043260'
   name: 성호전자
   market: kosdaq
-- ticker: '062040'
-  name: 산일전기
+- ticker: 086520
+  name: 에코프로
+  market: kosdaq
+- ticker: '487580'
+  name: 폴레드
+  market: kosdaq
+- ticker: '288180'
+  name: 케이피항공산업
+  market: kosdaq
+- ticker: '042660'
+  name: 한화오션
   market: kospi
+- ticker: '027360'
+  name: 아주IB투자
+  market: kosdaq
 - ticker: '067310'
   name: 하나마이크론
   market: kosdaq
-- ticker: '247540'
-  name: 에코프로비엠
-  market: kosdaq
-- ticker: 084670
-  name: 동양고속
+- ticker: '015760'
+  name: 한국전력
   market: kospi
-- ticker: '005500'
-  name: 삼진제약
+- ticker: '017670'
+  name: SK텔레콤
   market: kospi
 - ticker: 068270
   name: 셀트리온
   market: kospi
+- ticker: '142280'
+  name: 녹십자엠에스
+  market: kosdaq
+- ticker: '055550'
+  name: 신한지주
+  market: kospi
+- ticker: 033780
+  name: KT&G
+  market: kospi
+- ticker: '064400'
+  name: LG씨엔에스
+  market: kospi
+- ticker: 046970
+  name: 우리로
+  market: kosdaq
+- ticker: '001740'
+  name: SK네트웍스
+  market: kospi
+- ticker: '064350'
+  name: 현대로템
+  market: kospi
+- ticker: 082740
+  name: 한화엔진
+  market: kospi
+- ticker: '247540'
+  name: 에코프로비엠
+  market: kosdaq

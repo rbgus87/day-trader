@@ -51,6 +51,9 @@ class TickProcessor:
         self._max_entry_blocked: set[str] = set()
         self._max_entry_blocked_reset_ts: float = _time.time()
 
+        # Multi 모드: 09:30 전환 로그 1회 억제 플래그
+        self._multi_switch_logged: bool = False
+
     # ── ATR helper ──
 
     def _intraday_atr_pct(self, ticker: str, length: int = 14) -> float | None:
@@ -130,8 +133,24 @@ class TickProcessor:
         # ORB 전략은 전일 고가 기반 돌파 감지 불필요 — 별도 경로 처리
         from strategy.orb_strategy import ORBStrategy as _ORB
         if isinstance(strategy, _ORB):
-            await self._on_tick_orb(ticker, price, tick, signal_queue, strategy)
-            return
+            strategy_type_cfg = getattr(self._config.trading, "strategy_type", "momentum")
+            if strategy_type_cfg == "multi":
+                from datetime import time as _dtime
+                if datetime.now().time() < _dtime(9, 30):
+                    await self._on_tick_orb(ticker, price, tick, signal_queue, strategy)
+                    return
+                # 09:30 이후: 모멘텀 전략으로 전환
+                if not self._multi_switch_logged:
+                    self._multi_switch_logged = True
+                    logger.info("[MULTI] 09:30 — ORB 진입창 종료, 모멘텀 활성화")
+                mom_strat = strat_info.get("momentum_strategy")
+                if mom_strat is None:
+                    return
+                strategy = mom_strat
+                # fall through to momentum path
+            else:
+                await self._on_tick_orb(ticker, price, tick, signal_queue, strategy)
+                return
 
         prev_high = getattr(strategy, "_prev_day_high", 0.0)
         if prev_high <= 0:
@@ -357,56 +376,67 @@ class TickProcessor:
 
             # 손절 체크
             if self._risk_manager.check_stop_loss(ticker, price):
-                pure_trail = not getattr(self._config.trading, "atr_tp_enabled", True)
-                is_trailing = pos.tp1_hit or pure_trail
-                if pos.exit_phase == ExitPhase.BREAKEVEN and pos.stop_loss >= pos.entry_price:
-                    reason_code = "breakeven_stop"
-                elif is_trailing and price > pos.entry_price * 0.975:
-                    reason_code = "trailing_stop"
-                else:
+                if getattr(pos, "strategy", "") == "orb":
                     reason_code = "stop_loss"
+                else:
+                    pure_trail = not getattr(self._config.trading, "atr_tp_enabled", True)
+                    is_trailing = pos.tp1_hit or pure_trail
+                    if pos.exit_phase == ExitPhase.BREAKEVEN and pos.stop_loss >= pos.entry_price:
+                        reason_code = "breakeven_stop"
+                    elif is_trailing and price > pos.entry_price * 0.975:
+                        reason_code = "trailing_stop"
+                    else:
+                        reason_code = "stop_loss"
                 await self._handle_exit(ticker, pos, price, reason_code)
                 return
 
-            # 모멘텀 둔화 청산
-            hist = self._state.candle_history.get(ticker)
-            if hist and self._risk_manager.check_momentum_fade(
-                ticker, price, hist, now=datetime.now(),
-            ):
-                await self._handle_exit(ticker, pos, price, "momentum_fade")
+            _strategy = getattr(pos, "strategy", "")
+
+            # ORB 전략: range 기반 TP 전량 청산 (모멘텀 tp1_sell_ratio 분할매도 미적용)
+            if _strategy == "orb" and pos.tp1_price and price >= pos.tp1_price:
+                await self._handle_exit(ticker, pos, price, "tp_hit")
                 return
 
-            # 횡보 조기 청산
-            if self._risk_manager.check_stale_position(ticker, price, now=datetime.now()):
-                await self._handle_exit(ticker, pos, price, "stale_exit")
-                return
+            if _strategy != "orb":
+                # 모멘텀 둔화 청산
+                hist = self._state.candle_history.get(ticker)
+                if hist and self._risk_manager.check_momentum_fade(
+                    ticker, price, hist, now=datetime.now(),
+                ):
+                    await self._handle_exit(ticker, pos, price, "momentum_fade")
+                    return
 
-            # TP1 체크 (현재 atr_tp_enabled:false — dead path)
-            if self._risk_manager.check_tp1(ticker, price):
-                sell_qty = int(pos.remaining_qty * self._config.trading.tp1_sell_ratio)
-                entry = pos.entry_price
-                pnl = (price - entry) * sell_qty
-                pnl_pct = ((price / entry) - 1) * 100 if entry > 0 else 0
-                strategy_name = pos.strategy or "unknown"
-                await self._order_manager.execute_sell_tp1(
-                    ticker=ticker, price=int(price), remaining_qty=pos.remaining_qty,
-                    strategy=strategy_name, pnl=pnl, pnl_pct=pnl_pct, exit_reason="tp1_hit",
-                )
-                self._risk_manager.mark_tp1_hit(ticker, sell_qty, sell_price=price)
-                self._state.rt_wins += 1
-                logger.info(f"TP1 실행: {ticker} {sell_qty}주 @ {price:,} PnL={pnl:+,.0f}")
-                self._on_trade_executed({
-                    "time": datetime.now().strftime("%H:%M:%S"),
-                    "side": "sell", "ticker": ticker,
-                    "price": int(price), "qty": sell_qty,
-                    "pnl": int(pnl), "reason": "tp1_hit",
-                })
-                return
+                # 횡보 조기 청산
+                if self._risk_manager.check_stale_position(ticker, price, now=datetime.now()):
+                    await self._handle_exit(ticker, pos, price, "stale_exit")
+                    return
 
-            # 트레일링 스톱 갱신
-            daily_pct = self._state.ticker_atr_pct.get(ticker)
-            atr_pct = (daily_pct / 100.0) if daily_pct else self._intraday_atr_pct(ticker)
-            self._risk_manager.update_trailing_stop(ticker, price, atr_pct=atr_pct, now=datetime.now())
+                # TP1 체크 (현재 atr_tp_enabled:false — dead path)
+                if self._risk_manager.check_tp1(ticker, price):
+                    sell_qty = int(pos.remaining_qty * self._config.trading.tp1_sell_ratio)
+                    entry = pos.entry_price
+                    pnl = (price - entry) * sell_qty
+                    pnl_pct = ((price / entry) - 1) * 100 if entry > 0 else 0
+                    strategy_name = pos.strategy or "unknown"
+                    await self._order_manager.execute_sell_tp1(
+                        ticker=ticker, price=int(price), remaining_qty=pos.remaining_qty,
+                        strategy=strategy_name, pnl=pnl, pnl_pct=pnl_pct, exit_reason="tp1_hit",
+                    )
+                    self._risk_manager.mark_tp1_hit(ticker, sell_qty, sell_price=price)
+                    self._state.rt_wins += 1
+                    logger.info(f"TP1 실행: {ticker} {sell_qty}주 @ {price:,} PnL={pnl:+,.0f}")
+                    self._on_trade_executed({
+                        "time": datetime.now().strftime("%H:%M:%S"),
+                        "side": "sell", "ticker": ticker,
+                        "price": int(price), "qty": sell_qty,
+                        "pnl": int(pnl), "reason": "tp1_hit",
+                    })
+                    return
+
+                # 트레일링 스톱 갱신 (ATR Chandelier + BE3, ORB 미적용 — range 기반 고정 SL)
+                daily_pct = self._state.ticker_atr_pct.get(ticker)
+                atr_pct = (daily_pct / 100.0) if daily_pct else self._intraday_atr_pct(ticker)
+                self._risk_manager.update_trailing_stop(ticker, price, atr_pct=atr_pct, now=datetime.now())
 
         except Exception as e:
             logger.error(f"tick_consumer 오류: {e}")

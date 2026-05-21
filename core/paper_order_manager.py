@@ -126,6 +126,7 @@ class PaperOrderManager:
                             price=slipped_int, qty=qty_1st,
                             amount=slipped_int * qty_1st,
                             mode="paper",
+                            strategy=strategy,
                         )
                     except Exception as e:
                         logger.warning(f"체결 알림 실패 ({ticker}): {e}")

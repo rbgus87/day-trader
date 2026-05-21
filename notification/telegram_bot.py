@@ -144,12 +144,14 @@ class TelegramNotifier:
         reason: str = "",
         pnl: int | None = None,
         pnl_pct: float | None = None,
+        strategy: str = "",
     ) -> None:
         """체결 알림 통일 포맷 (ADR-008).
 
         mode: 'live' / 'paper'. paper면 제목에 [PAPER] 태그.
         reason: sell 시 'stop_loss'/'tp1_hit' 등 청산 사유 (선택).
         pnl, pnl_pct: sell 시 손익 (선택).
+        strategy: 전략명 ('orb'/'momentum'). 매수 시 [ORB]/[MOM] 태그 표시.
         """
         reason_map = {
             "stop_loss": "손절",
@@ -162,9 +164,13 @@ class TelegramNotifier:
         emoji = "🔵" if side == "buy" else "🔴"
         label = "매수" if side == "buy" else "매도"
         tag = "[PAPER] " if mode == "paper" else ""
+        if side == "buy" and strategy:
+            strat_tag = "[ORB] " if strategy == "orb" else "[MOM] "
+        else:
+            strat_tag = ""
         title_suffix = f" ({reason_label})" if reason_label else ""
         lines = [
-            f"{emoji} <b>{tag}{label} 체결{title_suffix}</b>",
+            f"{emoji} <b>{tag}{strat_tag}{label} 체결{title_suffix}</b>",
             f"종목: {name} ({ticker})",
             f"가격: {price:,}원 × {qty}주",
             f"금액: {amount:,}원",

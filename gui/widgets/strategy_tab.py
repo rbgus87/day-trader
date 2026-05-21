@@ -125,9 +125,12 @@ class StrategyTab(QWidget):
         root.setContentsMargins(8, 8, 8, 8)
         root.setSpacing(10)
 
-        root.addWidget(self._build_entry_section())
-        root.addWidget(self._build_exit_section())
-        root.addWidget(self._build_orb_section())
+        self._entry_group = self._build_entry_section()
+        self._exit_group = self._build_exit_section()
+        self._orb_group = self._build_orb_section()
+        root.addWidget(self._entry_group)
+        root.addWidget(self._exit_group)
+        root.addWidget(self._orb_group)
         root.addWidget(self._build_risk_section())
         root.addWidget(self._build_capital_section())
         root.addWidget(self._build_market_section())
@@ -680,6 +683,20 @@ class StrategyTab(QWidget):
 
         # 주간 갱신 상태 재검사
         self._update_universe_refresh_status()
+
+    def on_strategy_changed(self, strategy: str) -> None:
+        """전략 전환 시 해당 전략 섹션만 표시.
+
+        momentum → 진입/청산 조건 표시, ORB 섹션 숨김.
+        orb      → ORB 섹션 표시, 모멘텀 진입/청산 조건 숨김.
+        multi    → ORB 섹션 + 모멘텀 진입/청산 조건 모두 표시.
+        그 외    → momentum과 동일 (공통 섹션은 항상 표시).
+        """
+        is_orb = strategy == "orb"
+        is_multi = strategy == "multi"
+        self._entry_group.setVisible(not is_orb)  # momentum/multi: 표시
+        self._exit_group.setVisible(not is_orb)   # momentum/multi: 표시
+        self._orb_group.setVisible(is_orb or is_multi)  # orb/multi: 표시
 
     def get_config(self) -> dict:
         """편집 가능 필드만 반환 (main_window가 기존 config에 merge).

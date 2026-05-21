@@ -137,8 +137,8 @@ strategy:
 
     # 틱 레벨 돌파 감지: 돌파 시점 대비 진입 가격 상한 (+10% 초과 시 진입 차단)
     max_entry_above_breakout_pct: 0.10
-    # 전일종가 대비 현재가 상한 (+10% 초과 시 진입 차단, 상한가 근처 무의미 진입 방지)
-    max_entry_above_close_pct: 10
+    # 전일종가 대비 현재가 상한 (+25% 초과 시 진입 차단, 상한가 근처 무의미 진입 방지)
+    max_entry_above_close_pct: 25
 
     # 횡보 포지션 조기 청산 — 보유 N분 후 수익률 < min_profit이면 청산
     stale_position_exit_enabled: false
@@ -203,7 +203,8 @@ strategy:
     max_add_per_search: 10             # 1회 검색당 최대 추가 종목
     max_total_added: 30                # 장중 총 추가 한도
 
-  # 활성 전략 ("momentum" | "orb")
+  # 활성 전략 ("momentum" | "orb" | "multi")
+  # multi: ORB(09:05~09:30) + 모멘텀(09:30~12:00) 병행. 각 전략 파라미터는 orb/momentum 섹션 공통 사용.
   strategy_type: "orb"
 
   # ORB(Opening Range Breakout) 전략

@@ -785,8 +785,8 @@ class SessionManager:
         norm = strategy_name.lower() if strategy_name else ""
         if self._config:
             object.__setattr__(self._config, "force_strategy", norm)
-        if norm not in ("", "momentum", "orb"):
-            logger.warning(f"전략 변경 요청 무시: {strategy_name} — momentum/orb만 지원")
+        if norm not in ("", "momentum", "orb", "multi"):
+            logger.warning(f"전략 변경 요청 무시: {strategy_name} — momentum/orb/multi만 지원")
             return
         if norm == "orb":
             from strategy.orb_strategy import ORBStrategy
@@ -805,6 +805,37 @@ class SessionManager:
                     )
                 info["strategy"] = new_strat
             logger.info("전략 수동 변경: orb")
+            return
+        if norm == "multi":
+            from strategy.orb_strategy import ORBStrategy
+            for ticker, info in self._state.active_strategies.items():
+                old_strat = info["strategy"]
+                # ORB 전략 (primary)
+                orb_strat = ORBStrategy(self._config.trading)
+                orb_strat.configure_multi_trade(
+                    max_trades=self._config.trading.max_trades_per_day,
+                    cooldown_minutes=self._config.trading.cooldown_minutes,
+                )
+                if hasattr(orb_strat, "set_prev_day_data"):
+                    orb_strat.set_prev_day_data(
+                        getattr(old_strat, "_prev_day_high", 0.0),
+                        getattr(old_strat, "_prev_day_volume", 0),
+                        getattr(old_strat, "_prev_day_close", 0.0),
+                    )
+                info["strategy"] = orb_strat
+                # 모멘텀 전략 (09:30 이후 전환용)
+                mom_strat = MomentumStrategy(self._config.trading)
+                mom_strat.configure_multi_trade(
+                    max_trades=self._config.trading.max_trades_per_day,
+                    cooldown_minutes=self._config.trading.cooldown_minutes,
+                )
+                if hasattr(mom_strat, "set_prev_day_data"):
+                    prev_high = getattr(old_strat, "_prev_day_high", 0.0)
+                    prev_vol = getattr(old_strat, "_prev_day_volume", 0)
+                    if prev_high > 0:
+                        mom_strat.set_prev_day_data(prev_high, prev_vol)
+                info["momentum_strategy"] = mom_strat
+            logger.info("전략 수동 변경: multi (ORB+모멘텀)")
             return
         if norm == "momentum":
             for ticker, info in self._state.active_strategies.items():

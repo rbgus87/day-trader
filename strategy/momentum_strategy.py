@@ -61,6 +61,7 @@ class MomentumStrategy(BaseStrategy):
             "afternoon_bp_fail": 0,
             "afternoon_vol_fail": 0,
             "afternoon_adx_fail": 0,
+            "max_close_blocked": 0,
         }
 
     def reset_diag_counters(self) -> None:
@@ -170,6 +171,18 @@ class MomentumStrategy(BaseStrategy):
             return None
 
         current_price: float = tick["price"]
+
+        # 전일종가 대비 현재가 상한 체크 (캔들 경로) — 틱 경로와 동일 기준 적용
+        _max_close_pct = getattr(self._config, "max_entry_above_close_pct", 0.0)
+        if _max_close_pct and _max_close_pct > 0 and self._prev_day_close > 0:
+            _chg_from_close = (current_price - self._prev_day_close) / self._prev_day_close * 100
+            if _chg_from_close >= _max_close_pct:
+                self.diag_counters["max_close_blocked"] += 1
+                logger.info(
+                    f"[MAX_ENTRY] {tick['ticker']} 캔들 경로 차단: "
+                    f"+{_chg_from_close:.1f}% > {_max_close_pct:.0f}%"
+                )
+                return None
 
         if self._prev_day_high <= 0:
             self.diag_counters["prev_day_missing"] += 1

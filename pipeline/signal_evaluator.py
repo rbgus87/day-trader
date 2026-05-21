@@ -141,6 +141,22 @@ class SignalEvaluator:
                     self._signal_eval_count += 1
                     return gap_signal  # 갭 신호 우선 반환 (시간창 분리로 모멘텀과 충돌 無)
 
+            # ORB 전략: 캔들 경로 미사용 — 틱 경로(_on_tick_orb)에서만 진입
+            # Multi 모드: 09:30 이후에는 momentum_strategy로 평가
+            from strategy.orb_strategy import ORBStrategy as _ORB
+            if isinstance(strategy, _ORB):
+                strategy_type_cfg = getattr(self._config.trading, "strategy_type", "momentum")
+                if strategy_type_cfg == "multi":
+                    from datetime import time as _dtime
+                    if datetime.now().time() < _dtime(9, 30):
+                        return None  # ORB 창: 틱 경로 전담
+                    mom_strat = strat_info.get("momentum_strategy")
+                    if mom_strat is None:
+                        return None
+                    strategy = mom_strat  # fall through to momentum evaluation
+                else:
+                    return None
+
             breakout_info = self._state.breakout_detected.get(ticker)
             bp = breakout_info.breakout_price if breakout_info else None
             self._signal_eval_count += 1
@@ -151,21 +167,29 @@ class SignalEvaluator:
             return None
 
     def _log_signal_summary(self) -> None:
-        """active_strategies 진단 카운터 집계 + 로깅."""
+        """active_strategies 진단 카운터 집계 + 로깅 (모멘텀 전략만)."""
+        from strategy.orb_strategy import ORBStrategy as _ORB
         agg: dict[str, int] = {}
-        any_strategy = False
+        any_momentum = False
         for info in self._state.active_strategies.values():
             strat = info.get("strategy") if isinstance(info, dict) else None
+            if isinstance(strat, _ORB):
+                # Multi 모드: momentum_strategy 카운터 집계
+                mom_strat = info.get("momentum_strategy") if isinstance(info, dict) else None
+                if mom_strat:
+                    strat = mom_strat
+                else:
+                    continue  # ORB 단독: 모멘텀 지표 집계 제외
             counters = getattr(strat, "diag_counters", None)
             if not isinstance(counters, dict):
                 continue
-            any_strategy = True
+            any_momentum = True
             for k, v in counters.items():
                 agg[k] = agg.get(k, 0) + int(v)
             reset = getattr(strat, "reset_diag_counters", None)
             if callable(reset):
                 reset()
-        if not any_strategy:
+        if not any_momentum:
             return
         logger.info(
             f"[SIGNAL-SUMMARY] 평가={self._signal_eval_count}, "
