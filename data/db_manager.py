@@ -95,6 +95,12 @@ CREATE TABLE IF NOT EXISTS ticker_atr (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ticker_atr_dt ON ticker_atr(dt);
+
+CREATE TABLE IF NOT EXISTS system_state (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+);
 """
 
 
@@ -159,6 +165,23 @@ class DbManager:
         cursor = await self._conn.execute(sql, params)
         row = await cursor.fetchone()
         return dict(row) if row else None
+
+    async def upsert_state(self, key: str, value: str) -> None:
+        """system_state 테이블에 KV 값을 UPSERT."""
+        await self._conn.execute(
+            "INSERT OR REPLACE INTO system_state (key, value, updated_at)"
+            " VALUES (?, ?, datetime('now','localtime'))",
+            (key, value),
+        )
+        await self._conn.commit()
+
+    async def get_state(self, key: str) -> str | None:
+        """system_state 테이블에서 KV 값을 조회. 없으면 None."""
+        cursor = await self._conn.execute(
+            "SELECT value FROM system_state WHERE key = ?", (key,)
+        )
+        row = await cursor.fetchone()
+        return row["value"] if row else None
 
     async def close(self) -> None:
         if self._conn:

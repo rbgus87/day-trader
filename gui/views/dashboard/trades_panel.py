@@ -127,6 +127,9 @@ class TradesPanel(QWidget):
 
     def update_trades(self, trades: list[dict]) -> None:
         table = self._table
+        vsb = table.verticalScrollBar()
+        saved_scroll = vsb.value()
+
         table.setRowCount(0)
 
         if not trades:
@@ -198,3 +201,5 @@ class TradesPanel(QWidget):
                 table.setItem(row, col, cell_item)
 
             table.setCellWidget(row, 2, self._make_side_chip(side))
+
+        vsb.setValue(min(saved_scroll, vsb.maximum()))

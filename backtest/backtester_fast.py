@@ -299,6 +299,13 @@ class FastBacktester(Backtester):
         buy_time_end_min = _parse_hhmm(cfg.buy_time_end, 720)
         buy_time_enabled = bool(getattr(cfg, "buy_time_limit_enabled", False))
 
+        # TRVOL 설정 캐시
+        trvol_enabled   = bool(getattr(cfg, "trvol_enabled", False))
+        trvol_ratio_v   = float(getattr(cfg, "trvol_ratio", 3.0))
+        trvol_min_prev  = int(getattr(cfg, "trvol_min_prev_volume", 1000))
+        trvol_only_mode = bool(getattr(cfg, "trvol_only_mode", False))
+        _prev_day_slot_vols: dict = getattr(strategy, "_prev_day_slot_vols", {})
+
         trail_mult     = float(cfg.atr_trail_multiplier)
         trail_min_pct  = float(cfg.atr_trail_min_pct)
         trail_max_pct  = float(cfg.atr_trail_max_pct)
@@ -321,6 +328,10 @@ class FastBacktester(Backtester):
         stale_min_min  = int(getattr(cfg, "stale_position_check_minutes", 30))
         stale_min_pnl  = float(getattr(cfg, "stale_position_min_profit", 0.005))
         lu_price       = self._current_limit_up
+
+        # TRVOL 슬롯 사전계산
+        slot_hours = ts_pd.hour.values.astype(np.int32)
+        slot_mins5 = (ts_pd.minute.values.astype(np.int32) // 5) * 5
 
         # Gap breakout 기준가
         breakout_ref = prev_high
@@ -359,8 +370,13 @@ class FastBacktester(Backtester):
         trades: list[dict] = []
         position: dict | None = None
         breakout_price_day: float | None = None
+        breakout_ts_day: "pd.Timestamp | None" = None
         trade_count    = 0
         last_exit_min: int | None = None   # 마지막 청산 분(분 단위 시각)
+
+        # TRVOL 슬롯 추적 상태
+        _cur_slot: tuple[int, int] = (-1, -1)
+        _cur_slot_vol: float = 0.0
 
         for i in range(n):
             close_i = closes[i]
@@ -369,11 +385,20 @@ class FastBacktester(Backtester):
             min_i   = int(minutes[i])
             ts_i    = ts_pd[i]
 
+            # TRVOL: 5분 슬롯 거래량 누적 (포지션 유무 무관하게 항상 갱신)
+            if trvol_enabled:
+                _slot_i = (int(slot_hours[i]), int(slot_mins5[i]))
+                if _slot_i != _cur_slot:
+                    _cur_slot = _slot_i
+                    _cur_slot_vol = 0.0
+                _cur_slot_vol += float(volumes[i])
+
             # ── 포지션 없음: 진입 신호 탐색 ─────────────────────────
             if position is None:
-                # 당일 최초 돌파 가격 추적 (고점 진입 방지)
+                # 당일 최초 돌파 가격 + 시각 추적 (고점 진입 방지 + 진입지연 계산)
                 if breakout_price_day is None and high_i >= breakout_level:
                     breakout_price_day = breakout_level
+                    breakout_ts_day = ts_i
 
                 # can_trade: max_trades + cooldown 검사 (base_strategy.can_trade 복제)
                 cooldown_ok = (
@@ -386,6 +411,19 @@ class FastBacktester(Backtester):
                     or prev_close_day <= 0
                     or (close_i - prev_close_day) / prev_close_day * 100.0 <= max_close_pct_raw
                 )
+                # 거래량 조건 (TRVOL 또는 cumvol)
+                if trvol_enabled:
+                    _sp_vol = _prev_day_slot_vols.get(_cur_slot, 0)
+                    _trvol_ok = (
+                        _sp_vol >= trvol_min_prev
+                        and _cur_slot_vol >= _sp_vol * trvol_ratio_v
+                    )
+                    _vol_ok = _trvol_ok if trvol_only_mode else (
+                        _trvol_ok or cum_vols[i] >= required_vol
+                    )
+                else:
+                    _vol_ok = cum_vols[i] >= required_vol
+
                 if (
                     trade_count < max_trades_day
                     and cooldown_ok
@@ -393,7 +431,7 @@ class FastBacktester(Backtester):
                     and min_i >= signal_block_min
                     and (not buy_time_enabled or min_i < buy_time_end_min)
                     and close_i >= breakout_level
-                    and cum_vols[i] >= required_vol
+                    and _vol_ok
                     and _close_chg_ok
                 ):
                     bp = breakout_price_day if breakout_price_day is not None else breakout_level
@@ -449,6 +487,7 @@ class FastBacktester(Backtester):
 
                             position = {
                                 "entry_ts":        ts_i.to_pydatetime(),
+                                "breakout_ts":     breakout_ts_day.to_pydatetime() if breakout_ts_day is not None else None,
                                 "entry_price":     entry_price,
                                 "net_entry":       net_entry,
                                 "stop_loss":       stop_loss,
@@ -475,12 +514,14 @@ class FastBacktester(Backtester):
                     pnl = (net_exit - position["net_entry"]) * remaining
                     trades.append({
                         "entry_ts":    position["entry_ts"],
+                        "breakout_ts": position.get("breakout_ts"),
                         "exit_ts":     ts_i.to_pydatetime(),
                         "entry_price": position["entry_price"],
                         "exit_price":  ep_sl,
                         "pnl":         pnl,
                         "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
                         "exit_reason": "limit_up_exit",
+                        "highest_price": max(position.get("highest_price", 0.0), float(high_i)),
                         "entry_chg_from_close": position.get("entry_chg_from_close", 0.0),
                     })
                     position = None
@@ -500,12 +541,14 @@ class FastBacktester(Backtester):
                     )
                     trades.append({
                         "entry_ts":    position["entry_ts"],
+                        "breakout_ts": position.get("breakout_ts"),
                         "exit_ts":     ts_i.to_pydatetime(),
                         "entry_price": position["entry_price"],
                         "exit_price":  ep_sl,
                         "pnl":         pnl,
                         "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
                         "exit_reason": exit_reason,
+                        "highest_price": position.get("highest_price", 0.0),
                         "entry_chg_from_close": position.get("entry_chg_from_close", 0.0),
                     })
                     position = None
@@ -520,12 +563,14 @@ class FastBacktester(Backtester):
                         pnl = net_exit - position["net_entry"]
                         trades.append({
                             "entry_ts":    position["entry_ts"],
+                            "breakout_ts": position.get("breakout_ts"),
                             "exit_ts":     ts_i.to_pydatetime(),
                             "entry_price": position["entry_price"],
                             "exit_price":  ep_sl,
                             "pnl":         pnl,
                             "pnl_pct":     pnl / position["net_entry"],
                             "exit_reason": "forced_close",
+                            "highest_price": position.get("highest_price", 0.0),
                             "entry_chg_from_close": position.get("entry_chg_from_close", 0.0),
                         })
                         position = None
@@ -577,12 +622,14 @@ class FastBacktester(Backtester):
                     )
                     trades.append({
                         "entry_ts":    position["entry_ts"],
+                        "breakout_ts": position.get("breakout_ts"),
                         "exit_ts":     ts_i.to_pydatetime(),
                         "entry_price": position["entry_price"],
                         "exit_price":  ep_sl,
                         "pnl":         pnl,
                         "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
                         "exit_reason": exit_reason,
+                        "highest_price": position.get("highest_price", 0.0),
                         "entry_chg_from_close": position.get("entry_chg_from_close", 0.0),
                     })
                     position = None
@@ -605,12 +652,14 @@ class FastBacktester(Backtester):
                                 pnl = (net_exit - position["net_entry"]) * remaining
                                 trades.append({
                                     "entry_ts":    position["entry_ts"],
+                                    "breakout_ts": position.get("breakout_ts"),
                                     "exit_ts":     now_dt,
                                     "entry_price": position["entry_price"],
                                     "exit_price":  ep_sl,
                                     "pnl":         pnl,
                                     "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
                                     "exit_reason": "momentum_fade",
+                                    "highest_price": position.get("highest_price", 0.0),
                                     "entry_chg_from_close": position.get("entry_chg_from_close", 0.0),
                                 })
                                 position = None
@@ -628,12 +677,14 @@ class FastBacktester(Backtester):
                         pnl = (net_exit - position["net_entry"]) * remaining
                         trades.append({
                             "entry_ts":    position["entry_ts"],
+                            "breakout_ts": position.get("breakout_ts"),
                             "exit_ts":     now_dt,
                             "entry_price": position["entry_price"],
                             "exit_price":  ep_sl,
                             "pnl":         pnl,
                             "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
                             "exit_reason": "stale_exit",
+                            "highest_price": position.get("highest_price", 0.0),
                             "entry_chg_from_close": position.get("entry_chg_from_close", 0.0),
                         })
                         position = None
@@ -647,12 +698,14 @@ class FastBacktester(Backtester):
                     pnl = (net_exit - position["net_entry"]) * remaining
                     trades.append({
                         "entry_ts":    position["entry_ts"],
+                        "breakout_ts": position.get("breakout_ts"),
                         "exit_ts":     ts_i.to_pydatetime(),
                         "entry_price": position["entry_price"],
                         "exit_price":  ep_sl,
                         "pnl":         pnl,
                         "pnl_pct":     (net_exit - position["net_entry"]) / position["net_entry"],
                         "exit_reason": "forced_close",
+                        "highest_price": position.get("highest_price", 0.0),
                         "entry_chg_from_close": position.get("entry_chg_from_close", 0.0),
                     })
                     position = None

@@ -199,6 +199,12 @@ class TradingConfig:
     afternoon_min_volume_ratio: float = 3.0
     afternoon_min_adx: float = 25.0
 
+    # TRVOL: 개별 5분봉 상대 거래량 필터 — 전일 동시간대 분봉 거래량 대비 N배
+    trvol_enabled: bool = False
+    trvol_ratio: float = 3.0
+    trvol_min_prev_volume: int = 1000
+    trvol_only_mode: bool = False  # True=trvol만, False=trvol OR 기존 cumvol
+
     # 변동성 기반 포지션 사이징
     # risk_per_trade_pct: 계좌 대비 1거래 최대 리스크 (예: 0.01 = 1%)
     # position_value = clamp(capital × risk / (atr_pct × multiplier), min_pct, max_pct) × capital
@@ -547,6 +553,7 @@ class AppConfig:
             breakout_volume_surge_enabled=mom.get("breakout_volume_surge_enabled", False),
             breakout_volume_surge_ratio=mom.get("breakout_volume_surge_ratio", 2.0),
             max_entry_above_breakout_pct=mom.get("max_entry_above_breakout_pct", 0.10),
+            max_entry_above_close_pct=mom.get("max_entry_above_close_pct", 15.0),
             stale_position_exit_enabled=mom.get("stale_position_exit_enabled", False),
             stale_position_check_minutes=mom.get("stale_position_check_minutes", 30),
             stale_position_min_profit=mom.get("stale_position_min_profit", 0.005),

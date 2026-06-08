@@ -23,6 +23,7 @@ class MomentumStrategy(BaseStrategy):
         self._prev_day_volume: int = 0
         self._prev_day_close: float = 0.0   # 갭업 기준가 계산용
         self._prev_day_candles: "pd.DataFrame | None" = None  # 시간대별 거래량 비율용
+        self._prev_day_slot_vols: dict[tuple[int, int], int] = {}  # TRVOL: 전일 5분슬롯별 거래량
         # Phase 2 Day 6: ATR 손절 컨텍스트
         self._ticker: str = ""
         self._last_signal_date: str = ""  # YYYY-MM-DD
@@ -55,6 +56,7 @@ class MomentumStrategy(BaseStrategy):
             "adx_fail": 0,
             "adx_pass": 0,
             "rvol_fail": 0,
+            "trvol_fail": 0,
             "vwap_fail": 0,
             "signal_emit": 0,
             "entry_too_high": 0,
@@ -92,15 +94,23 @@ class MomentumStrategy(BaseStrategy):
         self._prev_day_close = close
 
     def set_prev_day_candles(self, candles: "pd.DataFrame | None") -> None:
-        """전일 분봉 데이터 주입 — 시간대별 거래량 비율 계산용.
+        """전일 분봉 데이터 주입 — 시간대별 거래량 비율 + TRVOL 계산용.
         backtester._setup_strategy_day에서 호출. ts 컬럼은 datetime64 보장.
         """
         if candles is not None and not candles.empty:
             self._prev_day_candles = candles.copy()
             if "ts" in self._prev_day_candles.columns:
                 self._prev_day_candles["ts"] = pd.to_datetime(self._prev_day_candles["ts"])
+            # TRVOL: 5분 슬롯별 거래량 사전 계산 (hour, slot_5min) → vol
+            slot_vols: dict[tuple[int, int], int] = {}
+            for _, row in self._prev_day_candles.iterrows():
+                t = pd.to_datetime(row["ts"])
+                slot = (t.hour, (t.minute // 5) * 5)
+                slot_vols[slot] = slot_vols.get(slot, 0) + int(row["volume"])
+            self._prev_day_slot_vols = slot_vols
         else:
             self._prev_day_candles = None
+            self._prev_day_slot_vols = {}
 
     def set_ticker(self, ticker: str) -> None:
         """ATR 조회용 종목 코드 주입 (backtester/engine_worker에서 호출)."""
@@ -286,13 +296,25 @@ class MomentumStrategy(BaseStrategy):
                     _eff_vol_ratio = _aft_vr
             required_volume = self._prev_day_volume * _eff_vol_ratio
 
-        if cum_volume < required_volume:
+        # 2c) TRVOL 체크 (trvol_enabled 시 cumvol와 OR 또는 단독)
+        _trvol_en = getattr(self._config, "trvol_enabled", False)
+        if _trvol_en:
+            _trvol_ok = self._check_trvol(candles)
+            _cumvol_ok = cum_volume >= required_volume
+            _trvol_only = getattr(self._config, "trvol_only_mode", False)
+            _vol_ok = _trvol_ok if _trvol_only else (_trvol_ok or _cumvol_ok)
+        else:
+            _vol_ok = cum_volume >= required_volume
+
+        if not _vol_ok:
             self.diag_counters["volume_fail"] += 1
+            if _trvol_en:
+                self.diag_counters["trvol_fail"] += 1
             if _aft:
                 self.diag_counters["afternoon_vol_fail"] += 1
             logger.debug(
                 f"[VOLUME] 미달: {tick['ticker']} "
-                f"cum={cum_volume:,.0f} < req={required_volume:,.0f}"
+                f"cum={cum_volume:,.0f} req={required_volume:,.0f} trvol_en={_trvol_en}"
             )
             return None
 
@@ -388,6 +410,25 @@ class MomentumStrategy(BaseStrategy):
             reason=f"전일 고점({breakout_ref:,.0f}) 돌파 + 거래량 {self._config.momentum_volume_ratio:.1f}배 확인",
             context=signal_context,
         )
+
+    def _check_trvol(self, candles: pd.DataFrame) -> bool:
+        """TRVOL: 현재 5분봉 거래량이 전일 동일 시간대 5분봉의 trvol_ratio배 이상."""
+        if not self._prev_day_slot_vols:
+            return False
+        from datetime import datetime as _dt
+        current_time = self._backtest_time if self._backtest_time else _dt.now().time()
+        slot = (current_time.hour, (current_time.minute // 5) * 5)
+        prev_slot_vol = self._prev_day_slot_vols.get(slot, 0)
+        min_prev_vol = getattr(self._config, "trvol_min_prev_volume", 1000)
+        if prev_slot_vol < min_prev_vol:
+            return False  # 전일 슬롯 거래량 너무 적음 — 배수 비교 무의미
+        if candles is None or candles.empty:
+            return False
+        ts_series = pd.to_datetime(candles["ts"])
+        slot_mask = (ts_series.dt.hour == slot[0]) & ((ts_series.dt.minute // 5) * 5 == slot[1])
+        cur_slot_vol = float(candles.loc[slot_mask, "volume"].sum())
+        ratio = getattr(self._config, "trvol_ratio", 3.0)
+        return cur_slot_vol >= prev_slot_vol * ratio
 
     def _check_adx(self, candles: pd.DataFrame, ticker: str = "", min_adx: float | None = None) -> bool:
         """ADX 추세 강도 필터. 캔들 부족 또는 계산 실패 시 False.

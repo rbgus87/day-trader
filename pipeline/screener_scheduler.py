@@ -83,8 +83,11 @@ class ScreenerScheduler:
             return []
         uni = yaml.safe_load(open(uni_path, encoding="utf-8")) or {}
         stocks = uni.get("stocks", [])
-        self._state.ticker_markets = {s["ticker"]: s.get("market", "unknown") for s in stocks}
-        self._state.ticker_names = {s["ticker"]: s.get("name", s["ticker"]) for s in stocks}
+        # dict 교체가 아닌 in-place 갱신 — PaperOrderManager._name_map 등 외부 참조 보존
+        self._state.ticker_markets.clear()
+        self._state.ticker_markets.update({s["ticker"]: s.get("market", "unknown") for s in stocks})
+        self._state.ticker_names.clear()
+        self._state.ticker_names.update({s["ticker"]: s.get("name", s["ticker"]) for s in stocks})
         return stocks
 
     # ── 전략 등록 ──
@@ -591,9 +594,21 @@ class ScreenerScheduler:
                     except Exception:
                         pass
 
+                # 조건검색 응답 name 우선, 빈 문자열이면 일봉 응답 output1에서 재시도
+                name = stock.get("name") or ""
+                if not name:
+                    out1 = daily.get("output1") or {}
+                    name = (
+                        out1.get("hts_kor_isnm")
+                        or out1.get("kor_isnm")
+                        or out1.get("prdt_name")
+                        or ""
+                    )
+                if not name:
+                    name = self._state.ticker_names.get(ticker, "")
                 return {
                     "ticker": ticker,
-                    "name": stock.get("name", ticker),
+                    "name": name or ticker,
                     "market": self.resolve_market(ticker, market_codes),
                 }
             except Exception as e:

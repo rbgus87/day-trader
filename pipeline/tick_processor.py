@@ -54,6 +54,9 @@ class TickProcessor:
         # Multi 모드: 09:30 전환 로그 1회 억제 플래그
         self._multi_switch_logged: bool = False
 
+        _close_thr = getattr(config.trading, "max_entry_above_close_pct", 15.0)
+        logger.info(f"[MAX_ENTRY] threshold={_close_thr:.0f}% (전일종가 대비 진입 상한)")
+
     # ── ATR helper ──
 
     def _intraday_atr_pct(self, ticker: str, length: int = 14) -> float | None:

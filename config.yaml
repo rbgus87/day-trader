@@ -188,6 +188,12 @@ strategy:
     momentum_fade_min_hold_min: 15       # 진입 후 최소 15분 보유
     momentum_fade_min_profit: 0.03       # 현재 수익률 +3% 이상
 
+    # TRVOL — 개별 분봉(5분) 상대 거래량 (기존 volume_ratio와 OR 조건)
+    trvol_enabled: false          # 그리드 검증 후 활성화
+    trvol_ratio: 3.0              # 전일 동시간대 5분봉 대비 배수
+    trvol_min_prev_volume: 1000   # 전일 해당 슬롯 최소 거래량 (주)
+    trvol_only_mode: false        # true=trvol만, false=trvol OR 기존 cumvol
+
   # 장중 조건검색 — 09:05~11:30 동적 유니버스 확장
   intraday_search:
     enabled: true
@@ -205,7 +211,7 @@ strategy:
 
   # 활성 전략 ("momentum" | "orb" | "multi")
   # multi: ORB(09:05~09:30) + 모멘텀(09:30~12:00) 병행. 각 전략 파라미터는 orb/momentum 섹션 공통 사용.
-  strategy_type: "orb"
+  strategy_type: "multi"
 
   # ORB(Opening Range Breakout) 전략
   # 09:00~09:04 첫 5분 고/저가를 레인지로, 돌파 시 진입 (09:05~09:30)

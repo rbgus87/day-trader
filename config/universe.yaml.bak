@@ -1,156 +1,138 @@
 # ============================================================================
-# universe.yaml — 조건검색 자동 갱신 (2026-05-21 08:36:37)
+# universe.yaml — 조건검색 자동 갱신 (2026-06-08 09:06:36)
 # 생성: gui.workers.engine_worker._write_universe_yaml
 # ============================================================================
 
 stocks:
-- ticker: 005930
-  name: 삼성전자
-  market: kospi
-- ticker: '439960'
-  name: 코스모로보틱스
-  market: kosdaq
-- ticker: 036930
-  name: 주성엔지니어링
-  market: kosdaq
-- ticker: '066570'
-  name: LG전자
-  market: kospi
-- ticker: '034020'
-  name: 두산에너빌리티
-  market: kospi
-- ticker: '042700'
-  name: 한미반도체
-  market: kospi
-- ticker: 005490
-  name: POSCO홀딩스
-  market: kospi
-- ticker: '000270'
-  name: 기아
-  market: kospi
-- ticker: '001440'
-  name: 대한전선
-  market: kospi
-- ticker: '047040'
-  name: 대우건설
-  market: kospi
-- ticker: 006800
-  name: 미래에셋증권
-  market: kospi
-- ticker: 001820
-  name: 삼화콘덴서
-  market: kospi
-- ticker: 028260
-  name: 삼성물산
-  market: kospi
-- ticker: 069540
-  name: 빛과전자
-  market: kosdaq
-- ticker: '105560'
-  name: KB금융
-  market: kospi
-- ticker: '010120'
-  name: LS ELECTRIC
+- ticker: '454910'
+  name: 두산로보틱스
   market: kospi
 - ticker: '035420'
   name: NAVER
   market: kospi
-- ticker: '440110'
-  name: 파두
+- ticker: 090360
+  name: 로보스타
+  market: kosdaq
+- ticker: '403870'
+  name: HPSP
+  market: kosdaq
+- ticker: '043260'
+  name: 성호전자
+  market: kosdaq
+- ticker: '017670'
+  name: SK텔레콤
+  market: kospi
+- ticker: '373220'
+  name: LG에너지솔루션
+  market: kospi
+- ticker: '319660'
+  name: 피에스케이
+  market: kosdaq
+- ticker: 095610
+  name: 테스
   market: kosdaq
 - ticker: 086790
   name: 하나금융지주
   market: kospi
-- ticker: '007660'
-  name: 이수페타시스
+- ticker: 085620
+  name: 미래에셋생명
   market: kospi
-- ticker: '253840'
-  name: 수젠텍
+- ticker: '457370'
+  name: 한켐
   market: kosdaq
-- ticker: '006260'
-  name: LS
-  market: kospi
-- ticker: 017900
-  name: 광전자
-  market: kospi
-- ticker: '178320'
-  name: 서진시스템
+- ticker: '388790'
+  name: 라이콤
   market: kosdaq
-- ticker: '373220'
-  name: LG에너지솔루션
+- ticker: '316140'
+  name: 우리금융지주
   market: kospi
-- ticker: '196170'
-  name: 알테오젠
+- ticker: '006220'
+  name: 제주은행
+  market: kospi
+- ticker: 089970
+  name: 브이엠
   market: kosdaq
-- ticker: 005950
-  name: 이수화학
-  market: kospi
-- ticker: 051910
-  name: LG화학
-  market: kospi
-- ticker: 032830
-  name: 삼성생명
-  market: kospi
-- ticker: '454910'
-  name: 두산로보틱스
-  market: kospi
-- ticker: '000720'
-  name: 현대건설
-  market: kospi
+- ticker: '290650'
+  name: 엘앤씨바이오
+  market: kosdaq
 - ticker: '100790'
   name: 미래에셋벤처투자
   market: kosdaq
-- ticker: '010140'
-  name: 삼성중공업
+- ticker: 003490
+  name: 대한항공
   market: kospi
-- ticker: '043260'
-  name: 성호전자
+- ticker: '030200'
+  name: KT
+  market: kospi
+- ticker: '021240'
+  name: 코웨이
+  market: kospi
+- ticker: 084670
+  name: 동양고속
+  market: kospi
+- ticker: '036170'
+  name: 에이치엠넥스
   market: kosdaq
-- ticker: 086520
-  name: 에코프로
+- ticker: 090710
+  name: 휴림로봇
   market: kosdaq
+- ticker: '001450'
+  name: 현대해상
+  market: kospi
+- ticker: '347700'
+  name: 스피어
+  market: kosdaq
+- ticker: '011200'
+  name: HMM
+  market: kospi
+- ticker: '024110'
+  name: 기업은행
+  market: kospi
+- ticker: 088980
+  name: 맥쿼리인프라
+  market: kospi
+- ticker: '138930'
+  name: BNK금융지주
+  market: kospi
+- ticker: '181710'
+  name: NHN
+  market: kospi
+- ticker: 092200
+  name: 디아이씨
+  market: kospi
+- ticker: 082920
+  name: 비츠로셀
+  market: kosdaq
+- ticker: '032640'
+  name: LG유플러스
+  market: kospi
+- ticker: '263750'
+  name: 펄어비스
+  market: kosdaq
+- ticker: '170920'
+  name: 엘티씨
+  market: kosdaq
+- ticker: '279570'
+  name: 케이뱅크
+  market: kospi
+- ticker: '175330'
+  name: JB금융지주
+  market: kospi
+- ticker: 003690
+  name: 코리안리
+  market: kospi
 - ticker: '487580'
   name: 폴레드
   market: kosdaq
-- ticker: '288180'
-  name: 케이피항공산업
+- ticker: '030000'
+  name: 제일기획
+  market: kospi
+- ticker: '274090'
+  name: 켄코아에어로스페이스
   market: kosdaq
-- ticker: '042660'
-  name: 한화오션
-  market: kospi
-- ticker: '027360'
-  name: 아주IB투자
+- ticker: '066430'
+  name: 아이로보틱스
   market: kosdaq
-- ticker: '067310'
-  name: 하나마이크론
+- ticker: '357880'
+  name: SKAI
   market: kosdaq
-- ticker: '015760'
-  name: 한국전력
-  market: kospi
-- ticker: '017670'
-  name: SK텔레콤
-  market: kospi
-- ticker: 068270
-  name: 셀트리온
-  market: kospi
-- ticker: '142280'
-  name: 녹십자엠에스
-  market: kosdaq
-- ticker: '055550'
-  name: 신한지주
-  market: kospi
-- ticker: 033780
-  name: KT&G
-  market: kospi
-- ticker: '064400'
-  name: LG씨엔에스
-  market: kospi
-- ticker: 046970
-  name: 우리로
-  market: kosdaq
-- ticker: '001740'
-  name: SK네트웍스
-  market: kospi
-- ticker: '064350'
-  name: 현대로템
-  market: kospi

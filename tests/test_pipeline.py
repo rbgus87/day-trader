@@ -2,11 +2,92 @@
 
 import asyncio
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from datetime import datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from data.candle_builder import CandleBuilder
 from risk.risk_manager import RiskManager
 from config.settings import TradingConfig
+
+
+# ---------------------------------------------------------------------------
+# check_uptime_sanity 단위 테스트
+# ---------------------------------------------------------------------------
+
+def _make_session_manager():
+    from pipeline.session_manager import SessionManager
+    from pipeline.trading_state import TradingState
+
+    config = MagicMock()
+    config.notifications.uptime_sanity = True
+    notifier = MagicMock()
+
+    return SessionManager(
+        risk_manager=MagicMock(),
+        order_manager=MagicMock(),
+        order_tracker=MagicMock(),
+        shadow_tracker=MagicMock(),
+        candle_builder=MagicMock(),
+        market_filter=MagicMock(),
+        config=config,
+        notifier=notifier,
+        db=MagicMock(),
+        rest_client=MagicMock(),
+        ws_client=MagicMock(),
+        token_manager=MagicMock(),
+        state=TradingState(),
+        paper_mode=True,
+        on_trade_executed=MagicMock(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_uptime_sanity_no_warning_on_fresh_start():
+    """기동 직후(1분 경과) → 경고 없음."""
+    sm = _make_session_manager()
+    sm._process_start = datetime.now() - timedelta(minutes=1)
+    with patch.object(sm._notifier, "send") as mock_send:
+        await sm.check_uptime_sanity()
+    mock_send.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_uptime_sanity_warning_after_24h():
+    """25시간 연속 가동 → notifier.send() 호출됨 (경고 발생 확인)."""
+    sm = _make_session_manager()
+    sm._process_start = datetime.now() - timedelta(hours=25)
+    await sm.check_uptime_sanity()
+    assert sm._notifier.send.called
+
+
+@pytest.mark.asyncio
+async def test_uptime_sanity_notifier_called_after_24h():
+    """25시간 가동 → notifier.send() 호출."""
+    sm = _make_session_manager()
+    sm._process_start = datetime.now() - timedelta(hours=25)
+    await sm.check_uptime_sanity()
+    sm._notifier.send.assert_called_once()
+    msg = sm._notifier.send.call_args[0][0]
+    assert "연속 가동" in msg
+
+
+@pytest.mark.asyncio
+async def test_uptime_sanity_48h_tag():
+    """49시간 가동 → 메시지에 '48시간 이상' 포함."""
+    sm = _make_session_manager()
+    sm._process_start = datetime.now() - timedelta(hours=49)
+    await sm.check_uptime_sanity()
+    msg = sm._notifier.send.call_args[0][0]
+    assert "48시간 이상" in msg
+
+
+@pytest.mark.asyncio
+async def test_uptime_sanity_no_warning_23h():
+    """23시간 경과 → 경고 없음."""
+    sm = _make_session_manager()
+    sm._process_start = datetime.now() - timedelta(hours=23)
+    await sm.check_uptime_sanity()
+    sm._notifier.send.assert_not_called()
 
 
 @pytest.mark.asyncio

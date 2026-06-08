@@ -93,6 +93,9 @@ class WatchlistPanel(QWidget):
 
     def update_watchlist(self, items: list[dict]) -> None:
         table = self._table
+        vsb = table.verticalScrollBar()
+        saved_scroll = vsb.value()
+
         table.setRowCount(0)
         self._card.setTitle(f"감시 종목  {len(items)}종목")
 
@@ -153,3 +156,5 @@ class WatchlistPanel(QWidget):
                 if color:
                     cell.setForeground(color)
                 table.setItem(row, col, cell)
+
+        vsb.setValue(min(saved_scroll, vsb.maximum()))
