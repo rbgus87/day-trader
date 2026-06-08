@@ -67,24 +67,28 @@ class TelegramNotifier:
         if len(message) > self._MAX_MSG_LEN:
             message = message[: self._MAX_MSG_LEN] + "\n…(생략)"
 
+        payload: dict = {"chat_id": self._chat_id, "text": message}
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
+
         last_err = ""
         for attempt in range(retries):
             try:
                 resp = requests.post(
                     f"{self._api_url}/sendMessage",
-                    json={
-                        "chat_id": self._chat_id,
-                        "text": message,
-                        "parse_mode": parse_mode,
-                    },
+                    json=payload,
                     timeout=30,
                 )
                 if resp.status_code == 200:
                     return True
                 last_err = f"status={resp.status_code}"
                 if resp.status_code == 400:
+                    try:
+                        desc = resp.json().get("description", "")
+                    except Exception:
+                        desc = resp.text[:200]
                     logger.warning(
-                        f"텔레그램 400 Bad Request — 메시지 내용: {message[:200]!r}"
+                        f"텔레그램 400 Bad Request — {desc!r} — 메시지: {message[:200]!r}"
                     )
             except Exception as e:
                 last_err = f"{type(e).__name__}: {e}"

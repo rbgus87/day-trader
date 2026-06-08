@@ -54,6 +54,7 @@ class SessionManager:
         self._paper_mode = paper_mode
         self._on_trade_executed = on_trade_executed
         self._on_market_status = on_market_status
+        self._process_start = datetime.now()
 
     # ── 강제 청산 ──
 
@@ -174,7 +175,7 @@ class SessionManager:
             ).info("섀도우 트래킹 요약")
             if self._notifier and shadow["total"] > 0:
                 try:
-                    self._notifier.send(self._shadow_tracker.format_report())
+                    self._notifier.send(self._shadow_tracker.format_report(), parse_mode="")
                 except Exception as _e:
                     logger.warning(f"섀도우 트래커 알림 실패: {_e}")
 
@@ -533,38 +534,21 @@ class SessionManager:
     # ── 업타임 체크 ──
 
     async def check_uptime_sanity(self) -> None:
-        from datetime import datetime as _dt, timedelta as _td
-        from pathlib import Path as _Path
-        marker = _Path("logs/.last_startup")
-        now = _dt.now()
-        prev_str = None
-        if marker.exists():
+        from datetime import timedelta as _td
+        elapsed = datetime.now() - self._process_start
+        hours = int(elapsed.total_seconds() / 3600)
+        if elapsed < _td(hours=24):
+            return
+        tag = "48시간 이상" if elapsed >= _td(hours=48) else f"{hours}시간"
+        msg = f"[SANITY] 프로세스 {tag} 연속 가동 중 — 재시작 권장 (시작: {self._process_start.strftime('%m/%d %H:%M')})"
+        logger.warning(msg)
+        if self._notifier and self._config.notifications.uptime_sanity:
             try:
-                prev_str = marker.read_text(encoding="utf-8").strip()
-            except Exception:
-                pass
-        try:
-            marker.parent.mkdir(exist_ok=True)
-            marker.write_text(now.isoformat(), encoding="utf-8")
-        except Exception as e:
-            logger.warning(f"last_startup 기록 실패: {e}")
-        if not prev_str:
-            return
-        try:
-            prev = _dt.fromisoformat(prev_str)
-        except Exception:
-            return
-        elapsed = now - prev
-        if elapsed >= _td(hours=24):
-            hours = int(elapsed.total_seconds() / 3600)
-            logger.warning(f"[SANITY] GUI {hours}시간 이상 가동 중 (마지막 시작: {prev_str})")
-            if self._notifier and self._config.notifications.uptime_sanity:
-                try:
-                    self._notifier.send(
-                        f"[안내] GUI {hours}시간 이상 가동 중\n마지막 시작: {prev_str}"
-                    )
-                except Exception as e:
-                    logger.warning(f"uptime sanity 알림 실패: {e}")
+                self._notifier.send(
+                    f"[안내] 프로세스 {tag} 연속 가동 중\n시작: {self._process_start.strftime('%Y-%m-%dT%H:%M:%S')}\n재시작을 권장합니다"
+                )
+            except Exception as e:
+                logger.warning(f"uptime sanity 알림 실패: {e}")
 
     # ── 수동 청산 (UI command) ──
 
