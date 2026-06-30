@@ -95,6 +95,9 @@ class SessionManager:
                         strat_info = self._state.active_strategies.get(ticker)
                         if strat_info:
                             strat_info["strategy"].on_exit()
+                            mom_strat = strat_info.get("momentum_strategy")
+                            if mom_strat is not None:
+                                mom_strat.on_exit()
                         logger.bind(
                             event="exit", ticker=ticker, reason="forced_close",
                             price=int(close_price), qty=qty, pnl=int(pnl),
@@ -112,8 +115,29 @@ class SessionManager:
                         strat_info = self._state.active_strategies.get(ticker)
                         if strat_info:
                             strat_info["strategy"].on_exit()
+                            mom_strat = strat_info.get("momentum_strategy")
+                            if mom_strat is not None:
+                                mom_strat.on_exit()
             await self._candle_builder.flush()
             self._candle_builder.reset()
+            # paper 모드: force_close 루프 후 settle 안 된 포지션 = 주문 실패 잔여물
+            # real 모드: order_tracker가 WS→REST→취소로 후속 처리하므로 여기서 체크 불필요
+            if self._paper_mode:
+                unsettled = [
+                    t for t, p in self._risk_manager.get_open_positions().items()
+                    if p.remaining_qty > 0
+                ]
+                if unsettled:
+                    msg = (
+                        f"[FORCE_CLOSE] paper 미청산 {len(unsettled)}건: {unsettled}\n"
+                        f"원인: execute_sell_force_close 실패 — 다음 날 reconcile 필요"
+                    )
+                    logger.error(msg)
+                    if self._notifier:
+                        try:
+                            self._notifier.send_urgent(msg)
+                        except Exception:
+                            pass
             await self._risk_manager.save_daily_summary()
             self._risk_manager.reset_daily()
             self._state.daily_halt_notified = False
@@ -202,6 +226,9 @@ class SessionManager:
         else:
             for strat_info in self._state.active_strategies.values():
                 strat_info["strategy"].reset()
+                mom_strat = strat_info.get("momentum_strategy")
+                if mom_strat is not None:
+                    mom_strat.reset()
             for gap_strat in self._state.gap_strategies.values():
                 gap_strat.reset()
         await self.refresh_ohlcv(stocks)
@@ -281,10 +308,16 @@ class SessionManager:
                         )
                     prev_close = abs(float(prev.get("cur_prc", prev.get("stck_clpr", 0))))
                     if prev_high > 0 and ticker in self._state.active_strategies:
-                        strat = self._state.active_strategies[ticker]["strategy"]
+                        strat_entry = self._state.active_strategies[ticker]
+                        strat = strat_entry["strategy"]
                         if hasattr(strat, "set_prev_day_data"):
                             strat.set_prev_day_data(prev_high, prev_vol, prev_close)
                             _init += 1
+                        # Multi 모드: momentum_strategy는 refresh_ohlcv 갱신 대상에서
+                        # 누락되어 있어 09:30 이후 전일데이터누락이 발생함 — 여기서 함께 주입
+                        mom_strat = strat_entry.get("momentum_strategy")
+                        if mom_strat is not None and hasattr(mom_strat, "set_prev_day_data"):
+                            mom_strat.set_prev_day_data(prev_high, prev_vol, prev_close)
                         self._state.prev_high_map[ticker] = prev_high
                     # 갭 전략 전일 데이터 주입
                     gap_strat = self._state.gap_strategies.get(ticker)
@@ -333,6 +366,10 @@ class SessionManager:
             await self._seed_intraday_candles(stocks)
         except Exception as e:
             logger.warning(f"분봉 시드 실패 — 장 초반 ADX 미작동 가능: {e}")
+        try:
+            await self._seed_prev_day_candles(stocks)
+        except Exception as e:
+            logger.warning(f"전일 분봉 시드 실패 — flow 조건 skip 가능: {e}")
 
     async def _seed_intraday_candles(self, stocks: list[dict]) -> None:
         if not stocks:
@@ -376,6 +413,64 @@ class SessionManager:
             except Exception as e:
                 logger.debug(f"분봉 시드 ({ticker}) 실패: {e}")
         logger.info(f"분봉 시드 완료: {seeded}/{len(stocks)}종 — N={n}봉")
+
+    async def _seed_prev_day_candles(self, stocks: list[dict]) -> None:
+        """전일 분봉을 DB에서 읽어 각 전략의 set_prev_day_candles()에 주입.
+
+        flow_volume 기능이 전일 동시간대 거래량과 비교하려면 전략 객체에
+        전일 분봉 DataFrame이 주입되어 있어야 한다. 백테스터는 _setup_strategy_day에서
+        처리하지만 실전 경로(session_manager)는 누락되어 있었음.
+        DB의 intraday_candles 테이블에서 오늘 이전 가장 최근 영업일 데이터를 조회한다.
+        """
+        if self._db is None:
+            return
+        import pandas as pd
+        from datetime import date
+
+        today_str = date.today().isoformat()  # "YYYY-MM-DD"
+        seeded = 0
+
+        for s in stocks:
+            ticker = s["ticker"]
+            strat_entry = self._state.active_strategies.get(ticker)
+            if strat_entry is None:
+                continue
+            try:
+                # 오늘 이전 가장 최근 날짜 조회
+                row = await self._db.fetch_one(
+                    "SELECT MAX(date(ts)) as prev_dt FROM intraday_candles "
+                    "WHERE ticker=? AND tf='1m' AND date(ts) < ?",
+                    (ticker, today_str),
+                )
+                if not row or not row.get("prev_dt"):
+                    logger.debug(f"전일 분봉 없음 ({ticker}) — DB 미수집")
+                    continue
+                prev_dt: str = row["prev_dt"]
+
+                rows = await self._db.fetch_all(
+                    "SELECT ts, open, high, low, close, volume "
+                    "FROM intraday_candles "
+                    "WHERE ticker=? AND tf='1m' AND date(ts)=? "
+                    "ORDER BY ts ASC",
+                    (ticker, prev_dt),
+                )
+                if not rows:
+                    continue
+
+                df = pd.DataFrame(rows)
+                df["ts"] = pd.to_datetime(df["ts"])
+
+                strat = strat_entry["strategy"]
+                if hasattr(strat, "set_prev_day_candles"):
+                    strat.set_prev_day_candles(df)
+                mom_strat = strat_entry.get("momentum_strategy")
+                if mom_strat is not None and hasattr(mom_strat, "set_prev_day_candles"):
+                    mom_strat.set_prev_day_candles(df)
+                seeded += 1
+            except Exception as e:
+                logger.debug(f"전일 분봉 시드 ({ticker}) 실패: {e}")
+
+        logger.info(f"전일 분봉 시드 완료: {seeded}/{len(stocks)}종 (flow 조건용)")
 
     # ── 지수 캔들 갱신 ──
 
@@ -586,6 +681,9 @@ class SessionManager:
             strat_info = self._state.active_strategies.get(ticker)
             if strat_info:
                 strat_info["strategy"].on_exit()
+                mom_strat = strat_info.get("momentum_strategy")
+                if mom_strat is not None:
+                    mom_strat.on_exit()
             logger.bind(
                 event="exit", ticker=ticker, reason="manual_close",
                 price=int(close_price), qty=qty, pnl=int(pnl), pnl_pct=round(pnl_pct, 2),
@@ -816,8 +914,9 @@ class SessionManager:
                 if hasattr(mom_strat, "set_prev_day_data"):
                     prev_high = getattr(old_strat, "_prev_day_high", 0.0)
                     prev_vol = getattr(old_strat, "_prev_day_volume", 0)
+                    prev_close = getattr(old_strat, "_prev_day_close", 0.0)
                     if prev_high > 0:
-                        mom_strat.set_prev_day_data(prev_high, prev_vol)
+                        mom_strat.set_prev_day_data(prev_high, prev_vol, prev_close)
                 info["momentum_strategy"] = mom_strat
             logger.info("전략 수동 변경: multi (ORB+모멘텀)")
             return

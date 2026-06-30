@@ -24,6 +24,7 @@ class MomentumStrategy(BaseStrategy):
         self._prev_day_close: float = 0.0   # 갭업 기준가 계산용
         self._prev_day_candles: "pd.DataFrame | None" = None  # 시간대별 거래량 비율용
         self._prev_day_slot_vols: dict[tuple[int, int], int] = {}  # TRVOL: 전일 5분슬롯별 거래량
+        self._flow_warn_logged: set[str] = set()  # WARNING 스팸 방지 — 종목당 1회만
         # Phase 2 Day 6: ATR 손절 컨텍스트
         self._ticker: str = ""
         self._last_signal_date: str = ""  # YYYY-MM-DD
@@ -51,6 +52,7 @@ class MomentumStrategy(BaseStrategy):
             "no_candle": 0,
             "breakout_surge_fail": 0,
             "volume_fail": 0,
+            "flow_vol_pass": 0,
             "breakout_last_fail": 0,
             "adx_no_bars": 0,
             "adx_fail": 0,
@@ -58,6 +60,7 @@ class MomentumStrategy(BaseStrategy):
             "rvol_fail": 0,
             "trvol_fail": 0,
             "vwap_fail": 0,
+            "flow_skip_no_data": 0,
             "signal_emit": 0,
             "entry_too_high": 0,
             "afternoon_bp_fail": 0,
@@ -268,18 +271,20 @@ class MomentumStrategy(BaseStrategy):
                 )
                 return None
 
+        # 현재 시각 (2b volume_by_time 및 2d flow 공통)
+        from datetime import datetime as _dt_vol
+        _vol_current_time = (
+            self._backtest_time if self._backtest_time else _dt_vol.now().time()
+        )
+
         # 2b) 거래량 기준: 시간대별(time-based) 또는 전일 전체 대비 fallback
         if (
             getattr(self._config, "volume_by_time_enabled", False)
             and self._prev_day_candles is not None
             and not self._prev_day_candles.empty
         ):
-            from datetime import datetime as _dt
-            current_time = (
-                self._backtest_time if self._backtest_time else _dt.now().time()
-            )
             prev_up_to_now = self._prev_day_candles[
-                self._prev_day_candles["ts"].dt.time <= current_time
+                self._prev_day_candles["ts"].dt.time <= _vol_current_time
             ]
             if not prev_up_to_now.empty:
                 prev_vol_up_to_now = int(prev_up_to_now["volume"].sum())
@@ -306,7 +311,23 @@ class MomentumStrategy(BaseStrategy):
         else:
             _vol_ok = cum_volume >= required_volume
 
-        if not _vol_ok:
+        # 2d) Flow 거래량 체크 — BREAKOUT 직후 거래량 폭발 즉시 감지 (OR 보완)
+        _flow_ok = False
+        _flow_info: "tuple[int, int, float] | None" = None
+        _flow_ratio_cfg = getattr(self._config, "flow_ratio", None)
+        if _flow_ratio_cfg is not None:
+            _flow_result = self._check_flow_volume(candles, _vol_current_time, tick["ticker"])
+            if _flow_result is not None:
+                _flow_ok_val, _fv, _fb, _fr = _flow_result
+                _flow_ok = _flow_ok_val
+                _flow_info = (_fv, _fb, _fr)
+                logger.debug(
+                    f"[VOLUME-FLOW] {tick['ticker']} "
+                    f"flow_vol={_fv:,} baseline_vol={_fb:,} ratio={_fr:.1f}x "
+                    f"(window={getattr(self._config, 'flow_window_min', 5)}min)"
+                )
+
+        if not _vol_ok and not _flow_ok:
             self.diag_counters["volume_fail"] += 1
             if _trvol_en:
                 self.diag_counters["trvol_fail"] += 1
@@ -323,12 +344,23 @@ class MomentumStrategy(BaseStrategy):
             self._cond_tracker["VOLUME"] = datetime.now()
             _prev_c = self._prev_day_close
             _chg = (current_price - _prev_c) / _prev_c * 100 if _prev_c > 0 else 0.0
-            _vol_ratio = cum_volume / self._prev_day_volume if self._prev_day_volume > 0 else 0.0
-            logger.info(
-                f"[COND_MET] {tick['ticker']} VOLUME 충족: "
-                f"ratio={_vol_ratio:.1f}x, 현재가={current_price:,.0f}, "
-                f"전일종가대비=+{_chg:.1f}%"
-            )
+            if _flow_ok and not _vol_ok and _flow_info is not None:
+                # flow 경로가 cumvol 없이 단독 충족
+                self.diag_counters["flow_vol_pass"] += 1
+                _fv, _fb, _fr = _flow_info
+                logger.info(
+                    f"[COND_MET] {tick['ticker']} VOLUME 충족 [FLOW]: "
+                    f"flow_vol={_fv:,} baseline_vol={_fb:,} ratio={_fr:.1f}x "
+                    f"(window={getattr(self._config, 'flow_window_min', 5)}min), "
+                    f"현재가={current_price:,.0f}, 전일종가대비=+{_chg:.1f}%"
+                )
+            else:
+                _vol_ratio = cum_volume / self._prev_day_volume if self._prev_day_volume > 0 else 0.0
+                logger.info(
+                    f"[COND_MET] {tick['ticker']} VOLUME 충족: "
+                    f"ratio={_vol_ratio:.1f}x, 현재가={current_price:,.0f}, "
+                    f"전일종가대비=+{_chg:.1f}%"
+                )
 
         # 3) 마지막 캔들 종가 돌파 재확정 (ADR-016: 최소 돌파폭 적용)
         last_close = candles.iloc[-1]["close"]
@@ -410,6 +442,63 @@ class MomentumStrategy(BaseStrategy):
             reason=f"전일 고점({breakout_ref:,.0f}) 돌파 + 거래량 {self._config.momentum_volume_ratio:.1f}배 확인",
             context=signal_context,
         )
+
+    def _check_flow_volume(
+        self,
+        candles: pd.DataFrame,
+        current_time: "datetime.time",
+        ticker: str = "",
+    ) -> "tuple[bool, int, int, float] | None":
+        """Flow 거래량 체크: 최근 N분 당일 거래량이 전일 동시간대 N분의 flow_ratio배 이상인지.
+
+        Returns:
+            None  — skip (비활성 / 전일 분봉 없음 / 현재 분봉 부족)
+            (ok, flow_vol, baseline_vol, ratio)  — 체크 수행 시
+        """
+        flow_ratio = getattr(self._config, "flow_ratio", None)
+        if flow_ratio is None:
+            return None
+
+        window = int(getattr(self._config, "flow_window_min", 5))
+
+        if self._prev_day_candles is None or self._prev_day_candles.empty:
+            if ticker not in self._flow_warn_logged:
+                self._flow_warn_logged.add(ticker)
+                logger.warning(f"[VOLUME-FLOW] {ticker} 전일 분봉 없음 — flow 조건 skip (세션 최초 1회)")
+            self.diag_counters["flow_skip_no_data"] += 1
+            return None
+
+        # 현재 분봉이 window개 미만 → 장 시작 직후
+        if candles is None or len(candles) < window:
+            return None
+
+        # 현재 최근 window개 1분봉 거래량 합산
+        flow_vol = int(candles["volume"].iloc[-window:].sum())
+
+        # 전일 동시간대 [current_time - window_min, current_time) 거래량 합산 (분 단위 절사)
+        from datetime import datetime as _dt2, timedelta, time as _time2
+        cur_min = _time2(current_time.hour, current_time.minute)
+        base_dt = _dt2(2000, 1, 1, cur_min.hour, cur_min.minute)
+        start_min = (base_dt - timedelta(minutes=window)).time()
+
+        prev_ts_times = self._prev_day_candles["ts"].dt.time
+        prev_mask = (prev_ts_times >= start_min) & (prev_ts_times < cur_min)
+        prev_window_df = self._prev_day_candles[prev_mask]
+
+        if prev_window_df.empty:
+            logger.warning(
+                f"[VOLUME-FLOW] {ticker} 전일 동시간대 분봉 없음 "
+                f"({start_min.strftime('%H:%M')}~{cur_min.strftime('%H:%M')}) "
+                "— flow 조건 skip"
+            )
+            return None
+
+        baseline_vol = int(prev_window_df["volume"].sum())
+        if baseline_vol <= 0:
+            return None
+
+        ratio = flow_vol / baseline_vol
+        return (ratio >= float(flow_ratio), flow_vol, baseline_vol, ratio)
 
     def _check_trvol(self, candles: pd.DataFrame) -> bool:
         """TRVOL: 현재 5분봉 거래량이 전일 동일 시간대 5분봉의 trvol_ratio배 이상."""

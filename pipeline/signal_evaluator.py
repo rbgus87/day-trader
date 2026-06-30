@@ -158,6 +158,14 @@ class SignalEvaluator:
                 else:
                     return None
 
+            # [BUG-A] Multi 모드: 캔들 경로 09:30 이전 모멘텀 평가 차단.
+            # intraday_leader 종목은 MomentumStrategy만 등록 → 위 isinstance(_ORB) 블록을 우회하므로
+            # 별도 시간 게이트가 필요. ORBStrategy fall-through(09:30 이후)는 이미 통과 상태라 무해.
+            if getattr(self._config.trading, "strategy_type", "momentum") == "multi":
+                from datetime import time as _dtime_candle
+                if datetime.now().time() < _dtime_candle(9, 30):
+                    return None
+
             breakout_info = self._state.breakout_detected.get(ticker)
             bp = breakout_info.breakout_price if breakout_info else None
             self._signal_eval_count += 1
@@ -198,6 +206,8 @@ class SignalEvaluator:
             f"BREAKOUT통과={agg.get('breakout_pass', 0)}, "
             f"BREAKOUT미달={agg.get('breakout_fail', 0)}, "
             f"VOLUME미달={agg.get('volume_fail', 0)}, "
+            f"VOLUME_FLOW통과={agg.get('flow_vol_pass', 0)}, "
+            f"FLOW_SKIP_NO_DATA={agg.get('flow_skip_no_data', 0)}, "
             f"BREAKOUT_LAST미달={agg.get('breakout_last_fail', 0)}, "
             f"ADX봉부족={agg.get('adx_no_bars', 0)}, "
             f"ADX미달={agg.get('adx_fail', 0)}, "
